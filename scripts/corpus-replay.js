@@ -64,7 +64,7 @@ const ROUTES = [
   // The output-scoring's seal (mode-output-scoring): a seat's hand-back is written to its score file, logged, never decided.
   { hook: 'guard-stop-contract.js', event: 'PreToolUse', tools: ['SubagentHandback'], deny: false, probe: 'scoring-seal' },
   { hook: 'guard-fresh-session-start.js', event: 'PreToolUse', tools: ['Skill'], deny: true, needsTranscript: true },
-  { hook: 'guard-cross-project-write.js', event: 'PreToolUse', tools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Monitor'], deny: true },
+  { hook: 'guard-cross-project-write.js', event: 'PreToolUse', tools: ['Read', 'Grep', 'Glob', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Monitor'], deny: true },
   { hook: 'guard-config-protection.js', event: 'PreToolUse', tools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Monitor'], deny: true },
   // Wired on a regular-expression matcher (`pattern`, the manifest's own), replayed on tool names it matches under any
   // registration (N6, 2026-10-24 - the stack ships no server, so the name is the user's). A bare server spelling is built
