@@ -569,7 +569,7 @@ test('audit 2026-10-08: the fresh-session guard reads commands and the router sk
     { env: { ...process.env, CLAUDE_CONFIG_DIR: home, ...extra } });
   for (const s of ['alfred-code:init', 'alfred-code:alfred-code']) {
     const r = skillCall(s);
-    assert.equal(r.status, 'ask', `${s}: a flagged command or router skill in the cache`);
+    assert.equal(r.status, 'deny', `${s}: a flagged command or router skill in the cache`);
     assert.match(r.stderr, new RegExp(`can run /${s} themselves`), 'the escape names the command as it is typed');
   }
   // (the running plugin root is read through the same pluginHeads list; a plugin-launched hook in this unset-up
@@ -2166,7 +2166,7 @@ test('guard-fresh-session-start: a manual-only flag is read from the running plu
   assert.equal(call({}), 0, 'the stale 2.0.0 copy no longer decides over 2.1.0');
   skill(path.join(cache, '2.1.0'), true);
   skill(path.join(cache, '2.0.0'), false);
-  assert.equal(call({}), 'ask', 'the newest version says manual-only');
+  assert.equal(call({}), 'deny', 'the newest version says manual-only');
   // the running plugin's own root wins over any cached copy
   const running = path.join(cfg, 'running', 'mk2', 'alfred-code', '9.9.9');
   skill(running, false);
@@ -2192,11 +2192,11 @@ test('READER-2: skillHeads reads a moved plugins root', () => {
     if (value === undefined) delete env.CLAUDE_CODE_PLUGIN_CACHE_DIR; else env.CLAUDE_CODE_PLUGIN_CACHE_DIR = value;
     return runIn('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: `alfred-code:${name}` } }, { env }).status;
   };
-  assert.equal(call('bar', moved), 'ask', 'the moved root holds the flagged copy');
-  assert.equal(call('bar', `  ${moved} `), 'ask', 'a value with spaces around it is trimmed');
+  assert.equal(call('bar', moved), 'deny', 'the moved root holds the flagged copy');
+  assert.equal(call('bar', `  ${moved} `), 'deny', 'a value with spaces around it is trimmed');
   for (const value of [undefined, '', '   ']) {
     assert.equal(call('bar', value), 0, `${JSON.stringify(value)}: <config>/plugins/cache holds the unflagged copy`);
-    assert.equal(call('baz', value), 'ask', `${JSON.stringify(value)}: and its flagged one is read`);
+    assert.equal(call('baz', value), 'deny', `${JSON.stringify(value)}: and its flagged one is read`);
   }
 });
 
@@ -3877,7 +3877,7 @@ test('guard-fresh-session-start: a disable-model-invocation skill is denied to t
         { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
 
     const blocked = skillCall('loop-code-quality');
-    assert.equal(blocked.status, 'ask', 'the model may not call a slash-only skill');
+    assert.equal(blocked.status, 'deny', 'the model may not call a slash-only skill');
     assert.match(blocked.stderr, /disable-model-invocation/, 'the denial names why');
     assert.match(blocked.stderr, /hand the turn back/, 'and says what to do instead - not to retry');
     // No threshold involved: this payload carries no transcript at all, so a context-based block
@@ -3946,7 +3946,7 @@ test('guard-fresh-session-start: the model\'s call to a built-in review is denie
 
     assert.equal(skillCall('other-plugin:code-review').status, 0, 'another plugin\'s skill of that name is not the built-in');
     assert.equal(skillCall('code-review', {}, { ALFRED_CODE_HOOKS_OFF: 'guard-fresh-session-start:builtin-review' }).status, 0, 'the part switch stands the deny down');
-    assert.equal(skillCall('loop-code-quality', {}, { ALFRED_CODE_HOOKS_OFF: 'guard-fresh-session-start:builtin-review' }).status, 'ask', 'while the manual-only gate keeps working');
+    assert.equal(skillCall('loop-code-quality', {}, { ALFRED_CODE_HOOKS_OFF: 'guard-fresh-session-start:builtin-review' }).status, 'deny', 'while the manual-only gate keeps working');
     const typed = runIn('guard-fresh-session-start.js',
         { hook_event_name: 'UserPromptExpansion', expansion_type: 'slash_command', command_name: 'code-review', prompt: '/code-review', cwd: root, session_id: 'builtin-review' },
         { env });
@@ -3982,8 +3982,8 @@ test('guard-fresh-session-start: the flag is read from the PLUGIN cache too, not
         { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill }, cwd: root, session_id: 'dmip' },
         { env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: cfg } });
 
-    assert.equal(skillCall('loop-code-quality').status, 'ask', 'a flagged skill served by a plugin is still denied');
-    assert.equal(skillCall('alfred-code:loop-code-quality').status, 'ask', 'and under its scoped spelling');
+    assert.equal(skillCall('loop-code-quality').status, 'deny', 'a flagged skill served by a plugin is still denied');
+    assert.equal(skillCall('alfred-code:loop-code-quality').status, 'deny', 'and under its scoped spelling');
     assert.equal(skillCall('alfred-code-wpf:dotnet-wpf').status, 0, 'an unflagged plugin skill stays callable');
     assert.equal(skillCall('alfred-code:not-shipped').status, 0, 'a name no home carries is not this guard\'s business');
 
@@ -3996,7 +3996,7 @@ test('guard-fresh-session-start: the flag is read from the PLUGIN cache too, not
     };
     writeAt(path.join(root, '.claude'), 'review-notes', '');
     writeAt(cfg, 'review-notes', 'disable-model-invocation: true\n');
-    assert.equal(skillCall('review-notes').status, 'ask', 'the personal copy is flagged, and it is the one that runs');
+    assert.equal(skillCall('review-notes').status, 'deny', 'the personal copy is flagged, and it is the one that runs');
     writeAt(path.join(root, '.claude'), 'draft-notes', 'disable-model-invocation: true\n');
     writeAt(cfg, 'draft-notes', '');
     assert.equal(skillCall('draft-notes').status, 0, 'an unflagged personal copy runs over a flagged project one');
@@ -4914,10 +4914,10 @@ test('H10: a bare built-in name is never a plugin command, the scoped one still 
   const call = (skill) => runIn('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill }, transcript_path: transcript(`h10-${skill.replace(/:/g, '-')}`, ctxRows('h10', 1000)) },
     { env: { ...process.env, CLAUDE_CONFIG_DIR: home } });
   assert.equal(call('init').status, 0, 'the built-in /init is no plugin command');
-  assert.equal(call('alfred-code:init').status, 'ask', 'the core command under its own namespace is still denied');
-  assert.equal(call('alfred-code:mode:scoring').status, 'ask', 'a command one folder down (commands/mode/scoring.md) is the user\'s to type too');
+  assert.equal(call('alfred-code:init').status, 'deny', 'the core command under its own namespace is still denied');
+  assert.equal(call('alfred-code:mode:scoring').status, 'deny', 'a command one folder down (commands/mode/scoring.md) is the user\'s to type too');
   assert.equal(call('mode:scoring').status, 0, 'with no plugin before it the same name is no plugin command');
-  assert.equal(call('loop-code-quality').status, 'ask', 'a plugin skill still answers to its bare name');
+  assert.equal(call('loop-code-quality').status, 'deny', 'a plugin skill still answers to its bare name');
   fs.rmSync(home, { recursive: true, force: true });
 });
 

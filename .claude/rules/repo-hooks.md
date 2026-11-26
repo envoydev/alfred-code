@@ -295,7 +295,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   comes every time: a yes in chat opens nothing. Where nobody can answer, it writes the same reason as a plain `deny`. `canAsk` is false for
   `dontAsk`, `bypassPermissions`, print mode (`claude -p`), `ALFRED_CODE_UNATTENDED=1` and a Cursor payload (whose deny also writes the
   reason to stderr and exits 2, `blockExitCode`), and for a `SubagentHandback` call in EVERY mode: the hooks page says no prompt
-  appears for it and the call runs, so an ask there would let a hand-back through (B62). An idle user under auto-run is asked all the
+  appears for it and the call runs, so an ask there would let a hand-back through (B62). The model's `Skill` call of a `disable-model-invocation` skill (B38) is a deny in every mode, set by the guard itself and not by `canAsk`: Claude Code refuses that call whatever the hook says, so a Yes could run nothing. An idle user under auto-run is asked all the
   same - `canAsk` never reads the auto-run stamp. `ALFRED_CODE_GUARD_ASK=0` (the launch environment, a settings `env` or `.variables`;
   any other value asks) brings the plain block back everywhere. The helper never answers `allow`: a call no guard judged harmful gets
   no output, as before, and a failure inside it writes a `deny`, never nothing. It sets `global.BLOCK_VERDICT`, so the block row each

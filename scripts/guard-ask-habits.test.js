@@ -66,13 +66,19 @@ test('each habit block denies under dontAsk with today\'s text: whole Read (B14)
     /^Blocked: whole-file dump of .*big\.js \(500 lines\)/);
 });
 
-test('each habit block denies under dontAsk with today\'s text: a user-only skill (B38)', () => {
+test('a user-only skill (B38) is denied in every mode, never asked: a Yes could not run it, since Claude Code refuses the model\'s call of it', () => {
   const root = project();
   fs.mkdirSync(path.join(root, '.claude', 'skills', 'users-own'), { recursive: true });
   fs.writeFileSync(path.join(root, '.claude', 'skills', 'users-own', 'SKILL.md'), '---\nname: users-own\ndescription: x\ndisable-model-invocation: true\n---\nbody\n');
-  bothWays('a disable-model-invocation skill', (extra) => spawnHook(FRESH_GUARD, root,
-    { hook_event_name: 'PreToolUse', session_id: sessionId(), tool_name: 'Skill', tool_input: { skill: 'users-own' }, ...extra }),
-  /^Blocked: users-own is marked disable-model-invocation/);
+  const call = (extra) => spawnHook(FRESH_GUARD, root,
+    { hook_event_name: 'PreToolUse', session_id: sessionId(), tool_name: 'Skill', tool_input: { skill: 'users-own' }, ...extra });
+  for (const mode of [{}, { permission_mode: 'acceptEdits' }, DONT_ASK, { permission_mode: 'bypassPermissions' }]) {
+    const r = call(mode);
+    const what = `a disable-model-invocation skill under ${JSON.stringify(mode)}`;
+    assert.strictEqual(verdictOf(r), 'deny', `${what}: a deny (${r.stdout}${r.stderr})`);
+    assert.match(blockText(r), /^Blocked: users-own is marked disable-model-invocation - it is the USER's to type/, what);
+    assert.strictEqual(JSON.parse(r.stdout).hookSpecificOutput.additionalContext, undefined, `${what}: no additionalContext`);
+  }
 });
 
 test('each habit block denies under dontAsk with today\'s text: a symbol question (B44) and an unapproved implementer (B47)', () => {

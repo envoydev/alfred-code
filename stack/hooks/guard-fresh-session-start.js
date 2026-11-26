@@ -130,11 +130,13 @@ if (cursorOff) process.exit(0);
 // runs when the prompt went out, so the next call is not held again whatever the user answered (the model never puts the
 // AskUserQuestion once the user approved the call). A deny - nobody to ask - leaves the state to its older readers.
 let askedOffer = null;
-function blockCall(input, text) {
+// `denyOnly` is for a block no Yes could undo - a prompt there would do nothing: the same deny in every mode (ALFRED_CODE_GUARD_ASK=0
+// for this one call, as the layer-table gate's hold does).
+function blockCall(input, text, denyOnly) {
   let code = 2;
   try {
     const p = require('./hook-prelude.js');
-    const decision = p.askOrBlock(input, text, { guard: 'guard-fresh-session-start' });
+    const decision = p.askOrBlock(input, text, { guard: 'guard-fresh-session-start', ...(denyOnly ? { env: { ...process.env, ALFRED_CODE_GUARD_ASK: '0' } } : {}) });
     if (decision === 'ask' && askedOffer) { try { askedOffer(); } catch { /* state is best effort */ } }
     code = p.blockExitCode(input, decision);
   }
@@ -1292,6 +1294,7 @@ if (IS_SKILL_CALL && skill) {
         `to call. Do not retry it under another spelling and do not spend the turn explaining that you\n` +
         `cannot: name the command, say in ONE line what it does, and hand the turn back so the user\n` +
         `can run /${skill} themselves.`,
+        true,
       );
     }
   } catch { /* no such skill on disk, or unreadable - not this guard's business */ }
