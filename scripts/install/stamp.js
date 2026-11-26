@@ -148,9 +148,9 @@ const ROOT_FILES = ['AGENTS.md', 'CLAUDE.md', 'navigation-context.yml', '.gitign
 // A model id holds no dot, so its window's dotted path (settings.js compactAt) splits back into three keys; custom memory's
 // switch-off is a top-level key.
 // A workspace row is one MEMBER of an array (settings.js syncMembers), keyed by the member's own hash, so two members never
-// share a ledger key.
+// share a ledger key. A key of an object (settings-keys.js, `skillOverrides{<hash of the key>}`) is a row the same way.
 // until 4.0.0: the modelSettings.<id>.autoCompactWindow rows stay readable so a later release can take ledgered windows back.
-const SETTINGS_PATH = /^(?:attribution\.(?:commit|pr|sessionUrl)|worktree\.baseRef|modelSettings\.[a-z0-9][a-z0-9-]{0,99}\.autoCompactWindow|autoMemoryEnabled|autoMemoryDirectory|(?:claudeMdExcludes|permissions\.additionalDirectories|permissions\.deny|disabledMcpjsonServers)\[[0-9a-f]{64}\])$/;
+const SETTINGS_PATH = /^(?:attribution\.(?:commit|pr|sessionUrl)|worktree\.baseRef|modelSettings\.[a-z0-9][a-z0-9-]{0,99}\.autoCompactWindow|autoMemoryEnabled|autoMemoryDirectory|(?:claudeMdExcludes|permissions\.additionalDirectories|permissions\.deny|disabledMcpjsonServers)\[[0-9a-f]{64}\]|skillOverrides\{[0-9a-f]{64}\})$/;
 const MCP_SCOPES = ['local', 'user'];
 // Workspace layering (spec 2.2): the one account settings key D5 writes, the MCP rows a child copies from its root
 // (release 2) and the wraps it put in place of a registration, each by scope.
@@ -278,7 +278,7 @@ const recordLine = (key, values) =>
 };
 function renderStamp(fields)
 {
-    const { repoUrl, ref, sha, version, installed, installedMs, action, scope, initialised, hooks, hooksRoute, seatsRoute, alwaysRules, picked = {}, stoodDown = [], mcpDenied = [], toolIgnores = {}, library = {}, ledger = null, data = null, instructionsFile = '', ownPicks = null, ownEnv = null, instructionsBoth = '', memoryLift = '', untrackTold = [], answeredEnv = [], toldTracked = [], createdDirs = [], links = [], memberPicks = [] } = fields;
+    const { repoUrl, ref, sha, version, installed, installedMs, action, scope, initialised, hooks, hooksRoute, seatsRoute, alwaysRules, picked = {}, stoodDown = [], mcpDenied = [], toolIgnores = {}, library = {}, ledger = null, data = null, instructionsFile = '', ownPicks = null, ownEnv = null, instructionsBoth = '', memoryLift = '', untrackTold = [], answeredEnv = [], toldTracked = [], createdDirs = [], links = [], memberPicks = [], keptOnly = [] } = fields;
     const hashes = (map) => Object.entries(map || {}).map(([n, h]) => `${n}=${h}`).join(',');
     return [
         '# alfred-code install stamp - machine-local, written by the alfred-code installer.',
@@ -316,6 +316,7 @@ function renderStamp(fields)
         ...(instructionsBoth === 'declined' ? ['instructions-both: declined'] : []),
         ...(links.length ? [`links: ${linksValue(links)}`] : []),
         ...(memberPicks.length ? [`member-picks: ${[...new Set(memberPicks)].map((l) => l.replace(' ', '/')).sort().join(',')}`] : []),
+        ...(keptOnly.length ? [`kept-only: ${[...new Set(keptOnly)].map((l) => l.replace(' ', '/')).sort().join(',')}`] : []),
         `library-skills: ${hashes(library.skills)}`,
         `library-agents: ${hashes(library.agents)}`,
         `library-rules: ${hashes(library.rules)}`,
@@ -341,7 +342,7 @@ function writeStamp(opts)
 {
     const {
         source, action, scope, configDir, projectRoot, hooksCatalog, hooksRoute, seatsRoute, picked, stoodDown, mcpDenied, toolIgnores, library, ledger, data,
-        instructionsFile = '', ownPicks = null, ownEnv = null, instructionsBoth = '', memoryLift = '', untrackTold = [], answeredEnv = [], toldTracked = [], createdDirs = [], links = [], memberPicks = [], version = '', now = new Date(), log = () => {}, note = () => {},
+        instructionsFile = '', ownPicks = null, ownEnv = null, instructionsBoth = '', memoryLift = '', untrackTold = [], answeredEnv = [], toldTracked = [], createdDirs = [], links = [], memberPicks = [], keptOnly = [], version = '', now = new Date(), log = () => {}, note = () => {},
     } = opts;
     const initialised = opts.initialised || initialisedValue({ claudeDir: stampDir({ projectRoot }) });
 
@@ -368,7 +369,7 @@ function writeStamp(opts)
             action, scope, initialised,
             hooks: shippedHooks(hooksCatalog), hooksRoute, seatsRoute,
             alwaysRules: always.rules, picked, stoodDown, mcpDenied, toolIgnores, library, ledger, data,
-            instructionsFile, ownPicks, ownEnv, instructionsBoth, memoryLift, untrackTold, answeredEnv, toldTracked, createdDirs, links, memberPicks,
+            instructionsFile, ownPicks, ownEnv, instructionsBoth, memoryLift, untrackTold, answeredEnv, toldTracked, createdDirs, links, memberPicks, keptOnly,
         }));
     }
     catch (err) { note(`stamp could not be written to ${dest} (${err.message})`); return null; }
@@ -412,12 +413,15 @@ function readOwnPicks(file)
 const linksValue = (record) => record.map((e) => `${e.path}=${e.kind}${e.hash ? `@${e.hash}` : ''}`).join(',');
 const readLinks = (file) => (lineOf(file, 'links') || []).map((s) => /^(skills\/([^/=]+)|agents\/([^/=]+?)(?:\.md)?)=(symlink|junction|copy)(?:@([0-9a-f]{64}))?$/.exec(s))
     .filter((m) => m && validItemName(m[2] || m[3]) && (m[4] === 'copy') === Boolean(m[5])).map((m) => ({ path: m[1], kind: m[4], hash: m[5] || '' }));
-function readMemberPicks(file)
+const readPickLine = (file, key) =>
 {
-    const items = lineOf(file, 'member-picks');
+    const items = lineOf(file, key);
     return items && items.map((s) => s.split('/')).filter((p) => p.length === 2 && ['skill', 'agent', 'rule'].includes(p[0]) && validItemName(p[1]))
         .map(([c, n]) => `${c} ${n}`);
-}
+};
+const readMemberPicks = (file) => readPickLine(file, 'member-picks');
+// The items a root's store holds only for a set-aside child's keep (`kept-only: skill/<name>,...`), a subset of member-picks.
+const readKeptOnly = (file) => readPickLine(file, 'kept-only');
 
 function readOwnEnv(file)
 {
@@ -794,7 +798,7 @@ module.exports = {
     writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways,
     readPicked, readLibrary, readLedger, renderLedger, settingsLine, emptyLedger, readToolIgnores, valueHash, entryHash, SERVER_NAME, validServerName, LEDGER_FILES, readStampScope, readHooksRoute, readSeatsRoute, markHooksRoute, readStoodDown, readMcpDenied, readVersion, readInstalledAt, readInstructionsFile, readInstructionsAnswer, validItemName,
     readInitialised, initialisedValue, isInitialised, installState, markInitialised, legacySignature, legacyUnstamped, worktreeMain, installScope, readDataLines,
-    accountDir, readOwnPicks, readOwnEnv, readInstructionsBoth, readJoinPrune, markLine, ACCOUNT_KEYS, readMemoryLift, readUntrackTold, readAnsweredEnv, readToldTracked, readCreatedDirs, readLinks, readMemberPicks, linksValue,
+    accountDir, readOwnPicks, readOwnEnv, readInstructionsBoth, readJoinPrune, markLine, ACCOUNT_KEYS, readMemoryLift, readUntrackTold, readAnsweredEnv, readToldTracked, readCreatedDirs, readLinks, readMemberPicks, readKeptOnly, linksValue,
 };
 
 // `node scripts/install/stamp.js state [projectRoot]` - the router's read: one word on stdout, and for

@@ -845,7 +845,7 @@ function main()
         const exit = process.exit.bind(process);
         process.exit = (code) =>
         {
-            if (code === 2 && !unsetRepo)
+            if ((code === 2 || global.BLOCK_VERDICT) && !unsetRepo)
             {
                 try
                 {
@@ -865,7 +865,7 @@ function main()
                         // blocks read as the main session's), and the call id joins the row to the transcript without a clock.
                         agent: payload.agent_id || null,
                         tool_use_id: payload.tool_use_id || null,
-                        reason: last.split('\n')[0].slice(0, 200),
+                        reason: (global.BLOCK_VERDICT ? global.BLOCK_VERDICT.reason : last).split('\n')[0].slice(0, 200),
           // A hook may name the BRANCH that fired and what matched, when it has more than one
           // (`global.BLOCK_DETAIL`, dropped by JSON.stringify when nothing set it). A block whose
           // cause cannot be reconstructed cannot be tuned - this is the field that reconstructs it.
@@ -888,12 +888,19 @@ function main()
     }
     global.BLOCK_DETAIL = { branch: route };
 
-    process.stderr.write(
+    blockCall(payload,
         'Blocked: rewriting or deleting a shared branch (main/master/develop, or the remote\'s default branch) is forbidden - a house rule enforced here, no prose copy to consult - ' +
         'no force-push, branch deletion, or --mirror. Push to a feature branch and open a PR; ' +
         'use --force-with-lease only on your own feature branch. If the user wants this push, it is theirs to run: ' +
         'give them the exact command to type themselves (a `!` prefix runs it in this session), never a way around this guard.\n');
-    process.exit(2);
+}
+
+// The one exit of a PreToolUse block (guards ask, D1): the prelude asks or denies; with no prelude, today's exit 2.
+function blockCall(input, text) {
+  let code = 2;
+  try { const p = require('./hook-prelude.js'); code = p.blockExitCode(input, p.askOrBlock(input, text, { guard: 'guard-protected-force-push' })); }
+  catch { process.stderr.write(text); }
+  process.exit(code);
 }
 
 // Every git these helpers run is asked once per directory and name in a run (review 18, F3: each push replayed every

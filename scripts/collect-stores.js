@@ -534,7 +534,7 @@ const STORES = [
         held: () => ['context/session-inspector-status.json'],
     },
     {
-        // A receipt the user's yes wrote names its session on a `session: <id>` line (readReceiptFile's rule).
+        // A proof receipt (COMMIT-GATE, PUSH-GATE, APPROVAL) may name its session on a `session: <id>` line.
         id: 'approvals', cls: 'text', match: 'content', kind: 'approvals', inData: true,
         find: (ctx) =>
         {

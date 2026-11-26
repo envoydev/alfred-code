@@ -108,10 +108,22 @@ test('ignore env stops it', () =>
 test('keepOnLeave writes the inherited value and its ledger row', () =>
 {
     const at = joined({ rootStamp: `sha: x\nmanaged-env: .variables:${KEY}=${hashOf('local')}\n` });
+    execFileSync('git', ['init', '-q'], { cwd: at.root });
     const got = ws.keepOnLeave(at.child, { env: ON, log: () => {} });
     assert.ok(got.written.includes(KEY), JSON.stringify(got));
     assert.match(varsText(at.child), new RegExp(`^${KEY}=local$`, 'm'));
     assert.strictEqual(stampLib.readLedger(path.join(at.child, '.claude', 'alfred-code.stamp')).env['.variables'][KEY], hashOf('local'), 'the seed keeps its ledger row');
+});
+
+// P3 (parked fixes): A1's rule holds on the way out too - a plain folder's stale stack seed is no chosen value to copy.
+test('keepOnLeave copies no stale stack seed of a root outside any git repository, and still copies a chosen value', () =>
+{
+    const seed = joined({ rootStamp: `sha: x\nmanaged-env: .variables:${KEY}=${hashOf('local')}\n` });
+    const dropped = ws.keepOnLeave(seed.child, { env: ON, log: () => {} });
+    assert.ok(!dropped.written.includes(KEY), JSON.stringify(dropped));
+    assert.doesNotMatch(fs.existsSync(path.join(seed.child, '.alfred', '.variables')) ? varsText(seed.child) : '', new RegExp(KEY));
+    const chosen = joined({ rootStamp: `sha: x\nmanaged-env: .variables:${KEY}=${hashOf('local')}\nanswered-env: ${KEY}\n` });
+    assert.ok(ws.keepOnLeave(chosen.child, { env: ON, log: () => {} }).written.includes(KEY), 'a value the root chose is kept');
 });
 
 // --- Task 5: the installer's seeds, the answers it records and the one remover (D3, D3b) ------------------------------
@@ -495,4 +507,16 @@ test('ownVersioningLine throws a defect instead of hiding it', () =>
     variablesLib.read = () => { throw new Error('boom'); };
     try { assert.throws(() => effects.ownVersioningLine({ projectRoot: joined().child, dataRoot: '.alfred' }), /boom/); }
     finally { variablesLib.read = real; }
+});
+
+// P6 (parked fixes): a run whose advice read failed has no firm mark, so the remover would judge the seed on a guess; it waits.
+test('a linked child whose advice read failed keeps its stack seed this run and says so', POSIX_ONLY, () =>
+{
+    const spy = path.join(TMP, 'advice-fail.js');
+    fs.writeFileSync(spy, `const docs = require(${JSON.stringify(path.join(__dirname, 'install', 'docs.js'))});\n`
+        + `docs.docsVersioningAdvice = () => { throw new Error('advice down'); };\n`);
+    const r = scenario([{}, { at: API, after: look }, { at: API, act: 'update', before: join, env: { NODE_OPTIONS: `--require ${spy}` }, after: look }]);
+    assert.deepStrictEqual(r.steps[2], { own: 'git', read: 'git', row: hashOf('git'), answered: [] }, r.outs[2]);
+    assert.match(r.outs[2], /workspace: ALFRED_CODE_DOCS_VERSIONING in \.alfred\/\.variables is left as it is - the docs versioning advice could not be read this run/, r.outs[2]);
+    assert.doesNotMatch(r.outs[2], /ALFRED_CODE_DOCS_VERSIONING 'git' removed from/);
 });

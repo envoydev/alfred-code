@@ -6,6 +6,7 @@
 'use strict';
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
+const { verdictOf, blockText, askText } = require('./hook-test-env');
 require('./hook-test-env').isolateHookSuite({ ownTmp: true }); // RU04: the background note's once-per-actor marker sits in the hook temp dir
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
@@ -22,6 +23,7 @@ const shell = require(DISPATCH);
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'shell-guards-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 const BIG = path.join(__dirname, 'lint-skills.js');
+const { blockVerdict } = require('../stack/hooks/hook-prelude.js');
 
 // The containment every guard suite applies: an empty account dir, no ambient stack settings from the
 // session this suite may run inside (an installed checkout exports ALFRED_CODE_* into every tool call).
@@ -119,7 +121,7 @@ test('combine: a lone ask and two blocks read as before', () => {
   const lone = shell.combine([r('a.js', 0, ask('only ask')), r('b.js', 0)]);
   assert.deepStrictEqual(JSON.parse(lone.stdout).hookSpecificOutput, { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: 'only ask' });
   const twoAsks = shell.combine([r('a.js', 0, ask('one')), r('b.js', 0, ask('two'))]);
-  assert.strictEqual(JSON.parse(twoAsks.stdout).hookSpecificOutput.permissionDecisionReason, 'one\ntwo');
+  assert.strictEqual(JSON.parse(twoAsks.stdout).hookSpecificOutput.permissionDecisionReason, 'one\n\ntwo');
   assert.strictEqual(shell.combine([r('a.js', 2, '', 'Blocked: a\n'), r('c.js', 2, '', 'Blocked: c\n')]).stderr, 'Blocked: a\n\nBlocked: c\n');
 });
 
@@ -252,6 +254,7 @@ test('copy route: the ledger keeps the dispatcher wiring this run wrote', () => 
 });
 
 // ---- the dispatcher, end to end -----------------------------------------------------------------
+const ASKING = new Set(['guard-protected-force-push', 'guard-catastrophic-rm', 'guard-secret-value', 'guard-ungated-commit', 'guard-config-protection', 'guard-cross-project-write', 'guard-read-whole-file']);
 test('each guard\'s block reaches the combined answer, with its own ledger row', () => {
   const dir = project();
   const other = fs.mkdtempSync(path.join(TMP, 'other-'));
@@ -266,7 +269,9 @@ test('each guard\'s block reaches the combined answer, with its own ledger row',
     ['guard-config-protection', `sed -i 's/"0"/"1"/' .claude/settings.local.json`], // mode commands v2: no write turns auto-run on
     ['guard-cross-project-write', `echo x > ${path.join(other, 'f.txt')}`],
   ];
-  const env = { CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' };
+  const home = path.join(dir, 'home'); // a HOME inside the project: `rm -rf ~` is then the rm guard's block alone, not the real home's transcripts'
+  fs.mkdirSync(home, { recursive: true });
+  const env = { CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', HOME: home, USERPROFILE: home };
   fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
   fs.writeFileSync(path.join(dir, '.claude', 'settings.local.json'), '{"env":{"ALFRED_CODE_AUTO_RUN":"0"}}\n');
   for (const [guard, command] of cases)
@@ -274,16 +279,20 @@ test('each guard\'s block reaches the combined answer, with its own ledger row',
     const session = `each-${guard}`;
     const payload = { ...bashPayload(command, dir), session_id: session };
     const alone = run(path.join(HOOKS, `${guard}.js`), payload, { cwd: dir, env });
-    assert.strictEqual(alone.status, 2, `${guard} blocks '${command}' on its own: ${alone.stderr}`);
+    // the guards in ASKING ask where a person can answer (guards ask, D1, D2)
+    const verdict = ASKING.has(guard) ? 'ask' : 2;
+    assert.strictEqual(verdictOf(alone), verdict, `${guard} blocks '${command}' on its own: ${alone.stderr}${alone.stdout}`);
     for (const d of ['docs', 'state', 'statistics']) fs.rmSync(path.join(dir, '.alfred', d), { recursive: true, force: true });
     const both = run(DISPATCH, payload, { cwd: dir, env });
-    assert.strictEqual(both.status, 2, `${guard}: the dispatcher blocks too`);
-    assert.ok(both.stderr.includes(alone.stderr.trim()), `${guard}: its own message reaches the model\n--- alone\n${alone.stderr}\n--- dispatched\n${both.stderr}`);
+    // a force push is also a push without the publish gate: both guards ask, and the one prompt carries both reasons
+    assert.strictEqual(verdictOf(both), verdict, `${guard}: the dispatcher blocks too`);
+    const said = (x) => (verdict === 2 ? x.stderr : blockText(x));
+    assert.ok(said(both).includes(said(alone).trim()), `${guard}: its own message reaches the model\n--- alone\n${said(alone)}\n--- dispatched\n${said(both)}`);
     assert.ok(hooksOf(ledgerRows(dir, session)).includes(`${guard}.js`), `${guard}: one ledger row under its own name`);
   }
 });
 
-test('docs-session\'s hold reaches the combined answer as the JSON deny it always was', () => {
+test('docs-session\'s hold reaches the combined answer as one JSON ask, and a deny where nobody can answer', () => {
   const { repo, section } = require('./docs-fixture');
   const docs = repo({ files: { 'src/Api/Orders/Refund.cs': 'x\n', '.claude/alfred-code.stamp': 'version: 2.0.0\n' }, docs: { 'references/patterns.md': section('orders', 'src/Api/Orders/**', 'Refunds are ledgered before the payment call.') } });
   // docs-session keeps its session state in the temp dir by session id, so every run needs its own.
@@ -294,8 +303,13 @@ test('docs-session\'s hold reaches the combined answer as the JSON deny it alway
     const out = run(DISPATCH, payload, { cwd: docs.root, env });
     assert.strictEqual(out.status, 0);
     const hso = JSON.parse(out.stdout).hookSpecificOutput;
-    assert.strictEqual(hso.permissionDecision, 'deny');
+    assert.strictEqual(hso.permissionDecision, 'ask');
     assert.match(hso.permissionDecisionReason, /Docs not read yet in this session/);
+    assert.match(hso.additionalContext, /If the user declined: Docs not read yet in this session/);
+    const nobody = run(DISPATCH, { ...payload, session_id: `${session}-d`, permission_mode: 'dontAsk' }, { cwd: docs.root, env });
+    const denied = JSON.parse(nobody.stdout).hookSpecificOutput;
+    assert.strictEqual(denied.permissionDecision, 'deny');
+    assert.match(denied.permissionDecisionReason, /Docs not read yet in this session/);
   } finally {
     docs.rm();
     for (const f of fs.readdirSync(os.tmpdir())) if (f.startsWith(`docs-session-${session}`)) fs.rmSync(path.join(os.tmpdir(), f), { force: true });
@@ -308,12 +322,17 @@ test('several guards blocking one command: every reason, one ledger row per bloc
   // Two NON-protective blocks: a protective one ends the run where it stands (2.1.5 M2, below).
   const payload = bashPayload(`cat ${BIG} && git commit -am "wip"`, dir);
   // What the separate hooks do with it: each guard standalone, its ledger cleared after.
-  const alone = shell.GUARDS.map((g) => ({ g, ...run(path.join(HOOKS, `${g}.js`), payload, { cwd: dir, env }) })).filter((x) => x.status === 2);
+  const alone = shell.GUARDS.map((g) => ({ g, ...run(path.join(HOOKS, `${g}.js`), payload, { cwd: dir, env }) })).filter((x) => verdictOf(x) !== 0);
   for (const d of ['docs', 'state', 'statistics']) fs.rmSync(path.join(dir, '.alfred', d), { recursive: true, force: true });
   assert.ok(alone.length >= 2 && alone.some((x) => x.g === 'guard-read-whole-file') && alone.some((x) => x.g === 'guard-ungated-commit'), alone.map((x) => x.g).join(', '));
   const out = run(DISPATCH, payload, { cwd: dir, env });
-  assert.strictEqual(out.status, 2);
-  for (const x of alone) assert.ok(out.stderr.includes(x.stderr.trim()), `${x.g}'s reason is in the one answer`);
+  // the read guard and the commit guard both ask: one prompt names both, and the model text carries both reasons
+  assert.strictEqual(verdictOf(out), 'ask', `${out.stdout}${out.stderr}`);
+  for (const x of alone) {
+    // the recommendation line comes once, after the joined texts (T7 Minor 7), so each guard's own text is compared without it
+    assert.ok(askText(out).includes(askText(x).replace(/\nRecommended: [^\n]*$/, '').trim()), `${x.g}'s line is in the one prompt`);
+    assert.ok(blockText(out).includes(blockText(x).trim()), `${x.g}'s reason is in the model text`);
+  }
   assert.deepStrictEqual(hooksOf(ledgerRows(dir)), alone.map((x) => `${x.g}.js`).sort());
 });
 
@@ -327,7 +346,7 @@ test('a guard\'s ledger detail never leaks into the next guard\'s row', () => {
   git(dir, 'add', 'd.js');
   const out = run(DISPATCH, bashPayload(`git commit -m x && echo x > ${path.join(other, 'f.txt')}`, dir),
     { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' } });
-  assert.strictEqual(out.status, 2);
+  assert.strictEqual(verdictOf(out), 'ask', 'both guards ask: one prompt');
   const rows = ledgerRows(dir).filter((x) => !x.mode);
   const commit = rows.find((x) => x.hook === 'guard-ungated-commit.js');
   const cross = rows.find((x) => x.hook === 'guard-cross-project-write.js');
@@ -365,8 +384,8 @@ test('empty or malformed input: every guard fails open, the dispatcher says noth
 test('PowerShell is the same shell route', () => {
   const dir = project();
   const out = run(DISPATCH, bashPayload('Remove-Item -Recurse -Force $HOME', dir, 'PowerShell'), { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir } });
-  assert.strictEqual(out.status, 2);
-  assert.match(out.stderr, /recursive rm of a catastrophic/);
+  assert.strictEqual(verdictOf(out), 'ask');
+  assert.match(blockText(out), /recursive rm of a catastrophic/);
 });
 
 test('a protective block is answered at once - a guard that stalls after it cannot drop it (2.1.5 M2)', () => {
@@ -379,16 +398,35 @@ test('a protective block is answered at once - a guard that stalls after it cann
   const dir = project();
   const started = Date.now();
   const res = spawnSync(process.execPath, [path.join(copy, 'shell-guards.js')], {
-    input: JSON.stringify(bashPayload('rm -rf ~ && git commit -am "wip"', dir)), encoding: 'utf8', cwd: dir,
+    input: JSON.stringify({ ...bashPayload('rm -rf ~ && git commit -am "wip"', dir), permission_mode: 'dontAsk' }), encoding: 'utf8', cwd: dir,
     env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, timeout: 15000,
   });
-  assert.strictEqual(res.status, 2, `the rm block arrives before the stalled guard runs (status ${res.status}, ${Date.now() - started}ms)`);
-  assert.match(res.stderr, /recursive rm of a catastrophic/);
-  assert.doesNotMatch(res.stderr, /COMMIT-GATE/, 'a guard after the protective block never ran');
+  // where nobody can answer the rm guard denies, and a deny is answered at once (an ask lets every guard judge - next test)
+  assert.strictEqual(verdictOf(res), 'deny', `the rm block arrives before the stalled guard runs (status ${res.status}, ${Date.now() - started}ms)`);
+  assert.match(blockText(res), /recursive rm of a catastrophic/);
+  assert.doesNotMatch(blockText(res), /COMMIT-GATE/, 'a guard after the protective block never ran');
   assert.deepStrictEqual(hooksOf(ledgerRows(dir)), ['guard-catastrophic-rm.js'], 'one row, the protective guard\'s own');
   const prelude = require(path.join(HOOKS, 'hook-prelude.js'));
   assert.deepStrictEqual([...shell.PROTECTIVE].sort(), shell.GUARDS.filter((g) => prelude.PROTECTIVE.has(g)).sort(),
     'the dispatcher\'s protective set is the prelude\'s, on the shell route');
+});
+
+test('a protective ask lets every guard judge; a protective deny is answered at once', () => {
+  const dir = project();
+  const home = path.join(dir, 'home'); // inside the project, so no other guard objects to its removal
+  fs.mkdirSync(home, { recursive: true });
+  // the commit guard's push half is switched off: it is no protective guard and still blocks with exit 2 until it asks too
+  const env = { CLAUDE_PROJECT_DIR: dir, HOME: home, USERPROFILE: home, ALFRED_CODE_HOOKS_OFF: 'guard-ungated-commit:push' };
+  const command = 'rm -rf ~ && git push --force origin main';
+  const asked = run(DISPATCH, { ...bashPayload(command, dir), session_id: 'prot-ask' }, { cwd: dir, env });
+  assert.strictEqual(verdictOf(asked), 'ask', asked.stdout + asked.stderr);
+  assert.match(askText(asked), /guard-catastrophic-rm/, 'the one prompt names the rm guard');
+  assert.match(askText(asked), /guard-protected-force-push/, '... and the force-push guard');
+  assert.deepStrictEqual(hooksOf(ledgerRows(dir, 'prot-ask')), ['guard-catastrophic-rm.js', 'guard-protected-force-push.js'], 'one ledger row per guard');
+  const denied = run(DISPATCH, { ...bashPayload(command, dir), session_id: 'prot-deny', permission_mode: 'dontAsk' }, { cwd: dir, env });
+  assert.strictEqual(verdictOf(denied), 'deny');
+  const first = shell.RUN_ORDER.find((g) => ['guard-catastrophic-rm', 'guard-protected-force-push'].includes(g));
+  assert.deepStrictEqual(hooksOf(ledgerRows(dir, 'prot-deny')), [`${first}.js`], 'a deny ends the run at the first protective guard that blocks');
 });
 
 test('a throwing guard fails open for itself only - the others still judge', () => {
@@ -397,8 +435,8 @@ test('a throwing guard fails open for itself only - the others still judge', () 
   fs.writeFileSync(path.join(copy, 'guard-read-whole-file.js'), "'use strict';\nthrow new TypeError('boom from a broken guard');\n");
   const dir = project();
   const blocked = run(path.join(copy, 'shell-guards.js'), bashPayload('rm -rf ~', dir), { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir } });
-  assert.strictEqual(blocked.status, 2, 'the rm guard still blocks');
-  assert.match(blocked.stderr, /recursive rm of a catastrophic/);
+  assert.strictEqual(verdictOf(blocked), 'ask', 'the rm guard still blocks');
+  assert.match(blockText(blocked), /recursive rm of a catastrophic/);
   const open = run(path.join(copy, 'shell-guards.js'), bashPayload('git status', dir), { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir } });
   assert.strictEqual(open.status, 0, 'the throw blocks nothing');
   assert.match(JSON.parse(open.stdout).systemMessage, /guard-read-whole-file\.js.*boom from a broken guard/);
@@ -407,9 +445,9 @@ test('a throwing guard fails open for itself only - the others still judge', () 
 test('the csv opt-out switches off one guard inside the dispatcher, not its neighbours', () => {
   const dir = project();
   const env = { CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_HOOKS_OFF: 'guard-catastrophic-rm' };
-  assert.strictEqual(run(DISPATCH, bashPayload('rm -rf .', dir), { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir } }).status, 2, 'only the rm guard blocks this one');
+  assert.strictEqual(verdictOf(run(DISPATCH, bashPayload('rm -rf .', dir), { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir } })), 'ask', 'only the rm guard blocks this one');
   assert.strictEqual(run(DISPATCH, bashPayload('rm -rf .', dir), { cwd: dir, env }).status, 0, 'the named guard stands down');
-  assert.strictEqual(run(DISPATCH, bashPayload('git commit -am "wip"', dir), { cwd: dir, env }).status, 2, 'the commit gate still judges');
+  assert.strictEqual(verdictOf(run(DISPATCH, bashPayload('git commit -am "wip"', dir), { cwd: dir, env })), 'ask', 'the commit gate still judges');
 });
 
 test('a repo never set up keeps only the rm, secret and force-push guards, writing no row', () => {
@@ -417,7 +455,7 @@ test('a repo never set up keeps only the rm, secret and force-push guards, writi
   fs.rmSync(path.join(dir, '.claude'), { recursive: true, force: true });
   const env = { CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT };
   const rm = run(DISPATCH, bashPayload('rm -rf ~', dir), { cwd: dir, env });
-  assert.strictEqual(rm.status, 2, 'a protective guard stays live');
+  assert.strictEqual(verdictOf(rm), 'ask', 'a protective guard stays live');
   assert.strictEqual(run(DISPATCH, bashPayload('git commit -am "wip"', dir), { cwd: dir, env }).status, 0, 'the commit gate stands down');
   for (const d of ['docs', 'state', 'statistics']) assert.ok(!fs.existsSync(path.join(dir, '.alfred', d)), `nothing is written into a repo merely opened (${d}/)`);
 });
@@ -425,7 +463,7 @@ test('a repo never set up keeps only the rm, secret and force-push guards, writi
 test('hook_profile minimal keeps the protective three inside the dispatcher', () => {
   const dir = project();
   const env = { CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT, CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' };
-  assert.strictEqual(run(DISPATCH, bashPayload('rm -rf ~', dir), { cwd: dir, env }).status, 2);
+  assert.strictEqual(verdictOf(run(DISPATCH, bashPayload('rm -rf ~', dir), { cwd: dir, env })), 'ask');
   assert.strictEqual(run(DISPATCH, bashPayload('git commit -am "wip"', dir), { cwd: dir, env }).status, 0);
 });
 
@@ -437,7 +475,7 @@ test('the plugin dispatcher steps aside for a wired copy of itself; the copy jud
   fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Bash|PowerShell|Monitor', hooks: [{ type: 'command', command: '"$CLAUDE_PROJECT_DIR/.claude/hooks/shell-guards.js"', timeout: 80 }] }] } }));
   const plugin = run(DISPATCH, bashPayload('rm -rf ~', dir), { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT } });
   assert.deepStrictEqual(plugin, { status: 0, stdout: '', stderr: '' });
-  assert.strictEqual(run(DISPATCH, bashPayload('rm -rf ~', dir), { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir } }).status, 2);
+  assert.strictEqual(verdictOf(run(DISPATCH, bashPayload('rm -rf ~', dir), { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir } })), 'ask');
 });
 
 test('an old per-guard copy still wired: the plugin dispatcher skips exactly that guard', () => {
@@ -447,7 +485,7 @@ test('an old per-guard copy still wired: the plugin dispatcher skips exactly tha
   fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Bash|PowerShell|Monitor', hooks: [{ type: 'command', command: '"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-catastrophic-rm.js"', timeout: 10 }] }] } }));
   const env = { CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT };
   assert.strictEqual(run(DISPATCH, bashPayload('rm -rf .', dir), { cwd: dir, env }).status, 0, 'the copied twin judges rm, not the plugin');
-  assert.strictEqual(run(DISPATCH, bashPayload('git commit -am "wip"', dir), { cwd: dir, env }).status, 2, 'every other guard still runs here');
+  assert.strictEqual(verdictOf(run(DISPATCH, bashPayload('git commit -am "wip"', dir), { cwd: dir, env })), 'ask', 'every other guard still runs here');
 });
 
 test('in-process, every guard\'s stand-down ends it where it stands - no exit is swallowed', () => {
@@ -477,8 +515,8 @@ test('in-process, every guard\'s stand-down ends it where it stands - no exit is
       Object.assign(process.env, env);
       const res = shell.runGuard(path.join(HOOKS, 'guard-cross-project-write.js'), stdin);
       assert.ok(!res.swallowed, 'the plugin half ran on past its exit');
-      assert.strictEqual(res.code, 2, `the plugin half asks under ${JSON.stringify(env)}`);
-      assert.match(res.stderr, /installed plugins/);
+      assert.strictEqual(verdictOf({ status: res.code, stdout: res.stdout, stderr: res.stderr }), 'ask', `the plugin half asks under ${JSON.stringify(env)}`);
+      assert.match(blockText(res), /installed plugins/);
       for (const k of Object.keys(env)) delete process.env[k];
     }
   } finally {
@@ -493,7 +531,7 @@ test('a guard list in the wiring runs exactly those guards', () => {
   const dir = project();
   const env = { CLAUDE_PROJECT_DIR: dir };
   assert.strictEqual(run(DISPATCH, bashPayload('rm -rf ~', dir), { cwd: dir, env, args: ['guard-ungated-commit'] }).status, 0);
-  assert.strictEqual(run(DISPATCH, bashPayload('git commit -am "wip"', dir), { cwd: dir, env, args: ['guard-ungated-commit'] }).status, 2);
+  assert.strictEqual(verdictOf(run(DISPATCH, bashPayload('git commit -am "wip"', dir), { cwd: dir, env, args: ['guard-ungated-commit'] })), 'ask');
 });
 
 // Swap 1 (2026-11-11): the secret guard rewrites nothing any more. A payload naming no transcript is its core mode,
@@ -505,9 +543,9 @@ test('the secret guard\'s denial reaches the call through the dispatcher, and no
   const payload = bashPayload('cat .env', dir);
   const alone = run(path.join(HOOKS, 'guard-secret-value.js'), payload, { cwd: dir, env });
   const both = run(DISPATCH, payload, { cwd: dir, env });
-  assert.strictEqual(alone.status, 2, alone.stderr);
-  assert.strictEqual(both.status, 2, both.stderr);
-  assert.ok(both.stderr.includes(alone.stderr.trim()), 'the denial is the secret guard\'s own text');
+  assert.strictEqual(verdictOf(alone), 'ask', alone.stdout);
+  assert.strictEqual(verdictOf(both), 'ask', both.stdout);
+  assert.ok(blockText(both).includes(blockText(alone).trim()), 'the denial is the secret guard\'s own text');
   assert.ok(!both.stdout.includes('updatedInput') && !alone.stdout.includes('updatedInput'), 'nothing is rewritten');
   // an environment print passes as written: its output is the masker's to cover, never a rewrite
   const print = run(DISPATCH, bashPayload('echo $SENTRY_ACCESS_TOKEN', dir), { cwd: dir, env });
@@ -524,10 +562,10 @@ const filePayload = (tool, input, cwd, session = 'fg') => ({ session_id: session
 test('file-guards wiringRows: every guard\'s own file-tool row folds into ONE dispatcher row, on the tools the folded guards match', () => {
   const fg = require(FILES);
   const rows = ['a.js::@Stop', 'guard-read-whole-file.js::Read', 'guard-secret-value.js::Read', 'guard-read-whole-file.js::Bash|PowerShell|Monitor',
-    'guard-secret-value.js::Grep', 'guard-config-protection.js::Write|Edit|MultiEdit|NotebookEdit', 'guard-cross-project-write.js::Write|Edit|MultiEdit|NotebookEdit',
+    'guard-secret-value.js::Grep', 'guard-config-protection.js::Write|Edit|MultiEdit|NotebookEdit', 'guard-cross-project-write.js::Write|Edit|MultiEdit|NotebookEdit|Read|Grep|Glob',
     'docs-session.js::Read|Edit|Write|MultiEdit|NotebookEdit|Grep', 'docs-session.js::@Stop', 'instrument-tool-usage.js::.*'];
   assert.deepStrictEqual(fg.wiringRows(rows), ['a.js::@Stop', `file-guards.js::${fg.MATCHER}`, 'guard-read-whole-file.js::Bash|PowerShell|Monitor', 'docs-session.js::@Stop', 'instrument-tool-usage.js::.*']);
-  assert.strictEqual(fg.MATCHER, 'Read|Edit|Write|MultiEdit|NotebookEdit|Grep', 'no Glob: nothing in the dispatcher judges one');
+  assert.strictEqual(fg.MATCHER, 'Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob', 'Glob is on the matcher for the cross-project guard alone');
   // A strict subset is named in the args, and the wiring matches only the tools those guards judge.
   assert.deepStrictEqual(fg.wiringRows(['guard-config-protection.js::Write|Edit|MultiEdit|NotebookEdit'], { listGuards: true }),
     ['file-guards.js::Edit|Write|MultiEdit|NotebookEdit::guard-config-protection'], 'no Read spawn for a write guard');
@@ -557,18 +595,28 @@ test('file-guards: the core entry launches ONE process per file-tool call, with 
   const onFile = (tool) => block.PreToolUse.filter((g) => g.matcher === undefined || new RegExp(`^(?:${g.matcher})$`).test(tool)).flatMap((g) => g.hooks.map((h) => [h.command, ...(h.args || [])].join(' ')));
   for (const tool of ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Grep'])
     assert.deepStrictEqual(onFile(tool), ['node ${CLAUDE_PLUGIN_ROOT}/stack/hooks/file-guards.js', 'node ${CLAUDE_PLUGIN_ROOT}/stack/hooks/instrument-tool-usage.js'], `${tool}: the dispatcher and instrumentation only`);
-  assert.deepStrictEqual(onFile('Glob'), ['node ${CLAUDE_PLUGIN_ROOT}/stack/hooks/instrument-tool-usage.js'], 'a Glob starts no dispatcher (deep hooks review 2026-10-16)');
+  assert.deepStrictEqual(onFile('Glob'), ['node ${CLAUDE_PLUGIN_ROOT}/stack/hooks/file-guards.js', 'node ${CLAUDE_PLUGIN_ROOT}/stack/hooks/instrument-tool-usage.js'], 'a Glob starts the dispatcher, which runs one guard on it');
   const group = block.PreToolUse.find((g) => g.matcher === fg.MATCHER);
   assert.strictEqual(group.hooks[0].timeout, 10 * fg.GUARDS.length, 'every guard keeps the 10s it had as its own hook');
   assert.strictEqual(require('./install/settings.js').timeoutFor('file-guards.js', 'PreToolUse'), 10 * fg.GUARDS.length);
+});
+
+test('the file dispatcher runs only guard-cross-project-write on a Glob', () => {
+  const fg = require(FILES);
+  assert.deepStrictEqual(fg.GUARDS.filter(([, tools]) => tools.includes('Glob')).map(([g]) => g), ['guard-cross-project-write'], 'the table: Glob appears in that row alone');
+  assert.deepStrictEqual(fg.GUARDS.filter(([, tools]) => tools.includes('Glob') && tools.includes('Read')).map(([g]) => g), ['guard-cross-project-write'], 'and that row also holds Read and Grep');
+  assert.ok(fg.MATCHER.split('|').includes('Glob'));
 });
 
 test('file-guards: each guard\'s block reaches the combined answer through the dispatcher, with its own ledger row', () => {
   const dir = project();
   const other = fs.mkdtempSync(path.join(TMP, 'fg-other-'));
   fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify({ env: { SENTRY_ACCESS_TOKEN: 'x0'.repeat(20) } }, null, 2));
+  // inside the project: a Read of a file past it is the cross-project guard's own ask now (the read half, 2026-11-26)
+  const big = path.join(dir, 'big.js');
+  fs.copyFileSync(BIG, big);
   const cases = [
-    ['guard-read-whole-file', 'Read', { file_path: BIG }],
+    ['guard-read-whole-file', 'Read', { file_path: big }],
     ['guard-secret-value', 'Read', { file_path: path.join(dir, 'settings.local.json') }, { permission_mode: 'bypassPermissions' }], // where nobody can answer the ask: a block
     ['guard-config-protection', 'Write', { file_path: path.join(dir, '.claude', 'settings.local.json'), content: '{ "disableAllHooks": true }' }], // stage 1 B11: its switch-off half
     ['guard-cross-project-write', 'Write', { file_path: path.join(other, 'f.txt'), content: 'x' }],
@@ -579,11 +627,14 @@ test('file-guards: each guard\'s block reaches the combined answer through the d
     const session = `fg-${guard}`;
     const payload = { ...filePayload(tool, input, dir, session), ...more };
     const alone = run(path.join(HOOKS, `${guard}.js`), payload, { cwd: dir, env });
-    assert.strictEqual(alone.status, 2, `${guard} blocks ${tool} on its own: ${alone.stderr}`);
+    // the secret case runs under bypassPermissions: a deny, one JSON object; the read, config and cross-project guards ask (D1, D2)
+    const verdict = guard === 'guard-secret-value' ? 'deny' : 'ask';
+    assert.strictEqual(verdictOf(alone), verdict, `${guard} blocks ${tool} on its own: ${alone.stderr}${alone.stdout}`);
     for (const d of ['docs', 'state', 'statistics']) fs.rmSync(path.join(dir, '.alfred', d), { recursive: true, force: true });
     const both = run(FILES, payload, { cwd: dir, env });
-    assert.strictEqual(both.status, 2, `${guard}: the dispatcher blocks too`);
-    assert.ok(both.stderr.includes(alone.stderr.trim()), `${guard}: its own message reaches the model\n--- alone\n${alone.stderr}\n--- dispatched\n${both.stderr}`);
+    assert.strictEqual(verdictOf(both), verdict, `${guard}: the dispatcher blocks too`);
+    const said = (x) => (verdict === 2 ? x.stderr : blockText(x));
+    assert.ok(said(both).includes(said(alone).trim()), `${guard}: its own message reaches the model\n--- alone\n${said(alone)}\n--- dispatched\n${said(both)}`);
     assert.deepStrictEqual(hooksOf(ledgerRows(dir, session)), [`${guard}.js`], `${guard}: one ledger row, its own`);
   }
 });
@@ -651,7 +702,7 @@ test('file-guards: the protective secret guard is answered at once, and a guard 
     input: JSON.stringify({ ...filePayload('Read', { file_path: path.join(dir, '.env') }, dir, 'fg-prot'), permission_mode: 'bypassPermissions' }), encoding: 'utf8', cwd: dir,
     env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, timeout: 15000,
   });
-  assert.strictEqual(r.status, 2, `the secret block arrives before the stalled guard runs (status ${r.status})`);
+  assert.strictEqual(verdictOf(r), 'deny', `the secret block arrives before the stalled guard runs (status ${r.status})`);
   assert.deepStrictEqual(hooksOf(ledgerRows(dir, 'fg-prot')), ['guard-secret-value.js']);
   // Named in the args: only that guard judges.
   const only = run(FILES, filePayload('Read', { file_path: BIG }, dir, 'fg-only'), { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir }, args: ['guard-secret-value'] });
@@ -684,12 +735,12 @@ test('a stalled guard ahead of the secret guard in the manifest cannot drop its 
     input: JSON.stringify(payload), encoding: 'utf8', cwd: dir, env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, timeout: 15000,
   });
   const read = spawnIt('file-guards.js', { ...filePayload('Read', { file_path: path.join(dir, '.env') }, dir, 'stall-read'), permission_mode: 'bypassPermissions' });
-  assert.strictEqual(read.status, 2, `file-guards: the secret block arrives though the read guard stalls (status ${read.status})`);
+  assert.strictEqual(verdictOf(read), 'deny', `file-guards: the secret block arrives though the read guard stalls (status ${read.status})`);
   assert.deepStrictEqual(hooksOf(ledgerRows(dir, 'stall-read')), ['guard-secret-value.js']);
   // a second read that PRINTS the file forces the whole-command rewrite, which would drop the build - a block, not a
   // splice (a count of it no longer forces it: audit 2026-10-11 SD01)
-  const sh = spawnIt('shell-guards.js', { ...bashPayload('cat .env && head -1 .env && npm run build', dir), session_id: 'stall-bash' });
-  assert.strictEqual(sh.status, 2, `shell-guards: the secret block arrives though the read guard stalls (status ${sh.status})`);
+  const sh = spawnIt('shell-guards.js', { ...bashPayload('cat .env && head -1 .env && npm run build', dir), session_id: 'stall-bash', permission_mode: 'dontAsk' });
+  assert.strictEqual(verdictOf(sh), 'deny', `shell-guards: the secret block arrives though the read guard stalls (status ${sh.status})`);
   assert.deepStrictEqual(hooksOf(ledgerRows(dir, 'stall-bash')), ['guard-secret-value.js']);
 });
 
@@ -736,11 +787,11 @@ test('the docs label every shell guard with the shell route, never Bash alone (2
 // audit 2026-10-10 (C14, C25, T5 cross-track): the dispatcher's own checks - zsh quoting, the foreground poll loop,
 // an unaddressed sed -i over several lines
 // ---------------------------------------------------------------------------------------------
-const own = (dir, command, { env = {}, extra = {} } = {}) => {
-  const r = run(DISPATCH, { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command, ...extra }, session_id: 'own', cwd: dir }, { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir, ...env } });
+const own = (dir, command, { env = {}, extra = {}, mode } = {}) => {
+  const r = run(DISPATCH, { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command, ...extra }, session_id: 'own', cwd: dir, ...(mode ? { permission_mode: mode } : {}) }, { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir, ...env } });
   let h = {};
   try { h = JSON.parse(r.stdout).hookSpecificOutput || {}; } catch { h = {}; }
-  return { status: r.status, stderr: r.stderr, command: h.updatedInput ? h.updatedInput.command : null, context: h.additionalContext || '' };
+  return { status: r.status, stderr: r.stderr, verdict: verdictOf(r), text: blockText(r), asked: askText(r), command: h.updatedInput ? h.updatedInput.command : null, context: h.additionalContext || '' };
 };
 const ZSH = { env: { SHELL: '/bin/zsh' } };
 const rowsIn = (dir) => { try { return fs.readFileSync(path.join(dir, '.alfred', 'statistics', 'hook-blocks', 'own.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); } catch { return []; } };
@@ -760,37 +811,37 @@ test('audit 2026-10-10 C14: under zsh a tool-owned glob and a bare =word are quo
   run(DISPATCH, { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'echo =====' }, session_id: 'own', cwd: dir, permission_mode: 'auto' }, { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir, SHELL: '/bin/zsh' } });
   assert.equal(rowsIn(dir).filter((r) => r.detail && r.detail.branch === 'zsh-quote').pop().detail.permissionMode, 'auto');
   // the guards judge the fixed command: the commit gate still blocks an unreceipted commit, and nothing else changes
-  assert.equal(own(dir, 'echo ===== && git commit -am x', ZSH).status, 2, 'a block wins over the quoting');
+  assert.equal(own(dir, 'echo ===== && git commit -am x', ZSH).verdict, 'ask', 'a block wins over the quoting');
 });
 
 test('audit 2026-10-10 C25: a foreground until / while loop that sleeps is blocked, naming the background routes', () => {
   const dir = project('poll-');
   const r = own(dir, 'until grep -q READY run.log; do sleep 5; done');
-  assert.equal(r.status, 2, '516e653d, 3b53e0e8');
-  assert.match(r.stderr, /FOREGROUND wait[\s\S]*run_in_background: true[\s\S]*ToolSearch select:Monitor/, 'the background routes lead');
-  assert.doesNotMatch(r.stderr, /timeout 60 <the loop>/, 'no bounded-loop hint - the model chained them (deep hooks review 2026-10-16)');
-  assert.equal(own(dir, 'while true; do curl -s localhost:1 && break; sleep 2; done').status, 2);
-  assert.equal(own(dir, "bash -c 'until test -f done.flag; do sleep 1; done'").status, 2, 'inside a shell -c string');
-  assert.equal(own(dir, 'until grep -q READY run.log; do sleep 5; done', { extra: { run_in_background: true } }).status, 0, 'in the background');
-  assert.equal(own(dir, 'timeout 60 bash -c "until test -f done.flag; do sleep 1; done"').status, 0, 'bounded at 60s');
-  assert.equal(own(dir, 'timeout 600 bash -c "until test -f done.flag; do sleep 1; done"').status, 2, 'a 600s bound is the wait it replaces');
+  assert.equal(r.verdict, 'ask', '516e653d, 3b53e0e8');
+  assert.match(r.text, /FOREGROUND wait[\s\S]*run_in_background: true[\s\S]*ToolSearch select:Monitor/, 'the background routes lead');
+  assert.doesNotMatch(r.text, /timeout 60 <the loop>/, 'no bounded-loop hint - the model chained them (deep hooks review 2026-10-16)');
+  assert.equal(own(dir, 'while true; do curl -s localhost:1 && break; sleep 2; done').verdict, 'ask');
+  assert.equal(own(dir, "bash -c 'until test -f done.flag; do sleep 1; done'").verdict, 'ask', 'inside a shell -c string');
+  assert.equal(own(dir, 'until grep -q READY run.log; do sleep 5; done', { extra: { run_in_background: true } }).verdict, 0, 'in the background');
+  assert.equal(own(dir, 'timeout 60 bash -c "until test -f done.flag; do sleep 1; done"').verdict, 0, 'bounded at 60s');
+  assert.equal(own(dir, 'timeout 600 bash -c "until test -f done.flag; do sleep 1; done"').verdict, 'ask', 'a 600s bound is the wait it replaces');
   // hooks review 2026-10-16: the duration takes its unit and the options before it
   for (const t of ['timeout 2m', 'timeout -s KILL 60', 'timeout --signal=KILL 90s', 'timeout -k 5 1m'])
-    assert.equal(own(dir, `${t} bash -c "until test -f done.flag; do sleep 1; done"`).status, 0, `bounded: ${t}`);
-  assert.equal(own(dir, 'timeout 3m bash -c "until test -f done.flag; do sleep 1; done"').status, 2, 'three minutes is past the bound');
-  assert.equal(own(dir, 'while read -r l; do echo "$l"; sleep 0.1; done < a.txt').status, 0, 'a read loop reads input');
-  assert.equal(own(dir, 'echo "until x; do sleep 1; done"').status, 0, 'text in quotes');
-  assert.equal(own(dir, 'for i in 1 2 3; do sleep 1; done').status, 0, 'a for loop is bounded by its list');
+    assert.equal(own(dir, `${t} bash -c "until test -f done.flag; do sleep 1; done"`).verdict, 0, `bounded: ${t}`);
+  assert.equal(own(dir, 'timeout 3m bash -c "until test -f done.flag; do sleep 1; done"').verdict, 'ask', 'three minutes is past the bound');
+  assert.equal(own(dir, 'while read -r l; do echo "$l"; sleep 0.1; done < a.txt').verdict, 0, 'a read loop reads input');
+  assert.equal(own(dir, 'echo "until x; do sleep 1; done"').verdict, 0, 'text in quotes');
+  assert.equal(own(dir, 'for i in 1 2 3; do sleep 1; done').verdict, 0, 'a for loop is bounded by its list');
   // deep hooks review 2026-10-16: the turn was freed in 2 of 11 episodes - the loop came back as a tail -f or a chain
-  assert.equal(own(dir, 'timeout 280 tail -f run.log').status, 2, 'a long follow');
-  assert.equal(own(dir, 'tail -n 50 -f run.log').status, 2, 'an unbounded follow');
-  assert.equal(own(dir, 'tail -F run.log | grep -m1 READY').status, 2, 'a follow piped into its sentinel');
-  assert.equal(own(dir, 'timeout 90 tail -f run.log').status, 0, 'a follow bounded at 90s');
-  assert.equal(own(dir, 'tail -n 50 run.log').status, 0, 'a plain tail');
-  assert.equal(own(dir, 'tail -f run.log', { extra: { run_in_background: true } }).status, 0, 'a background follow');
+  assert.equal(own(dir, 'timeout 280 tail -f run.log').verdict, 'ask', 'a long follow');
+  assert.equal(own(dir, 'tail -n 50 -f run.log').verdict, 'ask', 'an unbounded follow');
+  assert.equal(own(dir, 'tail -F run.log | grep -m1 READY').verdict, 'ask', 'a follow piped into its sentinel');
+  assert.equal(own(dir, 'timeout 90 tail -f run.log').verdict, 0, 'a follow bounded at 90s');
+  assert.equal(own(dir, 'tail -n 50 run.log').verdict, 0, 'a plain tail');
+  assert.equal(own(dir, 'tail -f run.log', { extra: { run_in_background: true } }).verdict, 0, 'a background follow');
   const chain = 'timeout 110 bash -c "until test -f a; do sleep 5; done"; timeout 110 bash -c "until test -f b; do sleep 5; done"';
-  assert.equal(own(dir, chain).status, 2, 'two 110s waits hold 220s');
-  assert.equal(own(dir, 'timeout 60 bash -c "until test -f a; do sleep 1; done"; timeout 60 bash -c "until test -f b; do sleep 1; done"').status, 0, 'two 60s waits stay inside 120s');
+  assert.equal(own(dir, chain).verdict, 'ask', 'two 110s waits hold 220s');
+  assert.equal(own(dir, 'timeout 60 bash -c "until test -f a; do sleep 1; done"; timeout 60 bash -c "until test -f b; do sleep 1; done"').verdict, 0, 'two 60s waits stay inside 120s');
   assert.ok(rowsIn(dir).some((x) => !x.mode && x.detail && x.detail.branch === 'poll-loop'), 'a block row');
 });
 
@@ -837,7 +888,7 @@ test('audit 2026-10-14 RU04: the first background Bash call of each actor carrie
   assert.ok(!/Background wait/.test(r.stdout), 'no marker, no note');
   // a block still wins: the note rides beside it
   const blocked = run(DISPATCH, { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'git commit -am x', run_in_background: true }, session_id: 'bg4', cwd: dir }, { cwd: dir, env });
-  assert.equal(blocked.status, 2, 'the commit gate still blocks');
+  assert.equal(verdictOf(blocked), 'ask', 'the commit gate still blocks');
 });
 
 // audit 2026-10-20 C32 (7c1af769, 9a0314ed): the note rode only the first background Bash call, an hour before the Monitor
@@ -954,7 +1005,7 @@ test('the compile cache never serves an edited guard, and a corrupt entry falls 
   const cacheDir = fs.mkdtempSync(path.join(TMP, 'v8-'));
   const env = { CLAUDE_PROJECT_DIR: dir, TMPDIR: cacheDir, TMP: cacheDir, TEMP: cacheDir };
   const SHARED = /rewriting or deleting a shared branch/;
-  const push = () => SHARED.test(run(path.join(hooks, 'shell-guards.js'), bashPayload('git push --force origin main', dir), { cwd: dir, env }).stderr);
+  const push = () => { const r = run(path.join(hooks, 'shell-guards.js'), bashPayload('git push --force origin main', dir), { cwd: dir, env }); return SHARED.test(`${blockText(r)}${r.stderr}`); };
   assert.ok(push(), 'a cold run blocks');
   const entries = () => fs.readdirSync(cacheDir).filter((f) => /^alfred-v8-guard-protected-force-push-[0-9a-f]{16}\.bin$/.test(f));
   assert.equal(entries().length, 1, 'and leaves one entry for the guard');
@@ -995,7 +1046,7 @@ test('a planted cache entry anyone could write never runs: the guard compiles af
   const key = crypto.createHash('sha1').update(`${process.version}\0${text}`).digest('hex').slice(0, 16);
   const entry = path.join(cacheDir, `alfred-v8-guard-protected-force-push-${key}.bin`);
   const SHARED = /rewriting or deleting a shared branch/;
-  const push = () => SHARED.test(run(DISPATCH, bashPayload('git push --force origin main', dir), { cwd: dir, env }).stderr);
+  const push = () => { const r = run(DISPATCH, bashPayload('git push --force origin main', dir), { cwd: dir, env }); return SHARED.test(`${blockText(r)}${r.stderr}`); };
   fs.writeFileSync(entry, planted.createCachedData());
   fs.chmodSync(entry, 0o666);
   assert.ok(push(), 'an entry others can write is a plain compile: the force-push guard still blocks');
@@ -1055,21 +1106,23 @@ test('A-T1: a read-only seat may not write through the shell; a writing seat, th
     for (const c of ['git reset -q', 'git restore --staged a.txt', 'git checkout -- a.txt', 'git stash', 'git rm --cached a.txt', 'git add .',
       'git commit -m x', 'git switch main', 'git clean -fd', 'echo x > notes.txt', 'sed -i s/a/b/ a.txt', 'cp a.txt b.txt', 'rm a.txt']) {
       const r = fire(c, seat);
-      assert.equal(r.status, 2, `${seat}: ${c} must block`);
+      // the seat rule asks where a person can answer (guards ask, D1), and so does the commit gate
+      assert.equal(verdictOf(r), 'ask', `${seat}: ${c} must block`);
+      assert.match(blockText(r), /read-only seat/, `${seat}: ${c} names the seat rule`);
     }
   }
   const verifier = 'alfred-code:web-angular-verifier';
   const denied = fire('git reset -q', verifier);
-  assert.match(denied.stderr, /read-only seat/);
-  assert.match(denied.stderr, /report/, 'the denial routes the change to the report');
+  assert.match(blockText(denied), /read-only seat/);
+  assert.match(blockText(denied), /report/, 'the denial routes the change to the report');
   for (const c of ['git status', 'git diff', 'git stash list', 'git clean -n', 'git log -p -1', 'npm test', `echo x > ${path.join(scratch, 'out.txt')}`,
     'echo x > /dev/null', 'out=$(mktemp); echo x > "$out"']) {
-    assert.equal(fire(c, verifier).status, 0, `${verifier}: ${c} must pass`);
+    assert.equal(verdictOf(fire(c, verifier)), 0, `${verifier}: ${c} must pass`);
   }
-  assert.equal(fire('Set-Content -Path notes.txt -Value x', verifier, 'PowerShell').status, 2, 'PowerShell: a write cmdlet');
+  assert.equal(verdictOf(fire('Set-Content -Path notes.txt -Value x', verifier, 'PowerShell')), 'ask', 'PowerShell: a write cmdlet');
   for (const [c, a] of [['git reset -q', 'alfred-code:aspnet-implementer'], ['echo x > notes.txt', undefined], ['git add .', 'dotnet-build-error-resolver'],
     ['git reset -q', 'other-plugin:aspnet-verifier']]) {
-    assert.equal(fire(c, a).status, 0, `${a || 'the main session'}: ${c} must pass`);
+    assert.equal(verdictOf(fire(c, a)), 0, `${a || 'the main session'}: ${c} must pass`);
   }
   // a project that itself lives in a temp dir is never scratch (the gate's Linux leg: /tmp held the project, and every
   // write in it passed as a temp-dir write)
@@ -1078,9 +1131,9 @@ test('A-T1: a read-only seat may not write through the shell; a writing seat, th
     input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, session_id: 'seat', cwd: inTmp, agent_id: 'a1', agent_type: verifier }),
     encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: inTmp, TMPDIR: scratch, TEMP: scratch, TMP: scratch },
   });
-  assert.equal(fireIn('echo x > notes.txt').status, 2, 'a write into a project under the temp dir is the seat\'s write');
+  assert.equal(verdictOf(fireIn('echo x > notes.txt')), 'ask', 'a write into a project under the temp dir is the seat\'s write');
   const beside = fireIn(`echo x > ${path.join(scratch, 'out2.txt')}`);
-  assert.doesNotMatch(beside.stderr, /read-only seat/, `a scratch write beside that project is no seat write: ${beside.stderr.slice(0, 200)}`);
+  assert.doesNotMatch(blockText(beside), /read-only seat/, `a scratch write beside that project is no seat write: ${blockText(beside).slice(0, 200)}`);
 });
 
 // Audit 2026-10-21 agents T1-2 / A-Q2: `git bisect` moves HEAD and the tree, so a read-only seat's bisect in the shared
@@ -1097,23 +1150,23 @@ test('agents T1-2: a read-only seat may not bisect the project; a bisect read an
   });
   for (const c of ['git bisect start', 'git bisect good HEAD~1', 'git bisect bad', 'git bisect reset', 'git bisect run npm test',
     'git bisect skip', 'git bisect replay log.txt']) {
-    assert.equal(fire(c).status, 2, `${c} in the project must block`);
+    assert.equal(verdictOf(fire(c)), 'ask', `${c} in the project must block`);
   }
   for (const c of ['git bisect log', 'git bisect visualize', 'git bisect view', 'git bisect terms']) {
-    assert.equal(fire(c).status, 0, `${c} reads`);
+    assert.equal(verdictOf(fire(c)), 0, `${c} reads`);
   }
   const clone = path.join(scratch, 'clone');
   git(scratch, 'clone', '-q', dir, clone);
   for (const c of [`git -C ${clone} bisect start`, `cd ${clone} && git bisect run npm test`, `git -C ${clone} checkout -q HEAD~0`]) {
-    assert.equal(fire(c).status, 0, `${c} works in a scratch clone`);
+    assert.equal(verdictOf(fire(c)), 0, `${c} works in a scratch clone`);
   }
-  assert.equal(fire('git bisect start', clone).status, 0, 'a seat whose cwd is the scratch clone');
+  assert.equal(verdictOf(fire('git bisect start', clone)), 0, 'a seat whose cwd is the scratch clone');
   // a worktree of the project under the temp dir shares its refs: a `.git` file is never scratch
   const wt = path.join(scratch, 'wt');
   git(dir, 'worktree', 'add', '-q', '--detach', wt);
-  assert.equal(fire(`git -C ${wt} bisect start`).status, 2, 'a worktree of the project is the project');
-  assert.equal(fire(`git -C ${wt} commit -m x`).status, 2, 'a commit in a worktree of the project');
-  assert.equal(fire(`git -C ${path.join(dir, '.claude')} bisect start`).status, 2, 'a subdirectory of the project');
+  assert.equal(verdictOf(fire(`git -C ${wt} bisect start`)), 'ask', 'a worktree of the project is the project');
+  assert.equal(verdictOf(fire(`git -C ${wt} commit -m x`)), 'ask', 'a commit in a worktree of the project');
+  assert.equal(verdictOf(fire(`git -C ${path.join(dir, '.claude')} bisect start`)), 'ask', 'a subdirectory of the project');
 });
 
 // audit 2026-10-21 H5: the `[[ ]]` / `(( ))` scan ran a lazy match from every opener to the end of the text when no
@@ -1140,9 +1193,7 @@ test('audit 2026-10-30 HK-01: the --with-sensitive runner carries its command li
   const fire = (command) => run(DISPATCH, bashPayload(command, dir), { env: { CLAUDE_PROJECT_DIR: dir } });
   const blocked = (command, why, re) => {
     const r = fire(command);
-    let deny = false;
-    try { deny = JSON.parse(r.stdout).hookSpecificOutput.permissionDecision === 'deny'; } catch { /* exit 2 */ }
-    assert.ok(r.status === 2 || deny, `${why}: ${command}\n${r.stderr}${r.stdout}`);
+    assert.strictEqual(verdictOf(r), 'ask', `${why}: ${command} -> ${verdictOf(r)}\n${r.stderr}${r.stdout}`);
     if (re) assert.match(`${r.stderr}${r.stdout}`, re, why);
   };
   blocked(runner('"rm -rf ~"'), 'a recursive rm of home', /recursive rm/);
@@ -1166,4 +1217,131 @@ test('audit 2026-10-30 HK-01: the --with-sensitive runner carries its command li
   }
   const rows = ledgerRows(dir).filter((r) => r.detail && r.detail.branch === 'sensitive-runner');
   assert.ok(rows.length >= 1, 'the runner block writes its own ledger row');
+});
+
+// ---- guards ask instead of block (2026-11-25): the dispatcher's combine step, its protective stop and its own blocks ----
+// A block ask as a guard writes it: the verdict the helper builds for a payload nobody has stopped from asking.
+const blockAsk = (reason, guard) => JSON.stringify({ hookSpecificOutput: blockVerdict({ tool_name: 'Bash' }, reason, { env: {}, guard }).hookSpecificOutput });
+const DECLINED = 'If the user declined: ';
+
+test('combine: two block asks are one prompt with both user texts and both model texts', () => {
+  const one = blockAsk('Blocked: first harm. Fix one.', 'guard-a');
+  const two = blockAsk('Blocked: second harm. Fix two.', 'guard-b');
+  const out = shell.combine([r('guard-a.js', 0, one), r('guard-b.js', 0, two)]);
+  assert.strictEqual(out.code, 0);
+  assert.strictEqual(verdictOf(out), 'ask');
+  const user = askText(out);
+  assert.match(user, /alfred-code guard-a: first harm\./);
+  assert.match(user, /alfred-code guard-b: second harm\./);
+  assert.ok(user.indexOf('first harm') < user.indexOf('second harm'), 'guard order');
+  const model = blockText(out);
+  assert.ok(model.includes(`${DECLINED}Blocked: first harm. Fix one.`), model);
+  assert.ok(model.includes(`${DECLINED}Blocked: second harm. Fix two.`), model);
+});
+
+test('combine: a missing-helper ask keeps its own mid-line Recommended advice when two asks join (final re-review)', () => {
+  const plainAsk = (reason) => JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: reason } });
+  const out = shell.combine([
+    r('guard-a.js', 0, plainAsk('alfred-code guard-a: a force push of main. Recommended: approve only if you meant to rewrite main.')),
+    r('guard-b.js', 0, plainAsk('alfred-code guard-b: a script piped into a shell. Recommended: approve only if you trust where the script comes from.')),
+  ]);
+  assert.ok(askText(out).includes('approve only if you meant to rewrite main'), askText(out));
+  assert.ok(askText(out).includes('approve only if you trust where the script comes from'), askText(out));
+});
+
+test('combine: a deny beside a block ask stays a deny, the ask riding after it as Also', () => {
+  const askJson = blockAsk('Blocked: the ask harm. Fix it.', 'guard-b');
+  const out = shell.combine([r('guard-a.js', 0, deny('Docs not read yet')), r('guard-b.js', 0, askJson)]);
+  assert.strictEqual(out.code, 0);
+  assert.strictEqual(verdictOf(out), 'deny');
+  const reason = JSON.parse(out.stdout).hookSpecificOutput.permissionDecisionReason;
+  assert.strictEqual(reason, 'Docs not read yet\n\nAlso: Blocked: the ask harm. Fix it.');
+  assert.ok(!JSON.parse(out.stdout).hookSpecificOutput.additionalContext, 'nobody was asked, so no ask context rides beside a deny');
+});
+
+test('combine: two block asks join their prompts with a blank line, and a plain context still rides beside a deny', () => {
+  const out = shell.combine([r('guard-a.js', 0, blockAsk('Blocked: first harm. Fix one.', 'guard-a')), r('guard-b.js', 0, blockAsk('Blocked: second harm. Fix two.', 'guard-b'))]);
+  assert.strictEqual(askText(out).split('\n\n').length, 2, askText(out));
+  // the recommendation comes once, after the joined texts, and the model's two contexts are a blank line apart (T7 Minor 7)
+  assert.strictEqual(askText(out).match(/Recommended: /g).length, 1, askText(out));
+  assert.match(askText(out), /second harm\.\nRecommended: No, unless you meant this call/, askText(out));
+  assert.ok(!/first harm\.\nRecommended/.test(askText(out)), 'not after the first text');
+  const contexts = JSON.parse(out.stdout).hookSpecificOutput.additionalContext;
+  assert.strictEqual(contexts.split('\n\nA guard asked the user about this call: ').length, 2, contexts);
+  const withCtx = shell.combine([r('guard-a.js', 0, deny('Docs not read yet')), r('guard-c.js', 0, ctx('keep this note'))]);
+  assert.strictEqual(JSON.parse(withCtx.stdout).hookSpecificOutput.additionalContext, 'keep this note');
+});
+
+test('isDenied: exit 2 and a JSON deny stop the protective run, an ask does not', () => {
+  assert.strictEqual(shell.isDenied(r('g.js', 2, '', 'Blocked\n')), true);
+  assert.strictEqual(shell.isDenied(r('g.js', 0, deny('no'))), true);
+  assert.strictEqual(shell.isDenied(r('g.js', 0, blockAsk('Blocked: x. y.', 'g'))), false);
+  assert.strictEqual(shell.isDenied(r('g.js', 0, ctx('only context'))), false);
+  assert.strictEqual(shell.isDenied(r('g.js', 0)), false);
+  assert.strictEqual(shell.isDenied(r('g.js', 0, '{"hookSpecificOutput": ')), false, 'unparseable output is no deny');
+  assert.strictEqual(shell.isDenied(null), false);
+});
+
+test('blockResult: a verdict as a dispatcher result - ask or deny by the payload, exit 2 only on a Cursor deny', () => {
+  const plain = { tool_name: 'Bash' };
+  const asked = shell.blockResult(plain, 'Blocked: a thing. More.', 'shell-guards.js');
+  assert.deepStrictEqual([asked.guard, asked.code, asked.stderr], ['shell-guards.js', 0, '']);
+  assert.strictEqual(verdictOf(asked), 'ask');
+  const denied = shell.blockResult({ tool_name: 'Bash', permission_mode: 'dontAsk' }, 'Blocked: a thing. More.', 'shell-guards.js');
+  assert.strictEqual(denied.code, 0);
+  assert.strictEqual(blockText(denied), 'Blocked: a thing. More.');
+  const cursor = shell.blockResult({ tool_name: 'Bash', cursor_version: '1.0' }, 'Blocked: a thing. More.', 'shell-guards.js');
+  assert.deepStrictEqual([cursor.code, cursor.stderr], [2, 'Blocked: a thing. More.']);
+});
+
+// The four own blocks, each by the fixture the older tests use. B5 and B6 name the secret and read guards, whose own
+// runs find nothing in these lines.
+const OWN_BLOCKS = [
+  { name: 'a read-only seat write', branch: 'read-only-seat', re: /read-only seat/, guard: 'shell-guards',
+    command: () => 'git reset -q', extra: { agent_id: 'a1', agent_type: 'alfred-code:aspnet-verifier' } },
+  { name: 'a foreground wait', branch: 'poll-loop', re: /FOREGROUND wait/, guard: 'shell-guards',
+    command: () => 'until grep -q READY run.log; do sleep 5; done', extra: {} },
+  { name: 'the runner cap', branch: 'sensitive-runner-cap', re: /more than 4 judged/, guard: 'guard-secret-value',
+    command: () => Array.from({ length: 5 }, () => `node "${path.join(HOOKS, 'guard-secret-value.js')}" --with-sensitive -- "true"`).join('; '), extra: {} },
+  { name: 'a runner line a guard blocks', branch: 'sensitive-runner', re: /--with-sensitive runner runs/, guard: 'guard-read-whole-file',
+    command: () => `node "${path.join(HOOKS, 'guard-secret-value.js')}" --with-sensitive -- "cat big.ts"`, extra: {} },
+];
+// These fixtures name this repo's guard files by path: the plugin root is the hooks folder, as a loaded plugin's is, so the read
+// half leaves them open and the tests judge the own block alone.
+function fireOwn(dir, block, session, mode)
+{
+  fs.writeFileSync(path.join(dir, 'big.ts'), 'const a = 1;\n'.repeat(500));
+  return run(DISPATCH, { ...bashPayload(block.command(), dir), session_id: session, ...block.extra, ...(mode ? { permission_mode: mode } : {}) }, { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: HOOKS } });
+}
+
+test('own checks ask: a read-only seat write, a foreground wait, the runner cap, a runner line a guard blocks', () => {
+  for (const block of OWN_BLOCKS) {
+    const dir = project('ownask-');
+    const session = `ask-${block.branch}`;
+    const res = fireOwn(dir, block, session);
+    assert.strictEqual(res.status, 0, `${block.name}: exit 0, the prompt is the answer (${res.stderr})`);
+    assert.strictEqual(verdictOf(res), 'ask', block.name);
+    assert.match(blockText(res), block.re, `${block.name}: the model text is today's text`);
+    assert.ok(blockText(res).startsWith('A guard asked the user about this call: '), block.name);
+    assert.match(askText(res), new RegExp(`^alfred-code ${block.guard}: `), `${block.name}: the prompt names the guard`);
+    const rows = ledgerRows(dir, session).filter((x) => !x.mode && x.detail && x.detail.branch === block.branch);
+    assert.strictEqual(rows.length, 1, `${block.name}: one ledger row, branch ${block.branch}`);
+  }
+});
+
+test('own checks deny where nobody can answer', () => {
+  for (const block of OWN_BLOCKS) {
+    const dir = project('owndeny-');
+    const session = `deny-${block.branch}`;
+    const asked = fireOwn(dir, block, `${session}-ask`);
+    const res = fireOwn(dir, block, session, 'dontAsk');
+    assert.strictEqual(res.status, 0, block.name);
+    assert.strictEqual(verdictOf(res), 'deny', block.name);
+    const reason = blockText(res);
+    assert.match(reason, block.re, block.name);
+    assert.ok(reason.startsWith('Blocked: '), `${block.name}: the full text, no lead added`);
+    const tail = blockText(asked);
+    assert.strictEqual(reason, tail.slice(tail.indexOf(DECLINED) + DECLINED.length), `${block.name}: the deny reason is the ask's full text, byte for byte`);
+    assert.strictEqual(ledgerRows(dir, session).filter((x) => !x.mode && x.detail && x.detail.branch === block.branch).length, 1, `${block.name}: the row is written on a deny too`);
+  }
 });

@@ -187,6 +187,23 @@ test('machine: typescript-language-server is asked only when typescript-lsp is k
     assert.deepStrictEqual(order, ['machine: csharp-ls', 'machine: typescript-language-server', 'machine: claude-hud status line + compact layout']);
 });
 
+// 2026-11-24: the server was on PATH, but the global TypeScript beside it was 7.0.2, which ships no tsserver.js - every
+// LSP call failed 'Could not find a valid TypeScript installation' while the plan said present.
+test('machine: a server whose TypeScript has no tsserver.js is missing, with the TypeScript 6 install alone', () =>
+{
+    const root = project();
+    const ts = INV({ plugins: [{ name: 'alfred-code', scope: 'project' }, { name: 'typescript-lsp', scope: 'project' }] });
+    const has = (b) => b === 'typescript-language-server';
+    const broken = render(plan({ inv: ts, root, platform: 'linux', env: E(), probe: { ...NONE, has, tsServer: () => 'missing' } }));
+    assert.match(lineOf(broken, /^machine: typescript-language-server /),
+        /^machine: typescript-language-server - missing: npm install -g typescript@6 # .*tsserver\.js/);
+    for (const state of ['ok', 'unknown'])
+    {
+        const fine = render(plan({ inv: ts, root, platform: 'linux', env: E(), probe: { ...NONE, has, tsServer: () => state } }));
+        assert.ok(fine.includes('machine: typescript-language-server - present'), `${state}: ${fine.join('\n')}`);
+    }
+});
+
 test('a plan path is project-relative inside, absolute outside, and forward-slashed on one drive or two', () =>
 {
     const { shownPath } = require('./init-plan.js');

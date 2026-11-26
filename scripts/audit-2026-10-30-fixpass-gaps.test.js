@@ -44,7 +44,7 @@ function project(prefix) {
   fs.writeFileSync(path.join(dir, 'README.md'), '# readme\n');
   return dir;
 }
-// A dispatcher's verdict on one call: 2 (exit 2), 'deny', 'rewrite' or 0.
+// A dispatcher's verdict on one call: 2 (an exit 2 or an ask), 'deny', 'rewrite' or 0.
 function fire(dir, tool, toolInput, extra = {}) {
   const dispatcher = shell.isShellTool(tool) ? DISPATCH : path.join(HOOKS, 'file-guards.js');
   const r = spawnSync(process.execPath, [dispatcher], {
@@ -54,7 +54,9 @@ function fire(dir, tool, toolInput, extra = {}) {
   let v = r.status === 2 ? 2 : 0;
   try {
     const o = JSON.parse(r.stdout).hookSpecificOutput || {};
-    if (v === 0 && o.permissionDecision === 'deny') v = 'deny';
+    // an ask is a block as the exit 2 was (guards ask where a person can answer): these cases pin WHAT is refused
+    if (v === 0 && o.permissionDecision === 'ask') v = 2;
+    else if (v === 0 && o.permissionDecision === 'deny') v = 'deny';
     else if (v === 0 && o.updatedInput) v = 'rewrite';
   } catch { /* no JSON */ }
   return { v, out: `${r.stderr}${r.stdout}`, stdout: r.stdout };
@@ -203,10 +205,18 @@ test('FC 4: a session transcript is no write target - under the config dir\'s pr
   const cfg2 = path.join(TMP, 'cfg2');
   denied('Write', { file_path: path.join(cfg2, 'projects', '-p', 's.jsonl'), content: 'x' }, { env: { CLAUDE_CONFIG_DIR: cfg2 } });
   // the twins keep today's verdicts: memory, reads, the account settings, a project jsonl, a folder with no transcript
-  for (const [tool, input] of [['Write', { file_path: path.join(p, 'memory', 'x.md'), content: 'x' }], ['Read', { file_path: t }],
-    ['Bash', { command: `grep -c user "${t}"` }], ['Bash', { command: `wc -l "${t}"` }], ['Write', { file_path: path.join(cfg, 'settings.json'), content: '{}' }],
-    ['Write', { file_path: path.join(dir, 'data', 'rows.jsonl'), content: '{}' }], ['Bash', { command: `rm -rf "${path.join(p, 'memory')}"` }],
-    ['Bash', { command: `cp "${t}" "${path.join(dir, 'copy.jsonl')}"` }]]) {
+  // a Read of another project's folder under projects/ is the read half's own ask now (plan outside-workspace-reads)
+  assert.strictEqual(fire(dir, 'Read', { file_path: t }).v, 2, 'a Read of another project\'s transcript asks');
+  // so is a shell read of it (grep, wc, a copy out of it): it still writes nothing, and the ask is the read half's
+  for (const command of [`grep -c user "${t}"`, `wc -l "${t}"`, `cp "${t}" "${path.join(dir, 'copy.jsonl')}"`,
+    `rm -rf "${path.join(p, 'memory')}"`]) { // the last: the write half lets it pass, but it names another project's folder
+    const r = fire(dir, 'Bash', { command });
+    assert.strictEqual(r.v, 2, `a shell command naming another project's folder asks: ${command}\n${r.out}`);
+    assert.match(r.out, /outside this workspace/, command);
+  }
+  for (const [tool, input] of [['Write', { file_path: path.join(p, 'memory', 'x.md'), content: 'x' }],
+    ['Write', { file_path: path.join(cfg, 'settings.json'), content: '{}' }],
+    ['Write', { file_path: path.join(dir, 'data', 'rows.jsonl'), content: '{}' }]]) {
     const r = fire(dir, tool, input);
     assert.strictEqual(r.v, 0, `${tool} ${JSON.stringify(input)}\n${r.out}`);
   }

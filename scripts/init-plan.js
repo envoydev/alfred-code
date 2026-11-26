@@ -37,6 +37,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
+const { probeTsServer } = require('./ts-server/effects.js');
 
 const REPO = path.join(__dirname, '..');
 const { resolveDocsRoot } = require(path.join(REPO, 'scripts', 'install', 'copy.js'));
@@ -62,6 +63,7 @@ const probes = {
     // lists npm's extensionless sh shim, which no Windows spawn runs.
     has: (bin, env = process.env) => rt.which(bin, { env }),
     file: (p) => fs.existsSync(p),
+    tsServer: (env = process.env) => probeTsServer(env),
 };
 
 function plan({ inv, root, platform = process.platform, env = process.env, probe = probes, pluginRoot = '', managedFile })
@@ -82,8 +84,15 @@ function plan({ inv, root, platform = process.platform, env = process.env, probe
     // typescript-lsp's server, which the plugin names but never installs. npm comes with the node the stack already
     // needs, so it is never blocked. `typescript@6`: TypeScript 7 ships no tsserver.js, and typescript-language-server
     // reads one from the workspace or from the TypeScript installed beside it (stack-select.js SCOPED_PREREQS).
+    // A server already on PATH counts only when its TypeScript holds tsserver.js (2026-11-24: a global TypeScript 7 left it
+    // on PATH and unable to start); 'unknown' - an install the probe cannot follow - stays present.
     if ((inv.plugins || []).some((p) => (p && p.name) === 'typescript-lsp'))
-        add('typescript-language-server', probe.has('typescript-language-server', env) ? 'present' : 'missing', 'npm install -g typescript-language-server typescript@6');
+    {
+        if (!probe.has('typescript-language-server', env)) add('typescript-language-server', 'missing', 'npm install -g typescript-language-server typescript@6');
+        else if ((probe.tsServer || (() => 'unknown'))(env) === 'missing')
+            add('typescript-language-server', 'missing', 'npm install -g typescript@6 # the TypeScript beside the server has no tsserver.js (TypeScript 7 ships none)');
+        else add('typescript-language-server', 'present');
+    }
 
     // claude-hud arrives configured: its statusLine (the account's, or this project's settings.local.json for a
     // claude-hud installed for this project alone) plus the plugin-settings row, one command.

@@ -961,6 +961,15 @@ function answerRow(root, input, a, key, reply) {
   log(root, input, { event: 'ask-answer', agent: key, via: a.via || 'stop', sections: asked, warned: a.warned || [], rewrote, outcome, saidDocsOk: saidDocsOk(reply) });
 }
 
+// The one write of a PreToolUse block (guards ask, D1): the prelude asks where a person can answer and denies otherwise, and
+// writes the hook's one JSON object itself. A SubagentHandback is denied in every mode (canAsk). With no prelude: today's deny.
+function blockWrite(input, reason) {
+  let prelude = null;
+  try { prelude = require('./hook-prelude.js'); } catch { /* an install without the prelude denies as before */ }
+  if (prelude && prelude.askOrBlock) { prelude.askOrBlock(input, reason, { guard: 'docs-session' }); return; }
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } })); // guard-ask fallback: no prelude
+}
+
 function handback(input, root, docs) {
   if (docsOff('ask') || !input.agent_id) return;
   const key = agentKey(input);
@@ -970,7 +979,7 @@ function handback(input, root, docs) {
   if (a.blocked) { if (!a.answered) answerRow(root, input, a, key, report); return; }
   const reason = seatAsk(input, root, docs, a, key, HANDBACK_LAST);
   if (!reason) return;
-  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }));
+  blockWrite(input, reason);
 }
 
 function subagentStop(input, root, docs) {
@@ -1348,7 +1357,7 @@ function stampAfterTimeoutWrite(input, root) {
     + 'AskUserQuestion when the user is back and write the stamp from their answer.';
   log(root, input, { event: 'stamp-after-timeout', target: rel });
   blockRow(root, input, reason);
-  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }));
+  blockWrite(input, reason);
   return true;
 }
 // PF1 (spec 6, D12): a plan folder's status.json and scoring.json are written by their scripts only, and its approved
@@ -1399,7 +1408,7 @@ function planFolderWrite(input, root) {
       } else continue;
       log(root, input, { event, target: rel });
       blockRow(root, input, reason);
-      process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }));
+      blockWrite(input, reason);
       return true;
     }
   } catch { /* fail-open */ }
@@ -1451,7 +1460,7 @@ function stampedPlanWrite(input, root) {
     + 'Result) may change in this file, through Edit, MultiEdit or Write - never a shell write.';
   log(root, input, { event: 'stamped-plan', target: rel });
   blockRow(root, input, reason);
-  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }));
+  blockWrite(input, reason);
   return true;
 }
 
@@ -1598,14 +1607,16 @@ function seatHold(input, root, docs) {
   ].join('\n');
   log(root, input, { event: 'seat-hold', target, seats: out.map(([, s]) => s.type) });
   blockRow(root, input, reason);
-  deny(reason);
+  deny(input, reason);
   return true;
 }
-const deny = (reason) => {
-  let text = PATH_LINE ? `${PATH_LINE}\n${reason}` : reason;
+const deny = (input, reason) => {
+  // The PATH line follows the reason's first SENTENCE (preferences-session.js withPathLine): that sentence is the prompt's
+  // summary, so it must say what is held and name no path, while the line still comes before the member-relative paths it governs.
+  let text = PATH_LINE ? require('./preferences-session.js').withPathLine(reason, PATH_LINE) : reason;
   if (ENTRY && text.length + 2 + ENTRY.text.length <= 7000 && claimed()) text += `\n\n${ENTRY.text}`;
   WROTE = true;
-  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: text } }));
+  blockWrite(input, text);
 };
 
 // Before this call runs, the tree is still the one the session found when the main session has written nothing and run
@@ -1752,7 +1763,7 @@ function preToolUse(input, root, docs, state) {
   }
   log(root, input, { event: 'hold', target: targets[0], offered: hits.map((h) => h.id), via: first ? 'cover' : hits.length ? 'words' : 'none' });
   blockRow(root, input, reason);
-  deny(reason);
+  deny(input, reason);
 }
 
 // The one ask this hook makes - a finished agent's SubagentStop and the main session's Stop send the same shape, so

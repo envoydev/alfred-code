@@ -88,6 +88,15 @@ comparable banner by banner; the content varies, the skeleton never does.
   to configure yet. `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:configure from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here. `legacy-unstamped` (a legacy copy-route install that never wrote a stamp) -> stop and route to `/alfred-code:update`,
   which reads its picks off disk and writes the stamp; configure runs after it. `installed` / `initialised` -> go on. Every scope keeps the stamp, the library copies and the
   settings in the project's `.claude/`, so there is one mode.
+- **Which joined children this run includes** - one call, before the inventory call below, so the ask (if any) comes before
+  the inventory table is printed:
+
+  ```bash
+  node "$TMP/repo/scripts/workspace.js" include --root . > "$TMP/include.txt" 2>&1 ; grep -E '^(included|set-aside|unasked|below|unattended|!!)' "$TMP/include.txt" && cat "$TMP/include.txt" "$TMP/repo/setup-plugin/references/workspace-include.md"
+  ```
+
+  Nothing printed: no child is joined - go on. Otherwise follow `workspace-include.md`, printed with it.
+
 - **Inventory the installed set through the installer's own read-back** - never by hand, from disk
   or from memory. It is the SAME read an `update` writes back, so an item the user switched
   off stays out of it; a hand inventory misses what the stamp's picks and the links record, and the next apply
@@ -137,7 +146,7 @@ comparable banner by banner; the content varies, the skeleton never does.
   until this call ran and its `total:` line is in your message (audit 2026-10-11, session a9e06780: the inventory
   sat in a collapsed tool result and the ask said 'Installed set is shown above'). Also run the evidence scan quietly -
   `node "$TMP/repo/scripts/scan-evidence.js" --root . --catalog "$TMP/repo/meta/evidence.json"
-  --out "$TMP/found.json"` - so the walk's tables can label what the project provably uses
+  --children <csv|none> --out "$TMP/found.json"` (the value is `workspace-include.md`'s) - so the walk's tables can label what the project provably uses
   (`--found`).
 - **Report what changed since the install.** `.claude/alfred-code.stamp` records the commit every artifact of the current install was copied from - the stack versions
   the INSTALL, not the file. Use it to tell the user what an update would actually bring, BEFORE
@@ -275,10 +284,11 @@ along with the row it names rather than spending its own question. A row carryin
 them (recommended), set your own (Other: one number per key, in the catalog's own order), or do not
 use the feature (which writes the row's `group_off` value to every key in the group). Only a row
 carrying `group_off` gets an off answer; never invent one for a row without it, and a group already
-sitting at that value is reported as off, with turning it back on as the change. The four MODE keys -
-`ALFRED_CODE_AUTO_RUN`, `ALFRED_CODE_AUTO_COMPACT`, `ALFRED_CODE_SCORING`, `ALFRED_CODE_SCORING_LEVEL` - are no
+sitting at that value is reported as off, with turning it back on as the change. The five MODE keys -
+`ALFRED_CODE_AUTO_RUN`, `ALFRED_CODE_AUTO_COMPACT`, `ALFRED_CODE_SCORING`, `ALFRED_CODE_SCORING_LEVEL`,
+`ALFRED_CODE_SCORING_ROUNDS` - are no
 question here: report each as a mode with its state, name its command (`/alfred-code:mode:auto-run on|off`,
-`/alfred-code:mode:auto-compact on|off`, `/alfred-code:mode:scoring on|off [level]`, typed alone on its line, which
+`/alfred-code:mode:auto-compact on|off`, `/alfred-code:mode:scoring on|off [level] [rounds]`, typed alone on its line, which
 keeps it in this checkout's `.claude/settings.local.json` until its off), and write none of them - `variables.js set`
 refuses a mode key. Nothing else needs editing. Apply on consent with ONE
 `node "$TMP/repo/scripts/variables.js" set --root . --scope <scope> <KEY>=<value> ...` naming ONLY the chosen keys - it
@@ -287,7 +297,7 @@ MISSING `ALFRED_CODE_DOCS_VERSIONING` row accepted at its previewed (recommended
 `node $TMP/repo/scripts/stamp-docs-root.js <project root> --seed-versioning` instead, so the write re-probes at
 write time rather than trusting a preview a few turns stale, and report its printed line. A typed override (Other)
 for that same row is a deliberate decision like any other row's and goes through `variables.js set` as-is. A key the
-workspace answers (its `show` source is the root) is not MISSING: show no row for it. Area
+workspace answers (its `show` source is `from <rel>`) is not MISSING: show no MISSING row for it. Area
 skipped, or nothing changed: one narration line, nothing written.
 
 **Memory and navigation** ride this area. First `node "$TMP/repo/stack/skills/capture-preferences/scripts/tools.js" modes --project .` - paste its lines in ONE fenced block - then ONE AskUserQuestion with the questions this step puts (three with the agents ask below), each carrying its current line:
@@ -363,6 +373,20 @@ A change runs now, before step 11: `node "$TMP/repo/scripts/workspace.js" role -
 line's answer>`, its lines pasted as they are; a `!!` line (a refusal naming the children, a locked file) means
 nothing changed. A join's values reach the project at once; the parent's set reaches it at the next
 `/alfred-code:update`.
+
+When the role line reads a root and `include`'s call printed an `included:`, `set-aside:` or `unasked:` line, the Environment
+table carries the row `Children included from this root: <csv>` (the `included:` and `unasked:` rels, `none` when there is
+none), and the change ask:
+
+```ask
+Children included from this root: <csv>. Change that?
+- 'Keep <csv> (Recommended)' - nothing changes
+- 'Pick the children' - up to 4 multi-select questions list every joined child; the ones picked are included, the rest are set aside
+- 'Include all' - every joined child is included, so this project reads, scans and updates all of them
+- 'Set all aside' - this project leaves every joined child alone: each stays joined and keeps what it has
+```
+
+'Keep' makes no call. Any other answer is ONE call naming every joined child, run at once, before step 11's installer as the role change above is, so the installer's backstop sees it; its lines are pasted: `node "$TMP/repo/scripts/workspace.js" include --root . --include <csv> --set-aside <csv>`, either flag left off when its list is empty. A set-aside child kept what it had when the last run dropped something, and a child included again reads that keep at its next update.
 
 When the role line reads a root and `workspace.js children` or `status`'s `ignored-children:` line names at least one
 project below (`<n>` is the `child:` rows plus the listed entries, `<m>` the listed entries), ask:
@@ -445,6 +469,8 @@ Otherwise, run the installer **from the snapshot**, passing it back with `--sour
 lands the same revision step 1 previewed. One fixed capture form, always - `2>&1 | tee
 "$TMP/install.log"` on the call itself, so the post-install read below has a file that was actually
 written (the shared contract is in `source-protocol.md`'s 'Capture the installer's own output').
+
+**At a root with a set-aside child, the keep before the call.** Each drop line shows `kept for <rels>` in the walk's tables. Its drops at a root with a set-aside child take the same keep call before its apply, once per item, as validate does: the call printed with the `include` output, whose `!!` case and user-scope plugin case apply here too.
 
 **In a child, the ignores before the call.** A dropped `from root` item is an ignore of the parent's item and an
 added `ignored` one takes its ignore back: one call before the installer, `node "$TMP/repo/scripts/workspace.js" ignore

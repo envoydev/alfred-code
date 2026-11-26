@@ -7,6 +7,7 @@
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
 require('./hook-test-env').isolateHookSuite();
+const { verdictResult } = require('./hook-test-env');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -207,14 +208,14 @@ test('U11: type-into-Other in the question text is denied', () => {
     try {
         const tp = path.join(dir, 't.jsonl');
         fs.writeFileSync(tp, JSON.stringify({ type: 'assistant', message: { id: 'a', content: [{ type: 'text', text: 'ok' }], usage: { cache_read_input_tokens: 900 } } }) + '\n');
-        const ask = (q) => spawnSync(process.execPath, [path.join(ROOT, 'stack', 'hooks', 'guard-stop-contract.js')], {
+        const ask = (q) => verdictResult(spawnSync(process.execPath, [path.join(ROOT, 'stack', 'hooks', 'guard-stop-contract.js')], {
             input: JSON.stringify({ hook_event_name: 'PreToolUse', session_id: 'u11', transcript_path: tp, tool_name: 'AskUserQuestion', tool_input: { questions: [q] } }),
             encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(dir, 'log-')) },
-        });
+        }));
         const opts = [{ label: 'Cache in Redis (Recommended)', description: 'shared across nodes' }, { label: 'Cache in memory', description: 'one node' }];
         for (const q of [{ question: 'Which cache? Pick one, or write your own in Other.', options: opts }, { question: 'Which cache?', header: 'or via Other', options: opts }]) {
             const r = ask(q);
-            assert.strictEqual(r.status, 2, `${q.question} / ${q.header || ''}: ${r.stderr}`);
+            assert.strictEqual(r.status, 'ask', `${q.question} / ${q.header || ''}: ${r.stderr}`);
             assert.match(r.stderr, /'Cache in Redis' \/ 'Cache in memory'/, 'the example names the ask\'s own first two labels');
         }
         assert.strictEqual(ask({ question: 'Which cache?', options: opts }).status, 0, 'the same ask without Other passes');

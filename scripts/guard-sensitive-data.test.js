@@ -8,6 +8,7 @@
 'use strict';
 const test = require('node:test');
 require('./hook-test-env').isolateHookSuite();
+const { legacyBlock } = require('./hook-test-env');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -39,7 +40,8 @@ function project(name, { text = STORE, root = '.alfred', file = '.sensitive-data
 }
 const NAMES = ['.secrets', '.sensitive-data'];
 const RE = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const run = (payload, env = {}) => spawnSync(process.execPath, [HOOK], { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, ...env } });
+// A block reads as the suite always read it - exit 2, the reason on stderr (legacyBlock); the ask and the deny are pinned in guard-secret-value.test.js.
+const run = (payload, env = {}) => legacyBlock(spawnSync(process.execPath, [HOOK], { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, ...env } }));
 const updated = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.updatedInput.command; } catch { return null; } };
 const verdict = (r) => (r.status === 2 ? 2 : updated(r) != null ? 'rewrite' : r.status);
 const bash = (cwd, command) => verdict(run({ tool_name: 'Bash', tool_input: { command }, cwd, session_id: 'suite' }));

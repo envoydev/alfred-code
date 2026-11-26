@@ -9,7 +9,9 @@
 // audit). This hook is the ONE process for all of them, on shell-guards.js's in-process runtime: each guard runs
 // as its own main module with its own gates, its own ledger row and its own fail-open, and the verdicts merge the
 // way Claude Code merges the same guards wired as separate hooks (shell-guards.js `combine`, whose header states
-// the rules). A PROTECTIVE guard (the secret guard, on a Read or a Grep) runs first and its exit 2 is answered at once.
+// the rules). Every guard's block goes through the prelude's askOrBlock: an ask where a person can answer, a deny
+// (exit 2 only on Cursor) where nobody can. A PROTECTIVE guard (the secret guard, on a Read or a Grep) runs first and its
+// deny is answered at once; its ask lets every later guard judge the call, so the one prompt names every harm.
 //
 // Each guard runs only for the tools its own manifest row named - the table below, which the manifest's rows are
 // held to (scripts/shell-guards.test.js) - so a guard never judges a tool it was never wired on. instrument-tool-
@@ -29,9 +31,10 @@ const GUARDS = [
     ['guard-data-class', ['Read']],
     ['guard-fresh-session-start', ['Write', 'Edit', 'MultiEdit', 'NotebookEdit']],
     ['guard-config-protection', ['Write', 'Edit', 'MultiEdit', 'NotebookEdit']],
-    ['guard-cross-project-write', ['Write', 'Edit', 'MultiEdit', 'NotebookEdit']],
-    // no Glob: a Glob is no read of a section and no write, so docs-session did nothing on it but cost a process per call
-    // (deep hooks review 2026-10-16)
+    // the read half (2026-11-26) takes Read, Grep and Glob: a read past the workspace asks first
+    ['guard-cross-project-write', ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Read', 'Grep', 'Glob']],
+    // no Glob on the rest: a Glob is no read of a section and no write, so docs-session did nothing on it but cost a process
+    // per call (deep hooks review 2026-10-16); only the cross-project guard judges one
     ['docs-session', ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Grep']],
     ['preferences-session', ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Grep']],
     // the rule loader's touch record and edit-time reminder (layered native rules, 2026-11-24)
@@ -41,7 +44,7 @@ const NAMES = GUARDS.map(([g]) => g);
 const TOOLS = new Map(GUARDS);
 const SELF = 'file-guards';
 // Every file tool, in one order, so a matcher built from any set of guards reads the same way.
-const TOOL_ORDER = ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Grep'];
+const TOOL_ORDER = ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Grep', 'Glob'];
 const MATCHER = TOOL_ORDER.join('|');
 const PROTECTIVE = new Set(['guard-secret-value']);
 // The order the guards RUN in: the protective ones first, so a guard stalling past the budget can never drop their
@@ -120,8 +123,8 @@ function main()
     {
         const r = shell.runGuard(path.join(__dirname, `${g}.js`), stdin);
         results.push(r);
-        // A protective block is a correct answer alone, so it is answered now (shell-guards.js, 2.1.5 M2).
-        if (r.code === 2 && PROTECTIVE.has(g)) break;
+        // A protective deny is a correct answer alone, so it is answered now (shell-guards.js, 2.1.5 M2); an ask is not.
+        if (PROTECTIVE.has(g) && shell.isDenied(r)) break;
     }
     const verdict = shell.combine(results.sort((a, b) => NAMES.indexOf(a.guard.replace(/\.js$/, '')) - NAMES.indexOf(b.guard.replace(/\.js$/, ''))));
     // Exit only once both streams have flushed: a pipe write can still be pending on macOS.

@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // installer-managed - update overwrites local edits; put project policy in a separate hook file.
-// PreToolUse gate (matchers: Write + Edit + NotebookEdit + Bash, and a filesystem server's four write tools under any
-// registration name - SYS-02, below): a session belongs to ONE
+// PreToolUse gate (matchers: Write + Edit + NotebookEdit + Bash + Read + Grep + Glob, and a filesystem server's four write
+// tools under any registration name - SYS-02, below): a session belongs to ONE
 // project. Work in project A that turns out to need a change in project B - a sibling repo, a
 // consumed package, a related service - is HANDED OFF, never applied: the session writes a task
-// card for B and stops there. Reading and investigating B is untouched (no Read/Grep/Glob
-// matcher), because deciding what B must do requires reading B.
+// card for B and stops there. Reading B asks the user first, through the read half (THE READ HALF, below): deciding
+// what B must do requires reading B, so a Yes opens that one call, and a No keeps the work inside the workspace.
 //
 // Why a hook and not prose: a cross-repo edit is a discrete event with a decidable test (does
 // the write target resolve inside this project's root?), and the cost of getting it wrong is
@@ -15,25 +15,26 @@
 // THE WORKSPACE IS THE BOUNDARY (the owner, 2026-11-11: 'child can go out of child project to parent, but not out of
 // workspace, agent must ask me about it in current session and does not allow for subagents to go out of workspace').
 // A project joined to a workspace writes anywhere under the workspace's top member - the root, a sibling, a project
-// below - with no ask; a project in no workspace keeps its own root as the boundary. Past the boundary the MAIN session
-// gets the ask below. A SUBAGENT gets a plain refusal with no ask, and neither the session's receipt
-// nor a folder the user typed opens anything for it - it reports the change and the main session hands it off; a
-// command the guard could not read is refused for it the same way, since it may write past the boundary. A
+// below - with no ask; a project in no workspace keeps its own root as the boundary. Past the boundary the stop goes through
+// the helper (hook-prelude.js askOrBlock): a prompt where a person can answer - a seat's too - and a plain deny where nobody can.
+// Nothing the session was allowed opens anything for a SUBAGENT: a Yes at its prompt opens that one call, and where no prompt
+// can show it reports the change and the main session hands it off; a
+// command the guard could not read is stopped for it the same way, since it may write past the boundary. A
 // member's memory folder stays read-only inside the workspace (R8, below).
 //
-// Reads pass. Writes inside the project root pass. Writes to the session's own scratch (the OS
+// Writes inside the project root pass. Writes to the session's own scratch (the OS
 // temp dir), to the Claude account dirs (~/.claude and the ~/.claude-<name> siblings - settings,
 // memory; never their plugins/ code, THE INSTALLED PLUGINS' OWN CODE below), and to /dev pass.
-// Everything else is blocked - and the block ENDS IN AN ASK:
-// the denial mandates one AskUserQuestion (task card here - recommended; allow that tree for this
-// session; drop), because a bare denial left the user out of the decision (the model wrote the
-// card or just stopped). The 'allow' answer is honoured through a session receipt, below.
+// Everything else is asked about, through Claude Code's own permission prompt (hook-prelude.js askOrBlock): a yes
+// runs that one call, a no refuses it and the model writes the task card here or drops the change. Where nobody can
+// answer (dontAsk, bypassPermissions, a print run, Cursor) the block is a deny with the same reason. A chat yes and a
+// path the user typed open nothing; ALFRED_CODE_ALLOW_WRITE_OUTSIDE is the lever for a tree the project owns.
 // On Bash the write-shaped verbs are judged where they actually land: a `cd`/`pushd` earlier in
 // the same command moves the anchor for every relative path and every bare `git <mutating>` after
 // it (`cd ../other && git commit` is the same write as `git -C ../other commit` - reproduced
 // passing before this existed), while a `>` or a verb INSIDE a quoted string is prose, not a
 // write (a commit message reading 'pipe > /other/f' blocked the commit - reproduced).
-// exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unparseable, on a root
+// A block is one JSON verdict (ask or deny) on stdout, exit 0 - exit 2 only on a Cursor deny; no output = allow. Fail-open on anything unparseable, on a root
 // that cannot be resolved, and on a target that cannot be judged (an unexpanded variable, a
 // relative path after `cd -` or `cd $DIR`).
 // The command is read through shell-writes.js `scanShell`: a wrapper, `bash -c '...'`, `eval`, a heredoc into a shell, a
@@ -89,6 +90,11 @@ try { cursorOff = require('./hook-prelude.js').cursorStandDown(payload, __filena
 // Stood down by any gate: only a write into the installed plugins' code is judged (above).
 const PLUGIN_ONLY = off || cursorOff;
 
+// What the shell command reads past the boundary (THE READ HALF, below), kept until the call's own verdict: a block of the
+// write half takes it into its prompt (`blockCall`), and a call nothing else blocked asks for it when it exits. Declared
+// here, above the exit wrapper, which runs on every exit - the ones before the shell section too.
+let readHits = null;
+
 // --- block telemetry (shared by every guard hook; keep the copies identical) ------------
 // A block costs a whole turn - the stderr goes back to the model and the work is re-done - so a
 // FALSE positive is 10-100x the cost of the gate itself, and until this existed the block rate was
@@ -102,7 +108,12 @@ const PLUGIN_ONLY = off || cursorOff;
   process.stderr.write = (chunk, ...rest) => { last = String(chunk); return w(chunk, ...rest); };
   const exit = process.exit.bind(process);
   process.exit = (code) => {
-    if (code === 2 && !unsetRepo) {
+    if (code === 0 && !global.BLOCK_VERDICT && readHits && readHits.length) {
+      const hits = readHits;
+      readHits = null;
+      askRead(hits); // exits: the wrapper runs again with the verdict set
+    }
+    if ((code === 2 || global.BLOCK_VERDICT) && !unsetRepo) {
       try {
         const fs = require('fs');
         const path = require('path');
@@ -121,7 +132,7 @@ const PLUGIN_ONLY = off || cursorOff;
           // blocks read as the main session's), and the call id joins the row to the transcript without a clock.
           agent: payload.agent_id || null,
           tool_use_id: payload.tool_use_id || null,
-          reason: last.split('\n')[0].slice(0, 200),
+          reason: (global.BLOCK_VERDICT ? global.BLOCK_VERDICT.reason : last).split('\n')[0].slice(0, 200),
           // A hook may name the BRANCH that fired and what matched, when it has more than one
           // (`global.BLOCK_DETAIL`, dropped by JSON.stringify when nothing set it). A block whose
           // cause cannot be reconstructed cannot be tuned - this is the field that reconstructs it.
@@ -132,6 +143,15 @@ const PLUGIN_ONLY = off || cursorOff;
     exit(code);
   };
 })();
+
+// The one exit of a PreToolUse block (guards ask, D1): the prelude asks or denies; with no prelude, today's exit 2.
+function blockCall(input, text) {
+  if (readHits && readHits.length) { text = crossRead.joinRead(text, readPrompt(readHits)); readHits = null; }
+  let code = 2;
+  try { const p = require('./hook-prelude.js'); code = p.blockExitCode(input, p.askOrBlock(input, text, { guard: 'guard-cross-project-write' })); }
+  catch { process.stderr.write(text); }
+  process.exit(code);
+}
 
 // The project root is CLAUDE_PROJECT_DIR (the harness sets it for every hook). Without it - a
 // manual wiring, a test - the nearest ancestor of the session cwd holding a .git is the root,
@@ -261,32 +281,10 @@ function sessionScratchAllowed(target) {
     return !inside(ROOT, path.join(s, segment, sid));
   });
 }
-// The user's own allowance for THIS session. A block ends in an ask, and the 'allow' answer has
-// to be honourable or the ask offers a route this guard then denies - the failure the git rule
-// recorded: an ask recommended a sibling-repo commit, the user took it, the guard denied it at the
-// first git verb. So the answer is recorded as a receipt this guard reads:
-// <data root>/state/approvals/CROSS-WRITE-ALLOW (the pre-2.8.0 <docs-path>/flow/ one still read), one root per line, '#' comments
-// allowed, read below as a security receipt (older than 8h, written before this session began, naming another session, or
-// with no allow answer in the transcript, it reads as absent) - and a root that contains the project is dropped, the
-// containment rule above.
-// ALFRED_CODE_ALLOW_WRITE_OUTSIDE stays the permanent lever for a tree the project owns.
+// ALFRED_CODE_ALLOW_WRITE_OUTSIDE is the permanent lever for a tree the project owns. A block asks the user through the
+// permission prompt each time it fires (hook-prelude.js askOrBlock); nothing the user typed or answered opens it.
 let layout = null;
-try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
-const RECEIPT = layout ? layout.findState(ROOT, 'approvals', 'CROSS-WRITE-ALLOW') : path.resolve(ROOT, docsRootEnv(), 'flow', 'CROSS-WRITE-ALLOW');
-// Where a denial says to write it, relative to the project.
-const receiptRelOf = () => (layout ? path.relative(ROOT, layout.statePath(ROOT, 'approvals', 'CROSS-WRITE-ALLOW')) : path.join(docsRootEnv().replace(/^\//, ''), 'flow', 'CROSS-WRITE-ALLOW'));
-// A security receipt (audit 2026-10-30 HK-03 / HK-16, hook-prelude.js securityReceipt): this session's own (`session:`),
-// under 8h, and only after the user answered this guard's last denial with an 'Allow ... for this session' label, auto-run
-// off. No prelude, no reader: shut.
-let receipts = null;
-try { receipts = require('./hook-prelude.js'); } catch { receipts = null; }
-const ALLOW_LABEL = /^allow .+ for this session$/;
-const held = receipts && receipts.securityReceipt ? receipts.securityReceipt(RECEIPT, payload, { marker: 'CROSS-WRITE-ALLOW', labels: [ALLOW_LABEL] }) : null;
-const receiptLines = held && held.live ? held.lines : [];
-const receiptRoots = receiptLines.map(expandTilde).map(realish).filter((d) => !inside(ROOT, d));
-// The lines a denial tells the model to write, its session line first (HK-16), and why a receipt there is shut.
-const writeLines = (lines) => (receipts && receipts.receiptLinesText ? receipts.receiptLinesText(payload, lines) : lines.map((l) => `  ${l}\n`).join(''));
-const shutText = (rel) => (receipts && receipts.receiptShutText ? receipts.receiptShutText(held, rel) : '');
+try { layout = require('./layout.js'); } catch { /* an older copy route: no layout reader */ }
 // ~/.claude-<name> account dirs (a second account's CLAUDE_CONFIG_DIR) are siblings of ~/.claude, matched by prefix.
 // The prefix is dropped only when the project itself sits under such a dir (the containment rule above) -
 // checking whether the project sat under HOME instead disabled it for every real project, and a
@@ -363,7 +361,7 @@ function workspaceTop() {
     if (!layout || typeof layout.workspaceChain !== 'function' || !layout.workspaceOn({ env: process.env, projectRoot: ROOT })) return boundary;
     const { members } = layout.workspaceChain(layout.chainProjectOf(ROOT));
     const top = members.length ? realish(members[members.length - 1].root) : null;
-    if (top && !(HOME && inside(HOME, top))) boundary = top; // a top holding the home folder opens nothing, as a typed folder
+    if (top && !(HOME && inside(HOME, top))) boundary = top; // a top holding the home folder opens nothing
   } catch { boundary = null; }
   return boundary;
 }
@@ -422,64 +420,32 @@ function untrackedLocal(file) {
   if (!fs.lstatSync(file, { throwIfNoEntry: false })?.isFile()) return false;
   try { return require('./mode-settings.js').localGitStatus(file) === 1; } catch { return false; }
 }
-let trustedMemory;
-function ownMemory(t) {
-  if (trustedMemory === undefined) {
-    trustedMemory = null;
+// The memory folder the user's own settings name (real path), asked once: the write half's ownMemory and the read half's
+// trustedReadMemory both read it, and each ask can start git.
+let memoryFolder;
+function trustedMemoryFolder() {
+  if (memoryFolder === undefined) {
+    memoryFolder = null;
     try {
       const dir = layout && typeof layout.trustedMemoryDir === 'function' ? layout.trustedMemoryDir(ROOT, { untracked: untrackedLocal }) : null;
-      if (dir && !inside(ROOT, realish(dir)) && !(HOME && inside(HOME, realish(dir)))) trustedMemory = realish(dir);
+      if (dir) memoryFolder = realish(dir);
     } catch { /* fail closed: no allowance */ }
   }
-  return trustedMemory !== null && inside(t, trustedMemory);
+  return memoryFolder;
+}
+function ownMemory(t) {
+  const dir = trustedMemoryFolder();
+  return dir !== null && !inside(ROOT, dir) && !(HOME && inside(HOME, dir)) && inside(t, dir);
 }
 function memoryBlock(what, shown, hit) {
   global.BLOCK_DETAIL = { branch: 'ancestor-memory' };
   const { own } = memoryOf();
   const mine = own.length === 1 ? `This project's own memory is ${own[0]}.`
     : own.length ? `This project's own memory: ${own.join(', ')}.` : 'This project has no memory folder of its own yet.';
-  process.stderr.write(
+  blockCall(payload,
     `Blocked: ${what} targets '${shown}', the memory of ${hit.root} - a workspace member's memory is read-only from a\n` +
     `project below it. ${mine} A note that member should keep is written from its own session.`,
   );
-  process.exit(2);
-}
-// A PATH THE USER TYPED (usage audit 2026-11-03 U20, the user's ruling: 'an absolute path in your typed message allows
-// writes under that folder'): an ABSOLUTE path in a turn the user typed this session opens writes - a typed FOLDER
-// under itself, a typed FILE that one file only (review fix pass run B m5: `~/.ssh/config` opened all of `~/.ssh`) - so a
-// write the user named in their own words is not asked again (1e53bc45: a 6,338-token body generated twice; e95004e7: a
-// 7m44s wait). File or folder is read off the disk: a trailing separator is a folder, an existing path is what it is,
-// and a MISSING one is a file when its last name has an extension or is a dotfile (`r.md`, `.zshrc`) and a folder when
-// it has neither (`out/gen`) - the narrower reading wins a doubt, so a typed `notes.d` that does not exist yet opens only
-// itself, never writes under it. Read from the
-// transcript where the write is judged (hook-prelude.js typedTurnTexts / typedPaths), never from a file the model writes
-// (HK-03), and only once a write would otherwise be denied. The containment rule holds as for a receipt root: a typed
-// folder holding the project opens nothing. A relative path, `~user`, a path in tool output, a harness row or the model's
-// text opens nothing; the user accepted that a path inside text they pasted counts. The transcript itself stays shut
-// (recordAt runs first).
-let typedRoots = null;
-function typedAllowed(t, within) {
-  if (typedRoots === null) {
-    typedRoots = [];
-    try {
-      const texts = receipts && receipts.typedTurnTexts ? receipts.typedTurnTexts(payload) : [];
-      for (const text of texts) {
-        for (const p of receipts.typedPaths(text, { home: HOME, native: nativePath })) {
-          const at = realish(p.abs);
-          let st = null;
-          try { st = fs.statSync(at); } catch { st = null; }
-          const base = path.basename(at);
-          const isFile = !p.slash && (st ? !st.isDirectory() : /^\.[^.]|.\.[A-Za-z0-9]{1,10}$/.test(base));
-          if (isFile) { typedRoots.push({ file: at }); continue; }
-          if (!inside(ROOT, at)) typedRoots.push({ dir: at });
-        }
-      }
-    } catch { typedRoots = []; }
-  }
-  if (!typedRoots.length) return false;
-  // inside a carved plugin tree a typed folder opens only from the tree down, as an allowance does (the fresh review of
-  // 2026-11-03: a typed `~/.claude` opened every plugin's code)
-  return typedRoots.some((r) => (r.file ? fold(t) === fold(r.file) : inside(t, r.dir) && (!within || inside(r.dir, within))));
 }
 // THE INSTALLED PLUGINS' OWN CODE (the ~/.claude gap; the user's design of 2026-11-03): the account dir is an allowance
 // because memory lands there - and so did `<account>/plugins/`, whose cache holds the very guards that judge this session,
@@ -490,8 +456,7 @@ function typedAllowed(t, within) {
 // (`pluginBlock`) - in EVERY project, under every stand-down (PLUGIN_ONLY, at the top), since every project runs the one
 // installed copy, and minus a plugin's own folder (`pluginsOwnFolder`, below). The project's own files pass first, so a
 // plugin developed in this project is untouched. What opens it:
-// the user's allow answer and its receipt, a folder the user typed, or an ALLOW_WRITE_OUTSIDE entry naming the tree or a
-// folder in it - never a broader one (the whole account dir is the allowance this carve-out narrows).
+// an ALLOW_WRITE_OUTSIDE entry naming the tree or a folder in it - never a broader one (the whole account dir is the allowance this carve-out narrows).
 const PLUGIN_TREES = [...new Set([HOME ? path.join(HOME, '.claude') : '', process.env.CLAUDE_CONFIG_DIR || '']
   .filter(Boolean).map((d) => realish(path.join(expandTilde(d), 'plugins'))))];
 const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT ? realish(nativePath(expandTilde(process.env.CLAUDE_PLUGIN_ROOT))) : null;
@@ -557,8 +522,7 @@ function pluginTreeRemoved(t) {
   return pluginTree(t);
 }
 // Whether the user's own allowances open `t` inside a carved tree.
-const pluginOpened = (t, tree) => OWN_ALLOW.some((d) => inside(t, d) && inside(d, tree))
-  || (!SEAT && (receiptRoots.some((d) => inside(t, d)) || typedAllowed(t, tree)));
+const pluginOpened = (t, tree) => OWN_ALLOW.some((d) => inside(t, d) && inside(d, tree));
 function allowed(target) {
   const t = realish(target);
   if (inside(t, ROOT)) return true;
@@ -570,11 +534,8 @@ function allowed(target) {
   const top = workspaceTop();
   if (top && inside(t, top)) return true; // anywhere in the session's workspace
   if (effectiveAllow.some((d) => inside(t, d)) || sessionScratchAllowed(t)) return true;
-  if (!SEAT && receiptRoots.some((d) => inside(t, d))) return true; // the user's 'allow' for this session
   if (spaceOk && fold(t).startsWith(fold(spacePrefix))) return true;
   if (sameRepoWorktree(t)) return true;
-  if (!SEAT && typedAllowed(t)) return true; // a folder the user typed (U20)
-
   return false;
 }
 // THE TRANSCRIPT IS THE RECORD (final review 2026-10-30, FC): every receipt and hook reads the session's transcript for
@@ -582,7 +543,7 @@ function allowed(target) {
 // append could forge an answer row. Inside the config dir (`CLAUDE_CONFIG_DIR`, else `~/.claude`) a write to or removal
 // of a `*.jsonl` under `projects/` - and of the payload's own `transcript_path`, wherever it lives - is denied, and so is
 // removing a folder that holds one or copying into a folder that holds one directly. No receipt or allowance opens it:
-// the record is what every receipt reads. Reading it stays open (Read, grep, a copy out of it).
+// the record is what every receipt reads. Reading another project's transcript asks the user first; this session's own stays open.
 const CONFIG_DIR = (() => {
   const d = process.env.CLAUDE_CONFIG_DIR || (HOME ? path.join(HOME, '.claude') : '');
   return d ? realish(expandTilde(d)) : null;
@@ -632,12 +593,11 @@ function recordAt(target, kind) {
 }
 function recordBlock(what, shown) {
   global.BLOCK_DETAIL = { branch: 'transcript' };
-  process.stderr.write(
+  blockCall(payload,
     `Blocked: ${what} targets '${shown}', which is or holds a session transcript - the record every receipt and hook\n` +
     `reads for the user's own answers. Nothing in a session writes, edits or removes one, and no receipt or allowance\n` +
-    `opens it. Reading it stays open (Read, grep). Drop this step; a note to keep goes in the project's memory folder.\n`,
+    `opens it. Reading another project's transcript asks the user first; this session's own stays open. Drop this step; a note to keep goes in the project's memory folder.\n`,
   );
-  process.exit(2);
 }
 // Resolve the way the session sees it: the hook subprocess's cwd is not the Bash tool's persisted cwd, which the payload
 // carries as `cwd` - so a shell path is anchored there (SHELL_CWD, the anchor the rm and config guards use), and a
@@ -681,51 +641,25 @@ function otherProjectName(target) {
 
   return parts[i] || path.basename(path.dirname(realish(target)));
 }
-// The other project's ROOT - what an 'allow' answer opens: its repo root when one is findable,
-// else the first directory that diverges from this project (a file is never the unit).
-function otherProjectRoot(target) {
-  const t = realish(target);
-  let dir = path.dirname(t);
-  for (let i = 0; i < 64; i++) {
-    if (fs.existsSync(path.join(dir, '.git'))) return dir;
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  const parts = t.split(path.sep);
-  const rootParts = ROOT.split(path.sep);
-  let i = 0;
-  while (i < parts.length && i < rootParts.length && parts[i] === rootParts[i]) i++;
-  if (parts[i] === '' || /^[A-Za-z]:$/.test(parts[i] || '')) i++;
-  return i < parts.length - 1 ? (parts.slice(0, i + 1).join(path.sep) || path.sep) : path.dirname(t);
-}
 // `shown` is the token the session wrote (or the resolved path after a cd); `abs` is where it lands.
 // The plugins-tree denial: no hand-off card (the tree is no project), dropping the change recommended.
-// What a subagent is told past the boundary: a refusal that names what to report, with no ask and no receipt route.
+// What a subagent is told past the boundary: a refusal that names what to report; the prompt asks the user where one can answer, and nothing the session was allowed opens it.
 function seatRefusal(what, shown, where, report) {
-  process.stderr.write(
+  blockCall(payload,
     `Blocked: ${what} targets '${shown}', ${where}. A subagent never writes outside its session's\n` +
     `boundary, and nothing the session was allowed opens it here. Do not retry or route around it: stop this change and\n` +
     `say in your result ${report} - the main session hands it off or asks the user.`,
   );
-  process.exit(2);
 }
 function pluginBlock(what, shown, tree) {
   global.BLOCK_DETAIL = { branch: 'plugin-code' };
   if (SEAT) seatRefusal(what, shown, `inside ${tree} - the installed plugins' own code and registries`, 'what you meant to change and where its source lives');
-  const receiptRel = receiptRelOf();
-  process.stderr.write(
+  blockCall(payload,
     `Blocked: ${what} targets '${shown}', inside ${tree} - the installed plugins' own code and registries, where the\n` +
     `guards judging this session live; a change there can switch one off. A plugin's fix lands in its source repo.\n` +
-    `End this turn with ONE AskUserQuestion, in this order -\n` +
-    `  'Drop the change (Recommended)' - say what you meant to change and where its source lives.\n` +
-    `  'Allow writes into ${tree} for this session' - write ${receiptRel} with exactly these lines\n` +
-    `  and retry; it counts only after the user's own answer to this denial, never one auto-run gave (under 8h):\n` +
-    writeLines([tree]) +
-    shutText(receiptRel) +
+    `Drop the change: say what you meant to change and where its source lives.\n` +
     `Plugin state (plugins/${PLUGIN_STATE}/), memory, plans and settings stay open.`,
   );
-  process.exit(2);
 }
 // A removal outside the project that takes a carved tree with it (`rm -rf ~/.claude`, a move of a folder holding the cache).
 function judgeRemoval(abs, what, shown) {
@@ -742,7 +676,7 @@ function staleLocalBlock(what, shown, abs) {
   try { stale = layout && typeof layout.staleLocalMemory === 'function' ? layout.staleLocalMemory(ROOT, { tracked: (f) => !untrackedLocal(f) }) : null; } catch { stale = null; }
   if (!stale || !inside(realish(abs), realish(stale.dir))) return;
   global.BLOCK_DETAIL = { branch: 'stale-local-memory' };
-  process.stderr.write(stale.rootSets
+  blockCall(payload, stale.rootSets
     ? `Blocked: ${what} targets '${shown}', in the memory folder ${stale.dir} that ${stale.file} names.\n` +
       `Claude Code 2.1.211 and later keep settings.local.json at ${stale.rootFile}, which sets its own autoMemoryDirectory, so Claude Code ignores this one.\n` +
       `Remove the autoMemoryDirectory key from ${stale.file}; this folder is not this project's memory.`
@@ -750,7 +684,6 @@ function staleLocalBlock(what, shown, abs) {
       `Claude Code 2.1.211 and later keep settings.local.json at ${stale.rootFile}; it still reads the older file, but this guard trusts only ${stale.rootFile}.\n` +
       `Move the autoMemoryDirectory key into ${stale.rootFile}, remove it from ${stale.file}, then retry.`,
   );
-  process.exit(2);
 }
 function block(what, shown, abs = shown) {
   staleLocalBlock(what, shown, abs);
@@ -763,32 +696,192 @@ function block(what, shown, abs = shown) {
   // other row of this guard carried none, so the ledger could not split a file-tool write from a shell one).
   global.BLOCK_DETAIL = { branch: /^(?:Write|Edit|MultiEdit|NotebookEdit) of a file$/.test(what) ? 'file-tool'
     : /^(?:write_file|edit_file|move_file|create_directory) /.test(what) ? 'mcp-file-write' : /git write/.test(what) ? 'git-write' : 'shell-write' };
-  const otherRoot = otherProjectRoot(abs);
   const top = workspaceTop();
   const scope = top ? `workspace (${top})` : `project (${ROOT})`;
   if (SEAT) seatRefusal(what, shown, `outside this session's ${scope}`, `what must change in ${other}, where (file + symbol) and why`);
   // Absolute, the sibling named: the user pastes the hand-off into that repo's session, which finds the card by this path.
   const card = path.resolve(ROOT, docsRoot, 'work', 'cross-project-tasks', `${other}.md`);
-  const receiptRel = receiptRelOf();
-  // Cut to the ask and its options (deep hooks review 2026-10-16: 1,553 chars per denial); the why is repo-hooks.md's.
-  process.stderr.write(
+  // Cut to the ask and its advice (deep hooks review 2026-10-16: 1,553 chars per denial); the why is repo-hooks.md's.
+  blockCall(payload,
     `Blocked: ${what} targets '${shown}', outside this session's ${scope}. A change another\n` +
-    `repo needs is handed off, not applied here. End this turn with ONE AskUserQuestion, in this order -\n` +
-    `  'Task card in this project (Recommended)' - write ${card}:\n` +
-    `  per task what changes where (file + symbol), why, the shared contract, how ${other} verifies it;\n` +
-    `  then finish your side, or say what is blocked until it lands.\n` +
-    `  'Allow writes into ${otherRoot} for this session' - write ${receiptRel} with exactly these lines\n` +
-    `  and retry; it counts only after the user's own answer to this denial, never one auto-run gave (under 8h):\n` +
-    writeLines([otherRoot]) +
-    `  'Drop the change'.\n` +
-    shutText(receiptRel) +
-    `Reading ${other} stays open. A tree this project owns belongs in ALFRED_CODE_ALLOW_WRITE_OUTSIDE.`,
+    `repo needs is handed off, not applied here.\n` +
+    `Write the task card at ${card} instead: per task what changes where (file + symbol), why, the shared contract,\n` +
+    `how ${other} verifies it; then finish your side, or say what is blocked until it lands.\n` +
+    `Reading ${other} may ask the user first (a read in the home folder's project area does). A tree this project owns belongs in ALFRED_CODE_ALLOW_WRITE_OUTSIDE.`,
   );
-  process.exit(2);
 }
 
 const input = payload.tool_input || {};
 const tool = payload.tool_name;
+
+// THE READ HALF (plan outside-workspace-reads, 2026-11-26): a Read, Grep or Glob whose target is past the boundary
+// (`workspaceTop() || ROOT`) and in the PROJECT ZONE asks the user, through the same blockCall as a write. The zone is
+// what a project's work holds and a stray read would take: a folder under HOME that is not a dot-folder, not
+// `Library` / `AppData` and not a toolchain folder, or another project's Claude Code memory folder under the account
+// dir's `projects/`. A search root that is HOME or an ancestor of it (`/Users`, `/`) reaches every project at once, so
+// it asks too. No project file opens a read - a sibling is inside only through a workspace join or
+// ALFRED_CODE_ALLOW_WRITE_OUTSIDE, both the user's. `guard-cross-project-write:read` in ALFRED_CODE_HOOKS_OFF turns
+// this half off alone; every stand-down of the guard turns it off too.
+// The pure parts - the named values, the glob prefix, the first-segment test and the prompt text - are `cross-read.js`
+// (HOOK_MODULES); a copy without it reads nothing past the boundary, as an older copy route did.
+let crossRead = null;
+try { crossRead = require('./cross-read.js'); } catch { /* an older copy route: no read half */ }
+// HOME as a real path; a filesystem root (HOME=/) is no home, since every system path would be in the zone.
+const HOME_REAL = (() => {
+  const real = HOME ? realish(HOME) : '';
+  return real === path.parse(real).root ? '' : real;
+})();
+// The account dirs the zone treats apart: ~/.claude and CLAUDE_CONFIG_DIR. They stay open to read except for another
+// project's folder under `projects/`.
+const CONFIG_DIRS = [...new Set([HOME ? path.join(HOME, '.claude') : '', process.env.CLAUDE_CONFIG_DIR || ''].filter(Boolean).map(expandTilde).map(realish))];
+
+function readHalfOff() {
+  if (!crossRead || PLUGIN_ONLY || unsetRepo) return true;
+  try { return Boolean(require('./hook-prelude.js').partOff('guard-cross-project-write', 'read')); } catch { return false; }
+}
+const readBoundary = () => workspaceTop() || ROOT;
+// A path is the project's when it, or any folder on its way, resolves inside the boundary: judged AS WRITTEN first, so a
+// `node_modules/<dep>` linked to a sibling stays the project's, then by its real path.
+function reachesBoundary(abs, boundary) {
+  if (inside(abs, boundary)) return true;
+  const { root: top } = path.parse(abs);
+  let prefix = top;
+  for (const part of abs.slice(top.length).split(path.sep).filter(Boolean)) {
+    prefix = path.join(prefix, part);
+    if (inside(prefix, boundary)) return true;
+  }
+  return false;
+}
+// The roots of the session's workspace tree - this project, the chain above it and every member those records list -
+// bounded, and this project alone while the workspace is off.
+let workspaceRootList;
+function workspaceRoots() {
+  if (workspaceRootList) return workspaceRootList;
+  workspaceRootList = [ROOT];
+  try {
+    if (!layout || !layout.workspaceOn({ env: process.env, projectRoot: ROOT })) return workspaceRootList;
+    const files = require('./workspace-file.js');
+    const queue = [ROOT, ...layout.workspaceChain(layout.chainProjectOf(ROOT)).members.map((m) => m.root)];
+    const seen = new Set(queue.map((r) => fold(realish(r))));
+    for (let i = 0; i < queue.length && queue.length < 64; i++) {
+      const read = files.readRecord(path.join(queue[i], ...layout.dataRootOf(queue[i]).split('/')));
+      if (read.state !== 'ok') continue;
+      for (const child of files.viewOf(read.record).children) {
+        const dir = realish(path.join(queue[i], ...child.split('/')));
+        if (!seen.has(fold(dir))) { seen.add(fold(dir)); queue.push(dir); }
+      }
+    }
+    workspaceRootList = [...new Set([ROOT, ...queue])];
+  } catch { /* the project alone */ }
+  return workspaceRootList;
+}
+// The session's own folder under an account's `projects/`, named by the payload's transcript: a session launched in a linked
+// worktree or a subfolder keeps its transcript and tool-results under the launch folder's key, not the project's. Only a
+// transcript that sits directly in `<account dir>/projects/<key>/` names one.
+function transcriptProjectKey() {
+  if (!TRANSCRIPT) return null;
+  const folder = path.dirname(TRANSCRIPT);
+  const parent = path.dirname(folder);
+  return CONFIG_DIRS.some((account) => fold(path.join(account, 'projects')) === fold(parent)) ? path.basename(folder) : null;
+}
+// The memory-folder keys that are this project's or a workspace member's: the folder directly under `projects/`.
+let memoryKeyList;
+function ownMemoryKeys() {
+  if (memoryKeyList) return memoryKeyList;
+  memoryKeyList = new Set();
+  const named = process.env.CLAUDE_CODE_PROJECT_DIR_NAME;
+  if (named) memoryKeyList.add(memFold(named));
+  const launchKey = transcriptProjectKey();
+  if (launchKey) memoryKeyList.add(memFold(launchKey));
+  try {
+    for (const root of workspaceRoots())
+      for (const dir of [...layout.memoryDirsOf(root), ...layout.defaultMemoryDirs(root)]) memoryKeyList.add(memFold(path.basename(path.dirname(dir))));
+  } catch { /* no layout reader: the keys read so far */ }
+  return memoryKeyList;
+}
+// The memory folder the user's own settings name under HOME (the write half's ownMemory refuses only a folder that holds the project or is HOME or above): the read half
+// opens it when it is not HOME and holds neither this project nor a member.
+function trustedReadMemory(t) {
+  const dir = trustedMemoryFolder();
+  if (dir === null || !inside(dir, HOME_REAL) || fold(dir) === fold(HOME_REAL)) return false;
+  try { return !workspaceRoots().some((r) => inside(r, dir)) && inside(t, dir); } catch { return false; }
+}
+// The directories the user granted Claude Code, read once: from the account settings file only. One that holds the home
+// folder opens nothing, as a plugin root that holds it does not, and neither does one that holds an account dir's `projects/`
+// (the account folder itself): other projects' transcripts and memory stay behind their own ask.
+let grantedDirList;
+function grantedDirs() {
+  if (grantedDirList) return grantedDirList;
+  grantedDirList = [];
+  try {
+    if (layout && typeof layout.trustedAdditionalDirs === 'function')
+      grantedDirList = layout.trustedAdditionalDirs(ROOT).map(realish).filter((d) => !inside(HOME_REAL, d) && !CONFIG_DIRS.some((c) => inside(path.join(c, 'projects'), d)));
+  } catch { /* fail closed: nothing opened */ }
+  return grantedDirList;
+}
+function foreignProjectFolder(t, account) {
+  const [first, key] = path.relative(account, t).split(path.sep);
+  return memFold(first) === 'projects' && (!key || !ownMemoryKeys().has(memFold(key)));
+}
+function inReadZone(absAsWritten) {
+  if (!HOME_REAL) return false;
+  const abs = resolveTarget(String(absAsWritten), ROOT);
+  const t = realish(abs);
+  if (!inside(t, HOME_REAL) || fold(t) === fold(HOME_REAL)) return false;
+  if (reachesBoundary(abs, readBoundary())) return false;
+  const opened = effectiveAllow.filter((d) => !CONFIG_DIRS.some((c) => fold(c) === fold(d)));
+  if (opened.some((d) => inside(t, d)) || sessionScratchAllowed(t)) return false;
+  // The running plugin's own folder (CLAUDE_PLUGIN_ROOT, a `--plugin-dir` under HOME included) is read-only open, unless it holds the home folder.
+  if (PLUGIN_ROOT && !inside(HOME_REAL, PLUGIN_ROOT) && inside(t, PLUGIN_ROOT)) return false;
+  // The tests that need no git and no settings file first; the worktree and memory checks only for a path still in the zone.
+  const account = CONFIG_DIRS.find((d) => inside(t, d));
+  if (account ? !foreignProjectFolder(t, account) : crossRead.firstSegmentApart(path.relative(HOME_REAL, t).split(path.sep), process.platform)) return false;
+  return !(sameRepoWorktree(t) || ownMemory(t) || trustedReadMemory(t) || (!account && grantedDirs().some((d) => inside(t, d))));
+}
+// HOME or any folder above it, or a folder that holds an account dir's `projects/` (the account dir itself, or a folder
+// above it under HOME): a search from there reaches every other project's memory.
+function searchRootInZone(abs) {
+  if (!HOME_REAL) return false;
+  const resolved = resolveTarget(String(abs), ROOT);
+  const real = realish(resolved);
+  const reachesProjects = (account) => inside(path.join(account, 'projects'), real) && (fold(real) === fold(account) || inside(real, HOME_REAL));
+  return (inside(HOME_REAL, real) || CONFIG_DIRS.some(reachesProjects)) && !reachesBoundary(resolved, readBoundary());
+}
+const readWord = (value) => (typeof value === 'string' && value.trim() ? value : null);
+// What a Read, Grep or Glob reaches: [{ tool, path, search }] for each root past the boundary. Grep and Glob search from
+// `path`, else the working directory; a Glob pattern that leads with a path adds its fixed prefix.
+function readHitsOf() {
+  const roots = [];
+  if (tool === 'Read') {
+    const file = readWord(input.file_path);
+    if (file) roots.push(resolveTarget(expandTilde(file), ROOT));
+  } else {
+    const dir = readWord(input.path);
+    roots.push(resolveTarget(dir ? expandTilde(dir) : SHELL_CWD, SHELL_CWD));
+    const prefix = tool === 'Glob' && readWord(input.pattern) ? crossRead.globPrefix(input.pattern) : '';
+    if (prefix) roots.push(resolveTarget(expandTilde(prefix), roots[0]));
+  }
+  const hits = [];
+  for (const abs of new Set(roots)) {
+    const search = tool !== 'Read' && searchRootInZone(abs);
+    if (search || inReadZone(abs)) hits.push({ tool, path: abs, search });
+  }
+  return hits;
+}
+// The prompt for what was read: the verdict of the read half, for the user and the model.
+const readPrompt = (hits) => crossRead.readText(hits, { boundary: readBoundary(), homes: [HOME, HOME_REAL], seat: SEAT, platform: process.platform });
+// One ask for the hits: the block row names the branch and the basenames, never a content.
+function askRead(hits) {
+  const { READ_BRANCH, READ_PATHS_SHOWN } = crossRead;
+  global.BLOCK_DETAIL = { branch: hits.some((h) => h.search) ? READ_BRANCH.search : READ_BRANCH.read, names: hits.slice(0, READ_PATHS_SHOWN).map((h) => path.basename(h.path)) };
+  blockCall(payload, readPrompt(hits));
+}
+if (crossRead && crossRead.READ_TOOLS.has(tool)) {
+  if (readHalfOff()) process.exit(0);
+  const hits = readHitsOf();
+  if (!hits.length) process.exit(0);
+  askRead(hits);
+}
 
 if (tool === 'Write' || tool === 'Edit' || tool === 'MultiEdit' || tool === 'NotebookEdit') {
   const target = input.file_path || input.notebook_path;
@@ -844,6 +937,26 @@ const { isVar } = shell;
 // One normaliser per run: shell.anchorAt caches its compiled anchor by this function, so a fresh closure per write recompiled it each time.
 const anchorNorm = (t) => nativePath(expandTilde(shell.unquote(t)));
 const anchorAt = (index) => shell.anchorAt(scan.cds, index, SHELL_CWD, anchorNorm);
+// THE READ HALF on the shell route (the judging is cross-read.js `shellReadHits`): the units are the command itself and each
+// script it carries one level down - a heredoc or here-string into a shell, a `-c` string, a piped-in script, a script
+// file - and the bodies a runtime is handed. All come from the one scan above (shell-writes.js `scanShell`: `cmds`,
+// `carried`, `runtimes`), so no script file is read, parsed or charged to the scan budget a second time.
+function shellReadHits() {
+  const max = crossRead.SHELL_SCRIPTS_MAX;
+  const units = [{ cmds: scan.cmds || [], expandVars: scan.expandVars, anchorAt, texts: (scan.runtimes || []).slice(0, max).map((s) => ({ text: String(s.body), index: s.index })) }];
+  for (const carried of (scan.carried || []).slice(0, max)) {
+    const start = anchorAt(Math.floor(carried.at)) || SHELL_CWD;
+    units.push({ cmds: carried.cmds, expandVars: carried.expandVars, anchorAt: (index) => shell.anchorAt(carried.cds, index, start, anchorNorm), texts: [] });
+  }
+  return crossRead.shellReadHits(units, {
+    dequote: shell.dequote, isVar, platform: process.platform, tool, root: ROOT, cwd: SHELL_CWD,
+    resolve: (word, base) => resolveTarget(nativePath(expandTilde(word)), base), exists: fs.existsSync, key: fold,
+    inZone: inReadZone, searchZone: searchRootInZone,
+  });
+}
+if (!readHalfOff()) {
+  try { const found = shellReadHits(); if (found.length) readHits = found; } catch { /* the read half fails open */ }
+}
 // Judge one path token found at `index` in the command: only a token that can land out of tree
 // is resolved at all - an explicitly out-of-tree spelling (absolute, ~-rooted, reaching up with
 // `..`), or any relative path once a `cd` has moved the anchor. A bare relative path with the
@@ -907,9 +1020,9 @@ for (const index of scan.gitWrites) {
 }
 
 // What the reader left UNREAD - a script past the scan budget (hook-prelude.js), a script nested past its depth, a git
-// alias it could not read - may write anywhere, so it is asked through the same receipt, never allowed: the verdict
+// alias it could not read - may write anywhere, so it is asked about, never allowed: the verdict
 // flipped to allowed on size alone (a 1.1MB script writing outside passed, the same text at 0.99MB was denied - 2.1.6
-// re-verify 3 R3-m4). The 'allow' line is the script's own path, or `unread` for a command with no file.
+// re-verify 3 R3-m4).
 // plugin-only mode asks nothing of a script it cannot read: that ask covers every write, which the stand-down switched off
 if (PLUGIN_ONLY) process.exit(0);
 const unread = scan.unread.slice();
@@ -917,30 +1030,20 @@ if (scan.aliasUnreadAt >= 0) unread.push({ at: scan.aliasUnreadAt, why: 'a git a
 for (const u of unread) {
   const shown = u.path || 'this command';
   global.BLOCK_DETAIL = { branch: 'unread', why: u.why };
-  // a subagent: refused whatever the session's receipt holds - an unread script may write past the boundary
+  // a subagent: refused whatever the session was allowed - an unread script may write past the boundary
   if (SEAT) {
-    process.stderr.write(
+    blockCall(payload,
       `Blocked: this guard could not read ${shown} (${u.why}), so it cannot say where it writes.\n` +
       `A subagent never runs a command this guard could not read, and nothing the session was allowed opens it here.\n` +
       `Do not retry or route around it: run a smaller piece the guard can read, or stop and say in your result what the\n` +
       `command was for - the main session runs it or asks the user.`,
     );
-    process.exit(2);
   }
-  if (u.path ? receiptRoots.some((d) => inside(realish(u.path), d)) : receiptLines.includes('unread')) continue;
-  const receiptRel = receiptRelOf();
-  process.stderr.write(
+  blockCall(payload,
     `Blocked: this guard could not read ${shown} (${u.why}), so it cannot say where it writes -\n` +
     `and a script it cannot read is never let through, since the same text a little shorter is judged.\n` +
-    `Do not decide for the user: end this turn with ONE AskUserQuestion carrying, in this order -\n` +
-    `  'Drop it (Recommended)' - run a smaller piece the guard can read instead.\n` +
-    `  'Allow ${shown} for this session' - only when it is this project's own and writes only here:\n` +
-    `  write ${receiptRel} with exactly these lines and retry the SAME command:\n` +
-    writeLines([u.path || 'unread']) +
-    `The receipt counts only after the user's own answer to this denial, never one auto-run gave - this session, under 8h.\n` +
-    shutText(receiptRel),
+    `Run a smaller piece the guard can read instead.\n`,
   );
-  process.exit(2);
 }
 
 process.exit(0);

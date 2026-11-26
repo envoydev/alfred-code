@@ -68,8 +68,8 @@ test('the checkpoint review read keeps a merge and the index, reads a brand-new 
             const perFile = (files) => files.map((f) => unit.replace('<file-1>', f)).join('; ');
             const floor = path.join(os.tmpdir(), `sd-review-floor-${process.pid}.jsonl`);
             fs.writeFileSync(floor, JSON.stringify({ type: 'user', entrypoint: 'cli', version: '2.1.322' }) + '\n');
-            const guard = (payload) => spawnSync(process.execPath, [path.join(ROOT, 'stack', 'hooks', 'guard-secret-value.js')], { cwd: repo, encoding: 'utf8',
-                input: JSON.stringify({ tool_name: 'Bash', session_id: 'suite', cwd: repo, transcript_path: floor, ...payload }), env: { ...process.env, CLAUDE_PROJECT_DIR: repo } });
+            const guard = (payload) => require('./hook-test-env').legacyBlock(spawnSync(process.execPath, [path.join(ROOT, 'stack', 'hooks', 'guard-secret-value.js')], { cwd: repo, encoding: 'utf8',
+                input: JSON.stringify({ tool_name: 'Bash', session_id: 'suite', cwd: repo, transcript_path: floor, ...payload }), env: { ...process.env, CLAUDE_PROJECT_DIR: repo } }));
             const refused = guard({ tool_input: { command: perFile(listed) } });
             assert.strictEqual(refused.status, 2, 'the call naming the credential file is refused');
             assert.match(refused.stderr, /--presence ".*\.env"/, 'the denial names the file and the presence read');

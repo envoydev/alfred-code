@@ -9,7 +9,7 @@ const { execFileSync } = require('node:child_process');
 const docs = require('./install/docs.js');
 const copy = require('./install/copy.js');
 const stampLib = require('./install/stamp.js');
-const { rankVersioning, seedLeaves } = require('./install/versioning/rank.js');
+const { rankVersioning, seedLeaves, chainAnswers } = require('./install/versioning/rank.js');
 const { effectiveVersioning } = require('./install/versioning/effects.js');
 const { putWorkspace } = require('./workspace-fixture.js');
 const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
@@ -271,4 +271,85 @@ test('an install reads the docs versioning seed rule once, through the ranked ad
     });
     assert.match(steps[0], /^ALFRED_CODE_DOCS_VERSIONING=git$/m, 'the seed still lands');
     assert.strictEqual(fs.existsSync(log) ? fs.readFileSync(log, 'utf8').length : 0, 0, 'no second read of the seed rule');
+});
+
+// P1 (parked fixes): when the advice read fails, the run seeds no docs versioning, and its note says so and that the next run seeds it.
+test('a failed advice read says no docs versioning is seeded this run and that the next run seeds it', POSIX_ONLY, () =>
+{
+    const spy = path.join(TMP, 'advice-fail.js');
+    fs.writeFileSync(spy, `const docs = require(${JSON.stringify(path.join(__dirname, 'install', 'docs.js'))});\n`
+        + `docs.docsVersioningAdvice = () => { throw new Error('advice down'); };\n`);
+    const { outs, steps } = seedRun(['install', 'update'], 'skill javascript\n', {
+        env: [{ NODE_OPTIONS: `--require ${spy}` }, {}],
+        each: (repo) => { try { return fs.readFileSync(path.join(repo, '.alfred', '.variables'), 'utf8'); } catch { return ''; } },
+    });
+    const note = outs[0].split('\n').find((l) => l.includes('the docs versioning could not be read (advice down)'));
+    assert.ok(note, outs[0]);
+    assert.match(note, /no docs versioning is seeded this run, the next run seeds it/);
+    assert.doesNotMatch(steps[0], /ALFRED_CODE_DOCS_VERSIONING/, 'the failed run seeds none');
+    assert.match(steps[1], /^ALFRED_CODE_DOCS_VERSIONING=git$/m, 'the next run seeds it');
+});
+
+// P7 (parked fixes): the remover reads the line as the ranking does, so `Local` over a `local` ledger row is the seed in both.
+test('the remover and the ranking agree on a seed typed with another case', () =>
+{
+    const ws = require('./install/workspace.js');
+    const stamp = `sha: x\nmanaged-env: .variables:${KEY}=${stampLib.valueHash('local')}\n`;
+    const at = joined({ root: `${KEY}=git\n`, child: `${KEY}=Local\n`, childStamp: stamp });
+    assert.strictEqual(rank(at, { advice: undefined }).source, 'chain', 'the ranking takes the line for the seed');
+    const result = ws.pruneVersioningSeed(at.child, { env: ON, advice: { value: 'local', firm: false }, answeredEnv: [], log: () => {} });
+    assert.deepStrictEqual([result.dropped, result.kept], [true, null], 'the remover does the same');
+    assert.doesNotMatch(fs.readFileSync(path.join(at.child, '.alfred', '.variables'), 'utf8'), /ALFRED_CODE_DOCS_VERSIONING/);
+});
+
+// P5 (parked fixes, review round 1): at local scope over a tracked `.variables`, the flag is held only when that file holds
+// the key with another value - the file the team shares answers only for a key it holds.
+const TRACKED_LINE = /!! variables: ALFRED_CODE_DOCS_VERSIONING - \.variables is tracked here/;
+const trackedVariables = (line) => (repo) =>
+{
+    fs.mkdirSync(path.join(repo, '.alfred'), { recursive: true });
+    fs.writeFileSync(path.join(repo, '.alfred', '.variables'), `ALFRED_CODE_HISTORY=5\n${line}`);
+    execFileSync('git', ['-C', repo, 'add', '-f', '.alfred/.variables']);
+};
+const localRun = (flag, line = '') => seedRun('install', 'skill javascript\n', {
+    args: ['--scope', 'local', '--docs-versioning', flag], prepare: trackedVariables(line),
+    inspect: (repo) => ((JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.local.json'), 'utf8')).env || {}).ALFRED_CODE_DOCS_VERSIONING),
+});
+
+test('a --docs-versioning over a tracked .variables that does not hold the key is not held, and the local settings take it', POSIX_ONLY, () =>
+{
+    for (const flag of ['git', 'local'])
+    {
+        const run = localRun(flag);
+        assert.doesNotMatch(run.out, TRACKED_LINE, flag);
+        assert.strictEqual(run.result, flag, flag);
+    }
+});
+
+test('a --docs-versioning equal to the tracked .variables line is not held', POSIX_ONLY, () =>
+{
+    assert.doesNotMatch(localRun('local', 'ALFRED_CODE_DOCS_VERSIONING=local\n').out, TRACKED_LINE);
+});
+
+test('a tracked .variables line with no valid value counts as no line: the flag is not held', POSIX_ONLY, () =>
+{
+    for (const line of ['ALFRED_CODE_DOCS_VERSIONING=\n', 'ALFRED_CODE_DOCS_VERSIONING=bogus\n'])
+    {
+        const run = localRun('local', line);
+        assert.doesNotMatch(run.out, TRACKED_LINE, line);
+        assert.strictEqual(run.result, 'local', line);
+    }
+});
+
+test('a --docs-versioning that differs from the tracked .variables line is held and named', POSIX_ONLY, () =>
+{
+    assert.match(localRun('git', 'ALFRED_CODE_DOCS_VERSIONING=local\n').out, TRACKED_LINE);
+});
+
+test('chainAnswers: the chain answers unless the child holds a firm answer that differs', () =>
+{
+    assert.strictEqual(chainAnswers({ chain: 'local', advice: { value: 'git', firm: false } }), 'local');
+    assert.strictEqual(chainAnswers({ chain: 'local', advice: { value: 'local', firm: true } }), 'local');
+    assert.strictEqual(chainAnswers({ chain: 'git', advice: { value: 'local', firm: true } }), undefined);
+    assert.strictEqual(chainAnswers({ chain: undefined, advice: { value: 'local', firm: true } }), undefined);
 });

@@ -6,7 +6,7 @@
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
 require('./hook-test-env').isolateHookSuite();
-const { reviewedTranscript } = require('./hook-test-env');
+const { reviewedTranscript, legacyBlock } = require('./hook-test-env');
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint never decides a hook case
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -36,7 +36,7 @@ function project() {
     write('src/a.cs', 'seed\n');
     git('add', '-A'); git('commit', '-qm', 'seed');
     const env = { ...process.env, CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_DOCS_PATH: DOCS };
-    const run = (hook, payload, extra = {}) => spawnSync(process.execPath, [path.join(HOOKS, hook)], { cwd: dir, input: JSON.stringify(payload), encoding: 'utf8', env: { ...env, ...extra } });
+    const run = (hook, payload, extra = {}) => legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, hook)], { cwd: dir, input: JSON.stringify(payload), encoding: 'utf8', env: { ...env, ...extra } }));
     const start = (s, source = 'startup') => run('docs-session.js', { hook_event_name: 'SessionStart', session_id: s, source, cwd: dir });
     const bash = (s, command, extra) => run('guard-ungated-commit.js', { hook_event_name: 'PreToolUse', tool_name: 'Bash', session_id: s, cwd: dir, tool_input: { command }, transcript_path: REVIEWED }, extra);
     const head = () => git('rev-parse', 'HEAD').stdout.trim();
@@ -142,7 +142,7 @@ test('stage 1 B7: a staged credential is still refused at commit', () => {
         const r = p.bash('s5', 'git commit -m x');
         assert.strictEqual(r.status, 2, 'the staged-diff scan refuses the commit');
         assert.match(r.stderr, /a credential-shaped literal/);
-        assert.match(r.stderr, /STAGED-SCAN-ALLOW/, 'and names its own receipt');
+        assert.match(r.stderr, /the user decides - they run the commit themselves/, 'and leaves the call to the user');
     } finally { p.rm(); }
 });
 

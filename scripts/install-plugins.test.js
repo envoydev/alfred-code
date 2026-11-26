@@ -1275,7 +1275,7 @@ test('seed: copy -> plugin -> copy hands the plugin route\'s hooks back, never a
     const copies = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' };
     // The installer's own list, so a module added there is never a stack hook here.
     const MODULES = require('./install/alfred-code.js').HOOK_MODULES;
-    for (const f of ['mode-settings.js', 'json-file.js', 'reply-budget.js', 'rules-summary.js']) assert.ok(MODULES.includes(f) && fs.existsSync(path.join(ROOT, 'stack', 'hooks', f)), f);
+    for (const f of ['mode-settings.js', 'json-file.js', 'reply-budget.js', 'rules-summary.js', 'cross-read.js']) assert.ok(MODULES.includes(f) && fs.existsSync(path.join(ROOT, 'stack', 'hooks', f)), f);
     const read = (repo) => ({
         files: fs.readdirSync(path.join(repo, '.claude', 'hooks')),
         off: hooksOffOf(repo),
@@ -1368,8 +1368,8 @@ test('seed: the copied hooks run as CommonJS in a "type": "module" project, on b
             return { file, status: r.status, stderr: r.stderr };
         });
         const rm = fs.existsSync(path.join(hooks, 'guard-catastrophic-rm.js'))
-            ? spawnSync(process.execPath, [path.join(hooks, 'guard-catastrophic-rm.js')], { cwd: repo, env, encoding: 'utf8',
-                input: JSON.stringify({ session_id: 'esm', cwd: repo, hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'rm -rf ~' } }) }).status
+            ? require('./hook-test-env').verdictOf(spawnSync(process.execPath, [path.join(hooks, 'guard-catastrophic-rm.js')], { cwd: repo, env, encoding: 'utf8',
+                input: JSON.stringify({ session_id: 'esm', cwd: repo, hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'rm -rf ~' } }) }))
             : null;
         const marker = path.join(hooks, 'package.json');
         return { runs, rm, marker: fs.existsSync(marker) ? fs.readFileSync(marker, 'utf8') : null };
@@ -1382,7 +1382,7 @@ test('seed: the copied hooks run as CommonJS in a "type": "module" project, on b
         assert.deepStrictEqual(JSON.parse(r.marker || 'null'), { type: 'commonjs' }, `${route} route: the CommonJS marker is written beside the copies`);
         for (const run of r.runs) assert.strictEqual(run.status, 0, `${route} route, ${run.file}: ${run.stderr}`);
     }
-    assert.strictEqual(copyRoute.rm, 2, 'copy route: the copied guard still BLOCKS rm -rf ~ (exit 2, never the fail-open 1)');
+    assert.strictEqual(copyRoute.rm, 'ask', 'copy route: the copied guard still BLOCKS rm -rf ~ (an ask, never the fail-open 1)');
     // the user's own package.json in that folder is theirs: kept byte for byte, and the run says why
     const own = '{ "type": "module", "private": true }\n';
     const kept = seedRun('install', 'skill markdown-style\n', { plugins: listing,

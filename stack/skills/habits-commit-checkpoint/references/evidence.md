@@ -85,7 +85,7 @@ one audited session took the atomic shape, and two of those left the receipt unc
 
 ## Why a sibling repo is never offered as an option
 
-Measured before the CROSS-WRITE-ALLOW receipt existed: an ask presented a sibling-repo commit +
+Measured while a cross-project allow receipt still existed: an ask presented a sibling-repo commit +
 push + PR as its `(Recommended)` option, the user took it, and the cross-project write guard denied
 it at the first git verb - the run recommended a route the stack bans.
 

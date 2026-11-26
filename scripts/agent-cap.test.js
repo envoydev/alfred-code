@@ -4,6 +4,7 @@
 // deny, the start and stop events, the Stop reconcile and its one continuation, and the line the flows read.
 const test = require('node:test');
 require('./hook-test-env').isolateHookSuite({ ownTmp: true });
+const { verdictOf, legacyBlock } = require('./hook-test-env');
 delete process.env.CLAUDE_CODE_ENTRYPOINT;
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -385,7 +386,13 @@ const agentPayload = (root, { sid = 's1', id = 'toolu_x', seat = 'aspnet-verifie
     tool_input: { subagent_type: seat, prompt: 'review the change', description: 'review' },
     ...(agent ? { agent_id: agent, agent_type: agentType } : {}), ...extra,
 });
-const callHook = (hook, root, payload, env = {}) => spawnSync(process.execPath, [hook], { input: JSON.stringify(payload), encoding: 'utf8', env: hookEnv(root, env) });
+// `status` is the hook's decision as one word (verdictOf): 0, 'ask' or 'deny'; an ask's or a deny's `stderr` is the guard's own reason.
+const callHook = (hook, root, payload, env = {}) =>
+{
+    const r = spawnSync(process.execPath, [hook], { input: JSON.stringify(payload), encoding: 'utf8', env: hookEnv(root, env) });
+    const verdict = verdictOf(r);
+    return { ...r, status: verdict, stderr: verdict ? legacyBlock(r).stderr : r.stderr };
+};
 const regOf = (root, sid = 's1') => cap.openRegistry(root, sid, {});
 const runningFiles = (reg, types, extra = {}) => types.forEach((type, i) => put(reg, 'R', `run${i}`, { type, at: Date.now(), parent: '', ...extra }));
 const pendings = (reg) => names(reg).filter((n) => n.includes('-P-'));
@@ -408,15 +415,21 @@ test('the deny: a sixth agent while five run, the key unset (AC1)', () =>
     const reg = regOf(root);
     runningFiles(reg, ['Explore', 'Plan', 'alfred-code:aspnet-verifier', 'general-purpose', 'Explore']);
     const r = callHook(GUARD, root, agentPayload(root));
-    assert.strictEqual(r.status, 2, r.stderr);
+    assert.strictEqual(r.status, 'ask', r.stderr);
     assert.match(r.stderr, /^5 of this session's agents are running and ALFRED_CODE_MAXIMUM_RUN_AGENTS is 5: /);
     for (const t of ['Explore', 'Plan', 'alfred-code:aspnet-verifier', 'general-purpose']) assert.ok(r.stderr.includes(t), t);
     assert.match(r.stderr, /\nDispatch this one when one hands back - its notice wakes you - and send the rest of a fan-out the same way\.\n/);
     assert.match(r.stderr, /\nThe setting is the user's - never change it yourself\./);
     assert.doesNotMatch(r.stderr, /lift|=0|\b0\b/, 'the denial never says how to lift the cap');
     assert.deepStrictEqual(blockRows(root).map((row) => row.detail && row.detail.branch), ['agent-cap']);
-    assert.ok(fs.existsSync(cap.deniedOf(reg)), 'a main-session denial writes .denied');
+    assert.ok(!fs.existsSync(cap.deniedOf(reg)), 'an ask writes no .denied: the Stop would send the dispatch again over the user\'s answer');
     assert.deepStrictEqual(pendings(reg), []);
+    const noOne = project();
+    const noReg = regOf(noOne);
+    runningFiles(noReg, ['Explore', 'Plan', 'alfred-code:aspnet-verifier', 'general-purpose', 'Explore']);
+    const d = callHook(GUARD, noOne, agentPayload(noOne, { extra: { permission_mode: 'dontAsk' } }));
+    assert.strictEqual(d.status, 'deny', d.stderr);
+    assert.ok(fs.existsSync(cap.deniedOf(noReg)), 'a main-session deny writes .denied');
 });
 
 test('the deny: the type list stops at eight names, then the count of the rest', () =>
@@ -425,7 +438,7 @@ test('the deny: the type list stops at eight names, then the count of the rest',
     const reg = regOf(root);
     runningFiles(reg, Array.from({ length: 10 }, (_, i) => `seat-${i}`));
     const r = callHook(GUARD, root, agentPayload(root), { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '10' });
-    assert.strictEqual(r.status, 2);
+    assert.strictEqual(r.status, 'ask');
     assert.match(r.stderr.split('\n')[0], /: (?:seat-\d, ){7}seat-\d and 2 more$/);
 });
 
@@ -434,28 +447,49 @@ test('8 dispatches at once at cap 5 on an empty registry: 5 pass, 3 are denied (
     const root = project();
     const codes = await Promise.all(Array.from({ length: 8 }, (_, i) => new Promise((resolve) =>
     {
-        const c = spawn(process.execPath, [GUARD], { env: hookEnv(root), stdio: ['pipe', 'ignore', 'ignore'] });
-        c.on('close', resolve);
+        const c = spawn(process.execPath, [GUARD], { env: hookEnv(root), stdio: ['pipe', 'pipe', 'ignore'] });
+        let stdout = '';
+        c.stdout.on('data', (chunk) => { stdout += chunk; });
+        c.on('close', (status) => resolve(verdictOf({ status, stdout })));
         c.stdin.end(JSON.stringify(agentPayload(root, { id: `toolu_${i}` })));
     })));
-    assert.deepStrictEqual(codes.sort(), [0, 0, 0, 0, 0, 2, 2, 2]);
+    assert.deepStrictEqual(codes.sort(), [0, 0, 0, 0, 0, 'ask', 'ask', 'ask']);
     assert.strictEqual(pendings(regOf(root)).length, 5);
 });
 
-test('a dispatch another rule denies holds no slot (AC5)', () =>
+test('an ask drops the cap\'s pending file as a deny does: a declined dispatch holds no slot (AC5)', () =>
+{
+    const asked = project();
+    const r = callHook(GUARD, asked, agentPayload(asked, { seat: 'aspnet-implementer' }));
+    assert.strictEqual(r.status, 'ask');
+    assert.match(r.stderr, /without an approval gate/);
+    assert.deepStrictEqual(pendings(regOf(asked)), [], 'only a dispatch that starts holds a slot');
+    const denied = project();
+    const d = callHook(GUARD, denied, agentPayload(denied, { seat: 'aspnet-implementer', extra: { permission_mode: 'dontAsk' } }));
+    assert.strictEqual(d.status, 'deny');
+    assert.match(d.stderr, /without an approval gate/);
+    assert.deepStrictEqual(pendings(regOf(denied)), [], 'a dispatch another rule denies holds no slot');
+});
+
+test('declined asks fill no cap slot: the next dispatch gets its own reason, not the cap prompt (AC5)', () =>
 {
     const root = project();
-    const r = callHook(GUARD, root, agentPayload(root, { seat: 'aspnet-implementer' }));
-    assert.strictEqual(r.status, 2);
-    assert.match(r.stderr, /without an approval gate/);
+    for (let i = 0; i < 6; i += 1)
+    {
+        const r = callHook(GUARD, root, agentPayload(root, { id: `toolu_${i}`, seat: 'aspnet-implementer' }));
+        assert.strictEqual(r.status, 'ask', r.stderr);
+        assert.match(r.stderr, /without an approval gate/, `dispatch ${i} reads its own reason`);
+        assert.doesNotMatch(r.stderr, /agents are running/);
+    }
     assert.deepStrictEqual(pendings(regOf(root)), []);
+    assert.strictEqual(callHook(GUARD, root, agentPayload(root, { id: 'toolu_ok' })).status, 0, 'a plain dispatch still passes under the cap');
 });
 
 test('the boundary: at exactly the cap denied, one under it passes (AC6)', () =>
 {
     const at = project();
     runningFiles(regOf(at), ['Explore', 'Plan', 'Explore']);
-    assert.strictEqual(callHook(GUARD, at, agentPayload(at), { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '3' }).status, 2);
+    assert.strictEqual(callHook(GUARD, at, agentPayload(at), { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '3' }).status, 'ask');
     const under = project();
     runningFiles(regOf(under), ['Explore', 'Plan']);
     assert.strictEqual(callHook(GUARD, under, agentPayload(under), { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '3' }).status, 0);
@@ -528,7 +562,7 @@ test('nested: a seat\'s own dispatch is capped like the main session\'s (AC14)',
     const one = project();
     runningFiles(regOf(one), ['alfred-code:issue-diagnoser-ci']);
     const r = callHook(GUARD, one, seatCall(one), { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '1' });
-    assert.strictEqual(r.status, 2);
+    assert.strictEqual(r.status, 'ask');
     assert.match(r.stderr, /\nDo this step yourself - the session is at its cap\./);
     assert.ok(!fs.existsSync(cap.deniedOf(regOf(one))), 'a seat\'s denial writes no .denied');
 });
@@ -546,7 +580,7 @@ test('a resume through SendMessage is judged against the cap (AC17)', () =>
     const send = (root, to, env) => callHook(GUARD, root, { hook_event_name: 'PreToolUse', tool_name: 'SendMessage', tool_use_id: 'toolu_m', session_id: 's1', cwd: root, tool_input: { to, message: 'go on' } }, env);
     const full = setup();
     const r = send(full.root, 'old', { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '2' });
-    assert.strictEqual(r.status, 2);
+    assert.strictEqual(r.status, 'ask');
     assert.match(r.stderr, /^2 of this session's agents are running and ALFRED_CODE_MAXIMUM_RUN_AGENTS is 2: /);
     const room = setup();
     assert.strictEqual(send(room.root, 'old', { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '3' }).status, 0);
@@ -554,7 +588,7 @@ test('a resume through SendMessage is judged against the cap (AC17)', () =>
     assert.strictEqual(JSON.parse(fs.readFileSync(path.join(room.reg.dir, p), 'utf8')).type, 'alfred-code:aspnet-verifier');
     const named = setup();
     const byName = send(named.root, 'researcher', { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '2' });
-    assert.strictEqual(byName.status, 2, 'a name at the cap is refused (R087)');
+    assert.strictEqual(byName.status, 'ask', 'a name at the cap is refused (R087)');
     assert.match(byName.stderr, /the cap is full - wait for an agent to finish, then send it\./);
     assert.deepStrictEqual(pendings(named.reg), []);
     assert.deepStrictEqual(blockRows(named.root).map((r) => [r.detail.branch, r.detail.byName]), [['agent-cap', true]]);
@@ -570,14 +604,14 @@ test('a SendMessage by name one under, at and one over the cap, with no cap, or 
     const under = two();
     assert.strictEqual(send(under, 'researcher', { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '3' }).status, 0, 'one under the cap passes');
     assert.deepStrictEqual(anyCapFile(under), [], 'no pending file, no .denied');
-    assert.strictEqual(send(two(), 'researcher', { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '2' }).status, 2, 'at the cap is refused');
+    assert.strictEqual(send(two(), 'researcher', { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '2' }).status, 'ask', 'at the cap is refused');
     const over = send(two(), 'researcher', { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '1' });
-    assert.strictEqual(over.status, 2, 'one over the cap is refused');
+    assert.strictEqual(over.status, 'ask', 'one over the cap is refused');
     assert.match(over.stderr, /^2 of this session's agents are running and ALFRED_CODE_MAXIMUM_RUN_AGENTS is 1/);
     assert.strictEqual(send(two(), 'researcher', { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '0' }).status, 0, 'no cap passes');
     const seatRoot = two();
     const seat = send(seatRoot, 'researcher', { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '2' }, { agent_id: 'a0123456789abcdef' });
-    assert.strictEqual(seat.status, 2, 'a seat at the cap is refused');
+    assert.strictEqual(seat.status, 'ask', 'a seat at the cap is refused');
     assert.match(seat.stderr, /the cap is full - wait for an agent to finish, then send it\./);
     assert.deepStrictEqual(anyCapFile(seatRoot).filter((n) => n.endsWith('.denied')), [], 'a seat never writes .denied');
 });
@@ -601,7 +635,7 @@ test('without agent-cap.js beside them the hooks run unchanged (AC16)', () =>
     const root = project();
     const guard = path.join(dir, 'guard-unapproved-dispatch.js');
     const denied = callHook(guard, root, agentPayload(root, { seat: 'aspnet-implementer' }));
-    assert.strictEqual(denied.status, 2);
+    assert.strictEqual(denied.status, 'ask');
     assert.match(denied.stderr, /without an approval gate/);
     const other = callHook(guard, root, agentPayload(root));
     assert.strictEqual(other.status, 0);
@@ -807,7 +841,7 @@ test('a resume by agent id is judged after its stopped file is gone - past 2 min
     const full = project();
     runningFiles(regOf(full), ['Explore', 'Plan']);
     const r = send(full, ID, { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '2' });
-    assert.strictEqual(r.status, 2, 'an id-shaped `to` naming no counted agent is a resume');
+    assert.strictEqual(r.status, 'ask', 'an id-shaped `to` naming no counted agent is a resume');
     assert.match(r.stderr, /^2 of this session's agents are running and ALFRED_CODE_MAXIMUM_RUN_AGENTS is 2: /);
     const room = project();
     runningFiles(regOf(room), ['Explore']);
@@ -817,6 +851,6 @@ test('a resume by agent id is judged after its stopped file is gone - past 2 min
     const named = project();
     runningFiles(regOf(named), ['Explore', 'Plan']);
     const late = send(named, 'researcher', { ALFRED_CODE_MAXIMUM_RUN_AGENTS: '2' });
-    assert.strictEqual(late.status, 2, 'a name at the cap is refused (R087)');
+    assert.strictEqual(late.status, 'ask', 'a name at the cap is refused (R087)');
     assert.match(late.stderr, /the cap is full - wait for an agent to finish, then send it\./);
 });

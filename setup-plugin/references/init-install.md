@@ -93,8 +93,16 @@ Project mode - detect stacks by artifact and record which apply (this detection 
 
 The marker list is `$TMP/repo/setup-plugin/references/stack-detection.md`, read with this file - apply every bullet, its suppressions included.
 
+Before the scans, which joined children this run includes (a root is usually installed first, so there are rarely any):
+
+```bash
+node "$TMP/repo/scripts/workspace.js" include --root . > "$TMP/include.txt" 2>&1 ; grep -E '^(included|set-aside|unasked|below|unattended|!!)' "$TMP/include.txt" && cat "$TMP/include.txt" "$TMP/repo/setup-plugin/references/workspace-include.md"
+```
+
+Nothing printed: go on. Otherwise follow `workspace-include.md`, printed with it.
+
 Alongside the stack scan, run the EVIDENCE scan quietly - one call, one narration line:
-`node "$TMP/repo/scripts/scan-evidence.js" --root . --catalog "$TMP/repo/meta/evidence.json" --out "$TMP/found.json"`. Add `--role root` when the role ask was answered Root (the role is written only at step 10). A deterministic read of the project's package manifests (csproj / Directory.Packages.props / package.json) against the signal catalog. Its `found` map feeds the walk's tables via `--found` and pre-selects what the project provably uses; the conclusions are computed from THIS project's files, never assumed. A `!!` line from it goes to the user in the stacks step, with the `root:` it read.
+`node "$TMP/repo/scripts/scan-evidence.js" --root . --catalog "$TMP/repo/meta/evidence.json" --out "$TMP/found.json"`. Add `--role root` when the role ask was answered Root (the role is written only at step 10), and `--children <csv|none>` as `workspace-include.md` says. It reads the project's package manifests (csproj / Directory.Packages.props / package.json) against the signal catalog. Its `found` map feeds the walk's tables via `--found` and pre-selects what the project provably uses, computed from the files of this project and its included children. A `!!` line from it goes to the user in the stacks step, with the `root:` it read.
 
 A project can match several. Report the detected stacks and put the confirmation through AskUserQuestion (the stacks template below - an add or a remove is picked from options, never typed) - the walk starts IMMEDIATELY after this answer, no other question in between:
 
@@ -230,8 +238,7 @@ keys outside the catalog and the plugin's own settings survive.
 **The card restates the OUTCOME of every step that took a decision** - one line each, in step
 order, naming what was chosen and what it did ('git hygiene: `.git/info/exclude` - `.claude/`
 ignored locally, nothing committed; `.alfred/` ignores its own machine state'). A decision the user made mid-run and the card
-leaves out is a decision they ask about again (measured: a git-hygiene answer was stated once
-mid-run, omitted from the close, and re-asked twice over four extra messages).
+leaves out is a decision they ask about again.
 
 **The run closes on a suggestion card, never on a question.** The steps below that are the
 USER's to run - the restart, the account-file credential line, `/alfred-code:init` - are listed
@@ -239,11 +246,7 @@ as suggestions, the one everything depends on first and each with
 the one reason it matters, SCOPED to what actually needs it ('Reload the session - skills, agents
 and the always-on rules are inventoried at launch'). Do not say
 nothing is live until the reload: hooks and the settings `env` are read per invocation and are
-live on the next tool call, which `meta/environment.json`'s own comment states and a measured run
-proved twice in one session (a hook installed at 08:12:53 fired at 08:21:15; an env flip produced
-its first ledger row 7.9 s later and covered 17 of 17 following calls). A claim about the stack's
-own behaviour that overshoots is the same defect as one the stack never states - the model invents
-the rest. No AskUserQuestion over them: the walk's asks end
+live on the next tool call, which `meta/environment.json`'s own comment states. No AskUserQuestion over them: the walk's asks end
 with the installer, and the closing ask over follow-ups was dropped as friction - the user's
 call, made knowing a prose next step was ignored 3 of 3 in one audited session, which is why the
 reason rides beside every step. The gitignore write in item 1 keeps its own consent ask - it is
@@ -253,8 +256,7 @@ finished close; without it a 'done + next step' card is blocked as a stall and t
 the very ask this paragraph removes.
 The line is CONDITIONAL: print it only when the card carries nothing OWED. A still-required user
 action - revoke the old token, fill in a credential, run a rotation - IS pending, so name it and
-put the close through the ask instead (measured: one close stated 'Still owed: revoke the old
-token in Sentry's dashboard' and this line in the same message).
+put the close through the ask instead.
 
 Report, read-only, whether the default branch is protected when a forge tool this session has can read it (GitHub `gh api repos/{owner}/{repo}/branches/<branch> --jq .protected`, GitLab `glab api projects/:fullpath/protected_branches/<branch>`, an MCP branch read) - one card line, 'not read' when nothing can; never change a forge setting. The publish gate is what holds the branch either way.
 

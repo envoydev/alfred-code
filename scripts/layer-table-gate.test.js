@@ -5,7 +5,8 @@ const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
 // The hook writes its block row under CLAUDE_PROJECT_DIR || cwd: every spawn runs in the suite's own project, or the
 // rows land in the checkout's real ledger (audit 2026-10-08: 494 nosession.jsonl rows were this suite's).
-const { project } = require('./hook-test-env').isolateHookSuite();
+const { project } = require('./hook-test-env').isolateHookSuite({ ownTmp: true });
+const { verdictResult, verdictOf, blockText, askText, legacyBlock } = require('./hook-test-env');
 const inProject = (env = {}) => ({ cwd: project, env: { ...process.env, CLAUDE_PROJECT_DIR: project, ...env } });
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -27,7 +28,7 @@ function run(rows, input = ask, env = {}) {
   const p = path.join(TMP, `${Math.random().toString(36).slice(2)}.jsonl`);
   fs.writeFileSync(p, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
   const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ tool_name: 'AskUserQuestion', tool_input: input, transcript_path: p }), encoding: 'utf8', ...inProject(env) });
-  return { status: r.status, stderr: r.stderr };
+  return verdictResult({ status: r.status, stdout: r.stdout, stderr: r.stderr });
 }
 
 // F4 (the 2026-10-28 workspace run): the ask's own message reaches the transcript only after the PreToolUse hooks finish
@@ -35,11 +36,15 @@ function run(rows, input = ask, env = {}) {
 // disk, and a failed check replaces the answers through `updatedToolOutput`: the stored result carries the marker every
 // reader below already counts. runPost writes the ask's own call row, as Claude Code has by then.
 const ANS = { questions: ask.questions, answers: { 'Keep as shown?': 'Recommended' }, annotations: {} };
-function runPost(rows, toolResponse = ANS, env = {}, input = ask) {
+// Every call gets a session of its own unless the case names one: the hold's printed-table marker is keyed on the session and the
+// table call's id, so a shared id would carry one case's marker into the next. A case that spans a hold and its answer names it.
+const freshSession = () => `lt-${Math.random().toString(36).slice(2)}`;
+const markerOf = (session, id) => path.join(os.tmpdir(), `alfred-layer-printed-${session}-${id}`);
+function runPost(rows, toolResponse = ANS, env = {}, input = ask, session = freshSession()) {
   const p = path.join(TMP, `${Math.random().toString(36).slice(2)}.jsonl`);
   fs.writeFileSync(p, [...rows, call('a9', 'AskUserQuestion', input)].map((r) => JSON.stringify(r)).join('\n') + '\n');
   const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'PostToolUse', tool_name: 'AskUserQuestion', tool_input: input,
-    tool_use_id: 'a9', tool_response: toolResponse, transcript_path: p }), encoding: 'utf8', ...inProject(env) });
+    session_id: session, tool_use_id: 'a9', tool_response: toolResponse, transcript_path: p }), encoding: 'utf8', ...inProject(env) });
   return { status: r.status, stdout: r.stdout, stderr: r.stderr, out: r.stdout.trim() ? JSON.parse(r.stdout) : null };
 }
 const voided = (r) => r.status === 0 && !!r.out && r.out.decision === 'block';
@@ -133,7 +138,7 @@ test('a voided ask leaves the next --emit denied', () => {
   const rows = [typed('/alfred-code:init'), ...walked('rules'), tbl('agents'), result('t-agents', 'total: 43 agents'),
     call('a1', 'AskUserQuestion', layerAsk('Agents: keep the marked rows?')), result('a1', voidText)];
   const r = runBash(rows, EMIT);
-  assert.strictEqual(r.status, 2, r.stderr);
+  assert.strictEqual(r.status, 'ask', r.stderr);
   assert.match(r.stderr, /agents ask never happened/);
 });
 
@@ -157,23 +162,93 @@ test('PreToolUse with no tool_use id never waits, and judges no paste', () => {
 // but lands 444-539 ms into it - F4's 'only after the PreToolUse hooks finish' no longer holds. So the paste check runs
 // before the ask is shown: the hook waits for the ask's own row, and an unpasted table holds the ask (the table printed
 // for the user) instead of voiding an answer.
-function runPre(rows, id = 'a9', input = ask, env = {}) {
+function runPre(rows, id = 'a9', input = ask, env = {}, session = freshSession(), extra = {}) {
   const p = path.join(TMP, `${Math.random().toString(36).slice(2)}.jsonl`);
   fs.writeFileSync(p, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
-  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: input, tool_use_id: id, transcript_path: p }), encoding: 'utf8', ...inProject(env) });
+  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: input, session_id: session, tool_use_id: id, transcript_path: p, ...extra }), encoding: 'utf8', ...inProject(env) });
   return { status: r.status, out: r.stdout.trim() ? JSON.parse(r.stdout) : null, stderr: r.stderr };
 }
+const HOLD_PROMPT = /^alfred-code guard-layer-table: the agents table ran but its output is not in the message above - the gate printed the table for the user\./;
 test('PreToolUse holds an unpasted ask before the user sees it, printing the table; a pasted one and the re-ask pass (A8)', () => {
   const own = [say('[step 6/12 - agents] the agents step.'), call('a9', 'AskUserQuestion', ask)];
-  const held = runPre([...UNPASTED(), ...own]);
-  assert.strictEqual(held.status, 0);
+  const session = freshSession();
+  const held = runPre([...UNPASTED(), ...own], 'a9', ask, {}, session);
+  try {
+    assert.strictEqual(held.status, 0);
+    assert.strictEqual(held.out.hookSpecificOutput.permissionDecision, 'ask');
+    const reason = held.out.hookSpecificOutput.additionalContext.split('If the user declined: ')[1];
+    assert.match(reason, /^the agents table ran but its output is not in the message above - the gate printed the table for the user\. Send this same ask again, unchanged/);
+    assert.match(held.out.hookSpecificOutput.permissionDecisionReason, HOLD_PROMPT);
+    assert.doesNotMatch(held.out.hookSpecificOutput.permissionDecisionReason, /held before the user saw it|layer-table gate: alfred-code/, 'the prompt names the hold once, in the user\'s words');
+    assert.match(held.out.systemMessage, / 1 {2}x/, 'the table is printed for the user');
+    const pasted = runPre([...UNPASTED(), say('```\n 1  x\ntotal: 43 agents - if fewer\n```'), call('a9', 'AskUserQuestion', ask)]);
+    assert.strictEqual(pasted.out, null, 'a pasted table: the ask is shown');
+  } finally { fs.rmSync(markerOf(session, 't1'), { force: true }); }
+});
+
+// The hold's ask prints the table beside it, and that print is the printed-table marker: the answer is not voided after a Yes
+// (the table was on screen), and a re-send after a No is not held again.
+test('a Yes to the hold\'s ask is not voided at PostToolUse', () => {
+  const own = [say('[step 6/12 - agents] the agents step.'), call('a9', 'AskUserQuestion', ask)];
+  const session = freshSession();
+  try {
+    assert.strictEqual(runPre([...UNPASTED(), ...own], 'a9', ask, {}, session).out.hookSpecificOutput.permissionDecision, 'ask');
+    const after = runPost([...UNPASTED(), ...own.slice(0, 1)], ANS, {}, ask, session);
+    assert.ok(!voided(after), after.stdout);
+    assert.ok(!('updatedToolOutput' in ((after.out && after.out.hookSpecificOutput) || {})), 'the answer is kept');
+    assert.ok(voided(runPost([...UNPASTED(), ...own.slice(0, 1)], ANS)), 'control: with no hold before it, the unpasted table voids the answer');
+  } finally { fs.rmSync(markerOf(session, 't1'), { force: true }); }
+});
+
+test('a No to the hold\'s ask is not held forever: the re-send passes', () => {
+  const own = [say('[step 6/12 - agents] the agents step.'), call('a9', 'AskUserQuestion', ask)];
+  const session = freshSession();
+  try {
+    assert.strictEqual(runPre([...UNPASTED(), ...own], 'a9', ask, {}, session).out.hookSpecificOutput.permissionDecision, 'ask');
+    const declined = result('a9', "The user doesn't want to proceed with this tool use. The tool use was rejected.", true);
+    const resent = runPre([...UNPASTED(), ...own, declined, call('a10', 'AskUserQuestion', ask)], 'a10', ask, {}, session);
+    assert.strictEqual(resent.out, null, 'the re-send after a No reaches the user');
+    assert.strictEqual(runPre([...UNPASTED(), ...own, declined, call('a10', 'AskUserQuestion', ask)], 'a10').out.hookSpecificOutput.permissionDecision, 'ask', 'control: another session is held');
+  } finally { fs.rmSync(markerOf(session, 't1'), { force: true }); }
+});
+
+test('a hold where nobody can answer is a deny and sets no printed marker', () => {
+  const own = [say('[step 6/12 - agents] the agents step.'), call('a9', 'AskUserQuestion', ask)];
+  const session = freshSession();
+  const r = runPre([...UNPASTED(), ...own], 'a9', ask, {}, session, { permission_mode: 'dontAsk' });
+  assert.strictEqual(r.out.hookSpecificOutput.permissionDecision, 'deny');
+  assert.match(r.out.hookSpecificOutput.permissionDecisionReason, /^alfred-code layer-table gate: the agents table ran but its output is not in your message - this ask was held before the user saw it/);
+  assert.ok(!fs.existsSync(markerOf(session, 't1')), 'a deny prints nothing the user answers over');
+});
+
+test('a deny-path hold, then the re-send passes - one hold per layer where nobody can answer', () => {
+  const own = [say('[step 6/12 - agents] the agents step.'), call('a9', 'AskUserQuestion', ask)];
+  const session = freshSession();
+  const held = runPre([...UNPASTED(), ...own], 'a9', ask, {}, session, { permission_mode: 'dontAsk' });
   assert.strictEqual(held.out.hookSpecificOutput.permissionDecision, 'deny');
-  assert.match(held.out.hookSpecificOutput.permissionDecisionReason, /^alfred-code layer-table gate: the agents table ran but its output is not in your message - this ask was held before the user saw it/);
-  assert.match(held.out.systemMessage, / 1 {2}x/, 'the table is printed for the user');
-  const pasted = runPre([...UNPASTED(), say('```\n 1  x\ntotal: 43 agents - if fewer\n```'), call('a9', 'AskUserQuestion', ask)]);
-  assert.strictEqual(pasted.out, null, 'a pasted table: the ask is shown');
-  const again = runPre([...UNPASTED(), ...own, result('a9', held.out.hookSpecificOutput.permissionDecisionReason, true), call('a10', 'AskUserQuestion', ask)], 'a10');
-  assert.strictEqual(again.out, null, 'the re-ask after a printed hold passes - one hold per layer');
+  const reason = held.out.hookSpecificOutput.permissionDecisionReason;
+  const again = runPre([...UNPASTED(), ...own, result('a9', reason, true), call('a10', 'AskUserQuestion', ask)], 'a10', ask, {}, session, { permission_mode: 'dontAsk' });
+  assert.strictEqual(again.out, null, 'the re-send after a denied hold reaches the ask');
+});
+
+// L1, 656: the hold keeps the table's systemMessage beside the ask - one JSON object, never two.
+test('holdUnpasted keeps its systemMessage beside the ask', () => {
+  const own = [say('[step 6/12 - agents] the agents step.'), call('a9', 'AskUserQuestion', ask)];
+  const session = freshSession();
+  const p = path.join(TMP, `${Math.random().toString(36).slice(2)}.jsonl`);
+  fs.writeFileSync(p, [...UNPASTED(), ...own].map((r) => JSON.stringify(r)).join('\n') + '\n');
+  const go = (extra) => spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', session_id: session, tool_input: ask, tool_use_id: 'a9', transcript_path: p, ...extra }), encoding: 'utf8', ...inProject() });
+  try {
+    const denied = go({ permission_mode: 'dontAsk' });
+    assert.strictEqual(verdictOf(denied), 'deny', 'nobody to ask: the hold denies');
+    assert.match(JSON.parse(denied.stdout).systemMessage, /^Alfred - the agents table:/);
+    const r = go({});
+    const out = JSON.parse(r.stdout);
+    assert.deepStrictEqual(Object.keys(out).sort(), ['hookSpecificOutput', 'systemMessage']);
+    assert.strictEqual(verdictOf(r), 'ask');
+    assert.match(out.systemMessage, /^Alfred - the agents table:\n 1 {2}x/);
+    assert.match(askText(r), HOLD_PROMPT);
+  } finally { fs.rmSync(markerOf(session, 't1'), { force: true }); }
 });
 
 test('no answers object, or an empty one, passes (Review Focus 1)', () => {
@@ -199,8 +274,8 @@ test('an unapplied void still holds the walk, and writes one probe row', () => {
       .map((r) => JSON.stringify(r)).join('\n') + '\n');
     const go = () => spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: 'pv', tool_name: 'Bash', tool_input: { command: EMIT }, transcript_path: p, tool_use_id: 'own' }),
       encoding: 'utf8', cwd: proj, env: { ...process.env, CLAUDE_PROJECT_DIR: proj } });
-    const r = go();
-    assert.strictEqual(r.status, 2, r.stderr);
+    const r = verdictResult(go());
+    assert.strictEqual(r.status, 'ask', r.stderr);
     assert.match(r.stderr, /agents ask never happened/);
     go();
     const rows = fs.readFileSync(path.join(proj, '.alfred', 'statistics', 'hook-blocks', 'pv.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
@@ -219,7 +294,7 @@ test('the void part switch', () => {
   const off = { ALFRED_CODE_HOOKS_OFF: 'guard-layer-table:void' };
   assert.strictEqual(runPost(UNPASTED(), ANS, off).stdout, '');
   const r = run([typed('/alfred-code:configure'), recompute, result('r1', '')], layerAsk('Agents: install the marked rows?'), off);
-  assert.strictEqual(r.status, 2, 'the never-ran check is no part of the void');
+  assert.strictEqual(r.status, 'ask', 'the never-ran check is no part of the void');
 });
 
 test('a table before a compaction summary is not judged (Review Focus 2)', () => {
@@ -400,14 +475,28 @@ const recompute = call('r1', 'Bash', { command: 'node "$TMP/repo/scripts/stack-s
 
 test('a layer ask inside a walk whose table never ran is denied, naming the --table call', () => {
   const r = run([typed('/alfred-code:configure'), recompute, result('r1', ''), say('[step 4/13 - agents]')], layerAsk('Agents: install the marked rows? The unmarked ones are other stacks\' trios.'));
-  assert.strictEqual(r.status, 2);
+  assert.strictEqual(r.status, 'ask');
   assert.match(r.stderr, /agents table never ran/);
   assert.match(r.stderr, /--table agents/);
 });
 
+test('a layer ask names the guard once: the prompt drops the text\'s own label, the deny keeps it for the valve (final review, Minor 1)', () => {
+  const rows = [typed('/alfred-code:configure'), recompute, result('r1', ''), say('[step 4/13 - agents]')];
+  const prompt = (r) => askText(r);
+  const never = run(rows, layerAsk('Agents: install the marked rows?'));
+  assert.match(prompt(never), /^alfred-code guard-layer-table: the agents table never ran - /, prompt(never));
+  assert.ok(!/layer-table gate/.test(prompt(never)), 'one label, not two');
+  const inventoryAsk = run([typed('/alfred-code:configure'), readBack, result('p1', ''), say('[step 1/13 - install status] what is installed · next: areas')], step1Ask);
+  assert.match(prompt(inventoryAsk), /^alfred-code guard-layer-table: the install inventory never ran - /, prompt(inventoryAsk));
+  assert.ok(!/layer-table gate/.test(prompt(inventoryAsk)));
+  // where nobody can answer the deny keeps its lead: a later run counts it in the result (the valve of three)
+  const denied = run(rows, layerAsk('Agents: install the marked rows?'), { ALFRED_CODE_GUARD_ASK: '0' });
+  assert.match(blockText(denied), /^alfred-code layer-table gate: the agents table never ran - /, blockText(denied));
+});
+
 test('the DELTA add / drop ask names its layer too', () => {
   const r = run([typed('/alfred-code:configure'), recompute, result('r1', '')], layerAsk('Add to the installed skills? 40 catalog rows are not installed.'));
-  assert.strictEqual(r.status, 2);
+  assert.strictEqual(r.status, 'ask');
   assert.match(r.stderr, /skills table never ran/);
 });
 
@@ -423,7 +512,7 @@ test('a layer-shaped ask outside a walk (no stack-select call) is untouched', ()
 test('the never-ran denial has its own valve of three', () => {
   const nr = (n) => [call(`n${n}`, 'AskUserQuestion', layerAsk('Rules: install?')), result(`n${n}`, 'alfred-code layer-table gate: the rules table never ran - x', true)];
   const rows = [typed('/alfred-code:init'), recompute, result('r1', ''), ...nr(1), ...nr(2)];
-  assert.strictEqual(run(rows, layerAsk('Rules: install?')).status, 2);
+  assert.strictEqual(run(rows, layerAsk('Rules: install?')).status, 'ask');
   assert.strictEqual(run([...rows, ...nr(3)], layerAsk('Rules: install?')).status, 0);
 });
 
@@ -439,7 +528,7 @@ const invOut = '| category | count | items |\n|---|---|---|\n| rules | 2 | a, b 
 test('configure step 1: the closing ask is denied until the inventory ran, then until its total line is pasted', () => {
   const start = [typed('/alfred-code:configure'), readBack, result('p1', ''), say('[step 1/13 - install status] what is installed · next: areas')];
   const never = run(start, step1Ask);
-  assert.strictEqual(never.status, 2);
+  assert.strictEqual(never.status, 'ask');
   assert.match(never.stderr, /install inventory never ran/);
   assert.match(never.stderr, /update-preflight\.js" --inventory "\$TMP\/installed\.json"/);
   assert.strictEqual(run([...start, inventory, result('i1', invOut)], step1Ask).status, 0, 'PreToolUse judges no paste');
@@ -452,9 +541,25 @@ test('configure step 1: the closing ask is denied until the inventory ran, then 
 test('configure step 1: the never-ran denial has its own valve of three, and another ask is not step 1', () => {
   const nd = (n) => [call(`s${n}`, 'AskUserQuestion', step1Ask), result(`s${n}`, 'alfred-code layer-table gate: the install inventory never ran - x', true)];
   const rows = [typed('/alfred-code:configure'), readBack, result('p1', ''), ...nd(1), ...nd(2)];
-  assert.strictEqual(run(rows, step1Ask).status, 2);
+  assert.strictEqual(run(rows, step1Ask).status, 'ask');
   assert.strictEqual(run([...rows, ...nd(3)], step1Ask).status, 0);
   assert.strictEqual(run([typed('/alfred-code:configure'), readBack, result('p1', '')], layerAsk('Which areas to adjust?')).status, 0);
+});
+
+// L1 (Review Focus): the gate counts its own denials from the transcript's tool results (MAX_DENIALS). An ask the user
+// approved leaves no denial text there, so the gate asks again on every step-1 ask that has no inventory run, approved or
+// not - the user's 'approve each time'. A later change to that is deliberate, not an accident.
+test('the inventory gate asks on every ask past MAX_DENIALS reads', () => {
+  const start = [typed('/alfred-code:configure'), readBack, result('p1', ''), say('[step 1/13 - install status] what is installed · next: areas')];
+  let rows = start;
+  for (let round = 1; round <= 5; round++) {
+    const r = run(rows, step1Ask);
+    assert.strictEqual(r.status, 'ask', `round ${round}`);
+    assert.match(r.stderr, /install inventory never ran/, `round ${round}`);
+    rows = [...rows, call(`ok${round}`, 'AskUserQuestion', step1Ask), result(`ok${round}`, 'User has answered your questions: "Adjust the installed selection?"="Keep the marked rows"')];
+  }
+  const denials = [1, 2, 3].flatMap((n) => [call(`s${n}`, 'AskUserQuestion', step1Ask), result(`s${n}`, 'alfred-code layer-table gate: the install inventory never ran - x', true)]);
+  assert.strictEqual(run([...start, ...denials], step1Ask).status, 0, 'three denial results still open the valve');
 });
 
 // 5f9fec85 printed 6 of configure's 13 banners, 6288ad94 2 of validate's 12. Inside a guided run that has printed a
@@ -510,7 +615,7 @@ function runBash(rows, command, id = 'own') {
   fs.writeFileSync(p, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
   const t0 = Date.now();
   const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, transcript_path: p, tool_use_id: id }), encoding: 'utf8', ...inProject() });
-  return { status: r.status, stderr: r.stderr, ms: Date.now() - t0 };
+  return { ...verdictResult({ status: r.status, stdout: r.stdout, stderr: r.stderr }), ms: Date.now() - t0 };
 }
 const tbl = (layer, id = `t-${layer}`) => call(id, 'Bash', { command: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table ${layer} --recs r.json` });
 const paste = (layer, n = 9) => say('```\n 1 | x\ntotal: ' + n + ' ' + layer + '\n```');
@@ -525,7 +630,7 @@ test('skipped ask: the next walk call after an unasked layer table is denied, na
   const rows = [typed('/alfred-code:init'), ...FIRST4, tbl('hooks'), result('t-hooks', 'total: 18 hooks'), say('All 18 hooks are set to recommended. Next I\'ll decide which to keep.')];
   for (const cmd of [NEXT_RECOMPUTE, `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table plugins --recs r.json`, EMIT, INSTALL]) {
     const r = runBash(rows, cmd);
-    assert.strictEqual(r.status, 2, cmd);
+    assert.strictEqual(r.status, 'ask', cmd);
     assert.match(r.stderr, /the hooks ask never happened/);
     assert.match(r.stderr, /fenced code block/);
   }
@@ -536,7 +641,7 @@ test('skipped ask: an answered ask after the table lets the walk move on; a deni
   assert.strictEqual(runBash(ok, NEXT_RECOMPUTE).status, 0);
   const deniedAsk = [typed('/alfred-code:init'), ...FIRST4, tbl('hooks'), result('t-hooks', 'total: 18 hooks'),
     call('d1', 'AskUserQuestion', layerAsk('Hooks: keep all 18 on?')), result('d1', 'alfred-code layer-table gate: the hooks table ran but its output is not in your message', true)];
-  assert.strictEqual(runBash(deniedAsk, NEXT_RECOMPUTE).status, 2);
+  assert.strictEqual(runBash(deniedAsk, NEXT_RECOMPUTE).status, 'ask');
 });
 
 test('skipped ask: re-running the same layer table, or a command outside the walk, is not judged', () => {
@@ -555,7 +660,7 @@ test('skipped ask: outside a typed init / configure run, or after a typed prompt
 test('skipped ask: configure is judged the same way', () => {
   const rows = [typed('/alfred-code:configure'), tbl('skills'), result('t-skills', 'total: 80 skills'), paste('skills', 80)];
   const r = runBash(rows, NEXT_RECOMPUTE);
-  assert.strictEqual(r.status, 2);
+  assert.strictEqual(r.status, 'ask');
   assert.match(r.stderr, /the skills ask never happened/);
   assert.strictEqual(runBash([...rows, ...answered('skills', 'Add to the installed skills? 40 rows are not installed.')], NEXT_RECOMPUTE).status, 0);
 });
@@ -563,7 +668,7 @@ test('skipped ask: configure is judged the same way', () => {
 test('skipped ask: the pending-ask denial has its own valve of three', () => {
   const pd = (n) => [call(`p${n}`, 'Bash', { command: NEXT_RECOMPUTE }), result(`p${n}`, 'alfred-code layer-table gate: the hooks ask never happened - x', true)];
   const rows = [typed('/alfred-code:init'), ...FIRST4, tbl('hooks'), result('t-hooks', 'total: 18 hooks'), ...pd(1), ...pd(2)];
-  assert.strictEqual(runBash(rows, NEXT_RECOMPUTE).status, 2);
+  assert.strictEqual(runBash(rows, NEXT_RECOMPUTE).status, 'ask');
   assert.strictEqual(runBash([...rows, ...pd(3)], NEXT_RECOMPUTE).status, 0);
 });
 
@@ -573,7 +678,7 @@ test('skipped layer: init denies the prerequisite check and the installer while 
     call('h1', 'Bash', { command: 'node -e \'const fs=require("fs");console.log(" # | plugin")\'' }), result('h1', ' # | plugin\n 1 | claude-hud')];
   for (const cmd of [EMIT, INSTALL]) {
     const r = runBash(rows, cmd);
-    assert.strictEqual(r.status, 2, cmd);
+    assert.strictEqual(r.status, 'ask', cmd);
     assert.match(r.stderr, /never walked/);
     assert.match(r.stderr, /plugins/);
     assert.match(r.stderr, /--table plugins/);
@@ -583,7 +688,7 @@ test('skipped layer: init denies the prerequisite check and the installer while 
 
 test('skipped layer: init denies a later layer table while an earlier layer never ran; configure skips areas freely', () => {
   const r = runBash([typed('/alfred-code:init'), ...FIRST4], `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table plugins --recs r.json`);
-  assert.strictEqual(r.status, 2);
+  assert.strictEqual(r.status, 'ask');
   assert.match(r.stderr, /hooks/);
   assert.strictEqual(runBash([typed('/alfred-code:configure'), ...walked('hooks')], EMIT).status, 0, 'configure walks only the picked areas');
 });
@@ -591,7 +696,7 @@ test('skipped layer: init denies a later layer table while an earlier layer neve
 test('skipped layer: the never-walked denial has its own valve of three', () => {
   const nw = (n) => [call(`w${n}`, 'Bash', { command: EMIT }), result(`w${n}`, 'alfred-code layer-table gate: layers never walked - plugins', true)];
   const rows = [typed('/alfred-code:init'), ...FIRST4, ...walked('hooks'), ...nw(1), ...nw(2)];
-  assert.strictEqual(runBash(rows, EMIT).status, 2);
+  assert.strictEqual(runBash(rows, EMIT).status, 'ask');
   assert.strictEqual(runBash([...rows, ...nw(3)], EMIT).status, 0);
 });
 
@@ -619,7 +724,7 @@ const UNASKED_HOOKS = [tbl('hooks'), result('t-hooks', 'total: 18 hooks'), paste
 test('6.5: a typed reply mid-walk keeps the walk judged - a later unasked table still holds the next step', () => {
   for (const start of [typed('/alfred-code:init'), TYPED_INIT]) {
     const r = runBash([start, ...FIRST4, typed('sounds good, go on'), ...UNASKED_HOOKS], NEXT_RECOMPUTE);
-    assert.strictEqual(r.status, 2, r.stderr);
+    assert.strictEqual(r.status, 'ask', r.stderr);
     assert.match(r.stderr, /the hooks ask never happened/);
   }
 });
@@ -631,7 +736,7 @@ test('6.5: a typed reply after the table is the user\'s answer there', () => {
 test('6.5: init\'s never-walked check reaches past a typed reply', () => {
   const rows = [TYPED_INIT, ...FIRST4, typed('ok'), ...walked('hooks')];
   const r = runBash(rows, EMIT);
-  assert.strictEqual(r.status, 2, r.stderr);
+  assert.strictEqual(r.status, 'ask', r.stderr);
   assert.match(r.stderr, /never walked/);
   assert.match(r.stderr, /plugins/);
   assert.strictEqual(runBash([...rows, ...walked('plugins')], EMIT).status, 0);
@@ -642,7 +747,7 @@ test('6.5: a harness prompt is neither an answer nor the end of the walk', () =>
     'Another Claude session sent a message:\n<agent-message from="a1">report</agent-message>',
     '<local-command-stdout>ok</local-command-stdout>', '<bash-input>ls</bash-input>']) {
     const r = runBash([TYPED_INIT, ...FIRST4, ...UNASKED_HOOKS, typed(notice)], NEXT_RECOMPUTE);
-    assert.strictEqual(r.status, 2, notice);
+    assert.strictEqual(r.status, 'ask', notice);
     assert.match(r.stderr, /the hooks ask never happened/);
   }
 });
@@ -657,7 +762,7 @@ test('6.5: an ask the idle timeout closed is no answer', () => {
   const idle = [call('q-hooks', 'AskUserQuestion', layerAsk('Hooks: keep all 18 on?')),
     result('q-hooks', 'No response after 60s - the user may be away from keyboard. Continue with your best judgment.')];
   const r = runBash([TYPED_INIT, ...FIRST4, ...UNASKED_HOOKS, ...idle], NEXT_RECOMPUTE);
-  assert.strictEqual(r.status, 2, r.stderr);
+  assert.strictEqual(r.status, 'ask', r.stderr);
   assert.match(r.stderr, /the hooks ask never happened/);
 });
 
@@ -665,7 +770,7 @@ test('6.5: the Bash path finds the walk command 1.5MB back, and fails open past 
   const filler = (kb) => [call('f1', 'Bash', { command: 'cat big.log' }), result('f1', 'x'.repeat(kb * 1024))];
   const at = (kb) => runBash([TYPED_INIT, ...filler(kb), ...FIRST4, ...UNASKED_HOOKS], NEXT_RECOMPUTE);
   const near = at(1536);
-  assert.strictEqual(near.status, 2, near.stderr);
+  assert.strictEqual(near.status, 'ask', near.stderr);
   assert.match(near.stderr, /the hooks ask never happened/);
   assert.strictEqual(at(2560).status, 0, 'the command outside the tail: no walk seen, nothing judged');
 });
@@ -679,7 +784,7 @@ test('T2-03: validate\'s consent ask worded <Layer>: is no walk ask', () => {
 
 test('6.5: a layer ask after a typed reply mid-walk still needs its table', () => {
   const r = run([typed('/alfred-code:configure'), recompute, result('r1', ''), typed('let us do the agents')], layerAsk('Agents: install the marked rows?'));
-  assert.strictEqual(r.status, 2, r.stderr);
+  assert.strictEqual(r.status, 'ask', r.stderr);
   assert.match(r.stderr, /agents table never ran/);
 });
 
@@ -694,7 +799,7 @@ test('6.5: a compaction summary restarts the walk only when it names it', () => 
   const summary = (text) => ({ type: 'user', isCompactSummary: true, message: { role: 'user', content: text } });
   const named = summary('This session is being continued from a previous conversation. The user ran /alfred-code:init; rules to skills are walked.');
   const r = runBash([TYPED_INIT, ...FIRST4, named, ...UNASKED_HOOKS], NEXT_RECOMPUTE);
-  assert.strictEqual(r.status, 2, r.stderr);
+  assert.strictEqual(r.status, 'ask', r.stderr);
   assert.match(r.stderr, /the hooks ask never happened/);
   assert.strictEqual(runBash([TYPED_INIT, ...FIRST4, summary('This session is being continued. The user asked about tests.'), ...UNASKED_HOOKS], NEXT_RECOMPUTE).status, 0);
   // hooks track H1: past a summary init's order check stands down - the layers walked before it are never asked again,
@@ -712,7 +817,7 @@ test('H2: an errored ask result is no answer', () => {
     "The user doesn't want to proceed with this tool use. The tool use was rejected."]) {
     const errored = [call('q-hooks', 'AskUserQuestion', layerAsk('Hooks: keep all 18 on?')), result('q-hooks', text, true)];
     const r = runBash([TYPED_INIT, ...FIRST4, ...UNASKED_HOOKS, ...errored], NEXT_RECOMPUTE);
-    assert.strictEqual(r.status, 2, text);
+    assert.strictEqual(r.status, 'ask', text);
     assert.match(r.stderr, /the hooks ask never happened/);
   }
   const deniedLayerAsk = [call('n1', 'AskUserQuestion', layerAsk('Agents: install?')), result('n1', 'PreToolUse:AskUserQuestion hook error: denied', true)];
@@ -862,7 +967,7 @@ test('print: a PostToolUse Bash payload never runs the next-step judge', () => {
   const p = path.join(TMP, `${Math.random().toString(36).slice(2)}.jsonl`);
   const rows = [typed('/alfred-code:init'), ...FIRST4, tbl('hooks'), result('t-hooks', 'total: 18 hooks'), say('Next I\'ll decide which to keep.')];
   fs.writeFileSync(p, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
-  assert.strictEqual(runBash(rows, EMIT).status, 2, 'the PreToolUse judge denies this step');
+  assert.strictEqual(runBash(rows, EMIT).status, 'ask', 'the PreToolUse judge denies this step');
   const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: EMIT }, tool_use_id: 'b9', session_id: 's1', tool_response: { stdout: '', stderr: '' }, transcript_path: p }), encoding: 'utf8', ...inProject() });
   assert.deepStrictEqual([r.status, r.stdout, r.stderr], [0, '', ''], 'PostToolUse leaves the judge alone');
 });

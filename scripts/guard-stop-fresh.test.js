@@ -13,6 +13,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { verdictResult } = require('./hook-test-env');
 
 const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-stop-fresh-'));
@@ -32,8 +33,9 @@ delete process.env.ALFRED_CODE_AUTO_COMPACT;
 // unpinned run forges field ledger rows into this repo's own docs root. Pin a scratch root.
 process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));
 
+// status is the decision as one word (hook-test-env.js verdictResult): 0 a pass, 'ask' a PreToolUse block, 2 a Stop hold.
 const runIn = (hook, payload, opts) =>
-  spawnSync(process.execPath, [path.join(HOOKS, hook)], { input: JSON.stringify(payload), encoding: 'utf8', ...opts });
+  verdictResult(spawnSync(process.execPath, [path.join(HOOKS, hook)], { input: JSON.stringify(payload), encoding: 'utf8', ...opts }));
 
 function transcript(name, rows) {
   const p = path.join(TMP, `${name}.jsonl`);
@@ -619,24 +621,24 @@ test('guard-stop-contract: an ask that sends the user to type into Other, or mar
   const other = [{ question: 'The staging Google client ids?', options: [{ label: 'Paste ids in Other (Recommended)', description: 'Type both ids in the Other field' }, { label: 'Defer', description: 'later' }] }];
   const env = logEnv();
   const r = askIn(tp, other, env);
-  assert.equal(r.status, 2, 'denied once');
+  assert.equal(r.status, 'ask', 'denied once');
   assert.match(r.stderr, /returns only its LABEL/);
   assert.equal(askIn(tp, other, env).status, 0, 're-sent, it passes - never a loop');
   // bda299a8: two questions with no (Recommended) option
   const bare = [{ question: 'What should a Manager see?', options: [{ label: 'Hidden entirely', description: 'x' }, { label: 'Read-only', description: 'y' }] }];
   const u = askIn(tp, bare);
-  assert.equal(u.status, 2);
+  assert.equal(u.status, 'ask');
   assert.match(u.stderr, /without exactly one option marked '\(Recommended\)'/);
   assert.equal(askIn(tp, [{ ...bare[0], multiSelect: true }]).status, 0, 'a multi-select question takes no single recommendation');
   assert.equal(askIn(tp, [{ question: 'Which file?', options: [{ label: 'a.js', description: 'x' }] }]).status, 0, 'one option is nothing to rank');
   assert.equal(askIn(tp, [{ question: 'Go?', options: [{ label: 'Yes (recommended)', description: 'x' }, { label: 'No', description: 'y' }] }]).status, 0, 'the mark in any case');
   const second = askIn(tp, [{ question: 'Ship?', options: [{ label: 'Hold', description: 'x' }, { label: 'Ship (Recommended)', description: 'y' }] }]);
-  assert.equal(second.status, 2, 'the marked option goes first');
+  assert.equal(second.status, 'ask', 'the marked option goes first');
   assert.match(second.stderr, /listed first/);
   // f450ea64 (T5 cross-track): a question that already says why none is recommended is the no-default case stated
   assert.equal(askIn(tp, [{ ...bare[0], question: 'What should a Manager see? No option is recommended: the two rules contradict.' }]).status, 0,
     'a question saying why none is recommended passes at once');
-  assert.equal(askIn(tp, [{ question: 'Ship? None is recommended.', options: [{ label: 'Hold (Recommended)', description: 'x' }, { label: 'Ship (Recommended)', description: 'y' }] }]).status, 2,
+  assert.equal(askIn(tp, [{ question: 'Ship? None is recommended.', options: [{ label: 'Hold (Recommended)', description: 'x' }, { label: 'Ship (Recommended)', description: 'y' }] }]).status, 'ask',
     'two marks are still denied');
 });
 
@@ -651,8 +653,10 @@ test('guard-stop-contract: an approval whose own message shows it is not denied 
     const tp = transcript(name, [typed('upgrade the framework')]);
     const c = require('child_process').spawn(process.execPath, [path.join(HOOKS, 'guard-stop-contract.js')], { env: logEnv() });
     let err = '';
+    let out = '';
     c.stderr.on('data', (d) => { err += d; });
-    c.on('close', (status) => resolve({ status, stderr: err }));
+    c.stdout.on('data', (d) => { out += d; });
+    c.on('close', (status) => resolve(verdictResult({ status, stdout: out, stderr: err })));
     c.stdin.end(JSON.stringify({ tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', transcript_path: tp, tool_use_id: 'tu-ask1', tool_input: { questions: plan } }));
     setTimeout(() => fs.appendFileSync(tp, lateRows.map((r) => JSON.stringify(r)).join('\n') + '\n'), 400);
   });
@@ -662,7 +666,7 @@ test('guard-stop-contract: an approval whose own message shows it is not denied 
   ]);
   assert.equal(shown.status, 0, `the plan its own message showed is no blind approval: ${shown.stderr}`);
   const bare = await late('lag-bare', [{ type: 'assistant', message: { id: 'm2', content: [{ type: 'tool_use', id: 'tu-ask1', name: 'AskUserQuestion', input: { questions: plan } }] } }]);
-  assert.equal(bare.status, 2, 'a message that shows nothing is still sent back');
+  assert.equal(bare.status, 'ask', 'a message that shows nothing is still sent back');
 });
 
 // Audit 2026-10-11, session 2ca8e8ee: 'The staged plan is ready ... Execute it stage by stage?' with no text block since the
@@ -674,7 +678,7 @@ test('guard-stop-contract: an approval ask over nothing the chat showed since th
   const tp = transcript('blind-plan', [typed('upgrade the framework'), toolRow('b1'), toolRow('b2')]);
   const env = logEnv();
   const r = askIn(tp, plan, env);
-  assert.equal(r.status, 2, 'the measured case: no text since the prompt');
+  assert.equal(r.status, 'ask', 'the measured case: no text since the prompt');
   assert.match(r.stderr, /an approval of the plan the chat has not shown since the user's last message/);
   assert.match(r.stderr, /put the plan in your reply text first/);
   assert.equal(askIn(tp, plan, env).status, 0, 're-sent unchanged, it passes - never a loop');
@@ -683,7 +687,7 @@ test('guard-stop-contract: an approval ask over nothing the chat showed since th
     'the stages shown in the reply text first');
   const post = [{ question: 'Post this simplified comment on the ticket? It goes up as shown.', options: [{ label: 'Post it (Recommended)', description: 'as shown' }, { label: 'Do not post', description: 'hold' }] }];
   const status = 'Tests: 412 passed, 0 failed. Lint is clean, the build is green on both targets, and the branch is level with its upstream. '.repeat(2);
-  assert.equal(askIn(transcript('blind-post', [typed('make it shorter and drop the second paragraph'), assistantRow('p1', status)]), post).status, 2,
+  assert.equal(askIn(transcript('blind-post', [typed('make it shorter and drop the second paragraph'), assistantRow('p1', status)]), post).status, 'ask',
     'text that does not carry the comment is no showing');
   const draft = `Here is the comment as it will be posted:\n\n> The crash came from the restore policy running twice on resume. The fix guards the second call and adds a regression test; the release note is in the ticket description. ${'x'.repeat(20)}`;
   assert.equal(askIn(transcript('shown-post', [typed('make it shorter and drop the second paragraph'), assistantRow('p2', draft)]), post).status, 0, 'the draft shown first');
@@ -701,7 +705,7 @@ test('guard-stop-contract: a small solve-task close whose Result line has no rev
   const tp = transcript('small-close', [marker, assistantRow('a', 'Built and checked.')]);
   const env = logEnv();
   const r = askIn(tp, close('restore guard added at src/RetryPolicy.cs'), env);
-  assert.equal(r.status, 2, 'the measured case: no review on the small close');
+  assert.equal(r.status, 'ask', 'the measured case: no review on the small close');
   assert.match(r.stderr, /a small solve-task close whose `Result:` line has no `review:` field/);
   assert.match(r.stderr, /run it, then put `review: <reviewer> - <its verdict>` on the `Result:` line/);
   assert.equal(askIn(tp, close('restore guard added at src/RetryPolicy.cs'), env).status, 0, 're-sent unchanged, it passes - never a loop');
@@ -732,18 +736,18 @@ test('guard-stop-contract: a solve-task close stating no Size owes the review on
   const env = logEnv();
   const tp = transcript('nosize-small', [marker, ...specRun(1, 'small'), sourceEdit(1), built]);
   const r = askIn(tp, bare('restore guard added at src/RetryPolicy.cs'), env);
-  assert.equal(r.status, 2, 'the measured case: no Size line, a small floor, no review');
+  assert.equal(r.status, 'ask', 'the measured case: no Size line, a small floor, no review');
   assert.match(r.stderr, /a solve-task close that states no `Size:` \(this cycle's spec-check `size floor:` is small\)/);
   assert.match(r.stderr, /State the cycle's `Size:` on the close/);
   assert.equal(askIn(tp, bare('restore guard added at src/RetryPolicy.cs'), env).status, 0, 're-sent unchanged, it passes - never a loop');
   const deny = (name, rows, result) => askIn(transcript(name, rows), bare(result || 'restore guard added at src/RetryPolicy.cs')).status;
   assert.equal(deny('nosize-review', [marker, ...specRun(2, 'small'), sourceEdit(2), built], 'guard added, review: task-verify-code - PASS'), 0, 'the receipt on the Result line');
-  assert.equal(deny('nosize-trivial', [marker, ...specRun(3, 'trivial'), sourceEdit(3), built]), 2, 'a trivial floor that reached a stop is small at least');
+  assert.equal(deny('nosize-trivial', [marker, ...specRun(3, 'trivial'), sourceEdit(3), built]), 'ask', 'a trivial floor that reached a stop is small at least');
   assert.equal(deny('nosize-std-floor', [marker, ...specRun(4, 'standard'), sourceEdit(4), built]), 0, 'a standard floor owes no review here');
   assert.equal(deny('nosize-std-said', [marker, ...specRun(5, 'small'), assistantRow('s', 'Size: standard - two modules.'), typed('go on'), sourceEdit(5), built]), 0,
     'the Size stated earlier outranks the floor');
   const said = askIn(transcript('nosize-small-said', [marker, ...specRun(6, 'trivial'), assistantRow('s', '**Size:** small - two files.'), typed('go on'), sourceEdit(6), built]), bare('guard added'));
-  assert.equal(said.status, 2, 'a small Size stated in an earlier turn, not restated on the close');
+  assert.equal(said.status, 'ask', 'a small Size stated in an earlier turn, not restated on the close');
   assert.match(said.stderr, /this cycle's `Size:` was small/);
   assert.equal(deny('nosize-trivial-said', [marker, ...specRun(7, 'small'), assistantRow('s', 'Size: trivial - one line.'), typed('go on'), sourceEdit(7), built]), 0,
     'a stated trivial owes no review');
@@ -865,7 +869,7 @@ test('guard-stop-contract: a new cycle after a finished one is sent back once wi
   const q = [{ question: 'Result: design done. Progress: 1 of 6 steps. Leftovers: none. Build it?', options: [{ label: 'Build (Recommended)', description: 'x' }, { label: 'Stop', description: 'y' }] }];
   const env = logEnv();
   const r = askIn(transcript('nc-new', [...base, next, hot]), q, env);
-  assert.equal(r.status, 2, 'the new cycle\'s first ask is sent back');
+  assert.equal(r.status, 'ask', 'the new cycle\'s first ask is sent back');
   assert.match(r.stderr, /add a fresh-session option to this first ask of a new cycle - This session carries ~362k tokens per message/);
   assert.equal(askIn(transcript('nc-new', [...base, next, hot]), [{ ...q[0], question: `${q[0].question} Now?` }], env).status, 0, 'once per Completed stamp');
   assert.equal(askIn(transcript('nc-close', [...base, hot]), q, logEnv()).status, 0, 'the finished cycle\'s own close ask, before any new prompt, is left alone');
@@ -880,7 +884,7 @@ test("guard-stop-contract (U05): the Recommended clause is compared with other o
     options: [{ label: 'Close the browser (Recommended)', description: 'end its session now' }, { label: 'Keep it open', description: 'Leave it logged in for your own checks' }] }];
   assert.equal(askIn(tp, q).status, 0, "a word in another option's description decides nothing");
   const r = askIn(tp, [{ ...q[0], question: 'Close it? Recommended: keep it open for the checks.' }]);
-  assert.equal(r.status, 2, "a clause naming another option's label is still denied");
+  assert.equal(r.status, 'ask', "a clause naming another option's label is still denied");
   assert.match(r.stderr, /names another option than the one marked/);
 });
 
@@ -897,7 +901,7 @@ test('guard-stop-contract (U09): a plain Q&A ask after a Completed: stamp is no 
   for (const [name, opt] of [['plan', { label: 'Write the plan first (Recommended)', description: 'a plan file under docs' }],
     ['flow', { label: 'Run it through task-solve (Recommended)', description: 'the full cycle' }], ['approve', { label: 'Approve (Recommended)', description: 'build it' }]]) {
     const r = askIn(transcript(`u09-${name}`, rows), [{ question: 'How next?', options: [opt, { label: 'Stop', description: 'hold' }] }], logEnv());
-    assert.equal(r.status, 2, `an ask naming ${name} still opens a cycle`);
+    assert.equal(r.status, 'ask', `an ask naming ${name} still opens a cycle`);
     assert.match(r.stderr, /add a fresh-session option to this first ask of a new cycle/);
   }
 });
@@ -937,7 +941,8 @@ test('guard-stop-contract: the prose-ask denial quotes the session\'s own carry 
 // 5 + 6 + 7. the AskUserQuestion branch: absolute numbers, the long-run route, mid-turn prose,
 //            and the solve-task stop fields. Injection only - every path here exits 0 (the ask's own house voice is the one deny).
 // ---------------------------------------------------------------------------------------------
-const ctxOf = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext; } catch { return ''; } };
+// The note the hook injected beside the answer. A block - an ask the guard put to the user - injects none: its text is the block's.
+const ctxOf = (r) => { if (r.status === 'ask') return ''; try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext; } catch { return ''; } };
 const askIn = (tp, questions, env) => runIn('guard-stop-contract.js',
   { tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', transcript_path: tp, tool_input: { questions } },
   { env: env || logEnv() });
@@ -1009,7 +1014,7 @@ test('guard-stop-contract: the new-cycle deny, the post-answer note and the Stop
   assert.equal(askIn(cycle('pay-nc-100', 100000), q).status, 0, 'check 10: 100k does not pay back - no deny');
   assert.equal(askIn(cycle('pay-nc-0', 0), q).status, 0, 'check 10: no reading - no deny');
   const denied = askIn(cycle('pay-nc-250', 250000), q);
-  assert.equal(denied.status, 2, 'check 10: 250k pays back - sent back');
+  assert.equal(denied.status, 'ask', 'check 10: 250k pays back - sent back');
   assert.match(denied.stderr, /add a fresh-session option to this first ask of a new cycle - This session carries ~250k tokens per message; with the cache warm \(1h TTL\) a turn re-reads it at 0\.05x the input price\. A fresh session restarts at ~79k, written new at 2x, and pays back in about 23 messages\./);
   assert.match(denied.stderr, /`Size:`/, 'the Size sentence stays');
 
@@ -1064,14 +1069,14 @@ test('check 15: a three-option ask at 100k goes out without its hand-off', () =>
 test('check 15: a two-option fresh-or-here ask at 100k is refused once, naming the option left', () => {
   const loop = c15('loop', 100000, [{ question: 'Round 2 is done. Go on?', options: [{ label: 'Continue here (Recommended)', description: 'x' },
     { label: 'Continue in a fresh session from the loops folder', description: 'y' }] }]);
-  assert.equal(loop.r.status, 2, 'refused');
+  assert.equal(loop.r.status, 'ask', 'refused');
   assert.match(loop.r.stderr, /This session carries ~100k tokens per message; with the cache warm \(1h TTL\) a turn re-reads it at 0\.05x\. A fresh session restarts at ~79k, written new at 2x, and would pay back only after about 449 messages, past the 30-message window\./);
   assert.match(loop.r.stderr, /take that option - 'Continue here \(Recommended\)' - and drop the question/);
   assert.doesNotMatch(loop.r.stderr, /Re-send the ask/, 'nothing is left to re-send');
   assert.equal(loop.send().status, 0, 'the same ask re-sent passes');
   const diag = c15('diag', 100000, [{ question: 'Findings written. Next?', options: [{ label: 'Stop here (Recommended)', description: 'x' },
     { label: 'Resume in a fresh session', description: 'y' }] }]);
-  assert.equal(diag.r.status, 2);
+  assert.equal(diag.r.status, 'ask');
   assert.match(diag.r.stderr, /take that option - 'Stop here \(Recommended\)' - and drop the question/);
 });
 
@@ -1098,7 +1103,7 @@ test('check 15: a question whose every option is a hand-off is left as written',
 test('check 15: the re-send carries only the questions still worth asking', () => {
   const { r } = c15('two-q', 100000, [{ question: 'Round 2 is done. Go on?', options: [{ label: 'Continue here (Recommended)', description: 'x' },
     { label: 'Resume in a fresh session', description: 'y' }] }, { question: 'Which file first?', options: [{ label: 'a.js (Recommended)', description: 'x' }, { label: 'b.js', description: 'y' }] }]);
-  assert.equal(r.status, 2, 'refused');
+  assert.equal(r.status, 'ask', 'refused');
   assert.match(r.stderr, /take that option - 'Continue here \(Recommended\)' - and drop the question/);
   const sent = JSON.parse(r.stderr.split('changed:\n')[1]);
   assert.deepStrictEqual(sent.map((q) => q.question), ['Which file first?'], 'the lone question is not re-sent');
@@ -1432,7 +1437,7 @@ test('guard-stop-contract (C45): a referent approval is judged on what was shown
   // e31af926 L128: reworded from 'as shown' to 'the diff above' with the diff still unshown; e43969a7 L139: 'fixes shown above'
   for (const ask of ['Apply the diff above?', 'Apply the AGENTS.md fixes shown above?']) {
     const r = askIn(transcript(`c45-blind-${ask.length}`, [typed('update the install'), toolRow('b1')]), q(ask));
-    assert.equal(r.status, 2, `nothing shown: ${ask}`);
+    assert.equal(r.status, 'ask', `nothing shown: ${ask}`);
     assert.match(r.stderr, /the chat has not shown since the user's last message/);
   }
   const diff = 'The diff, 7 lines:\n\n```diff\n- old line one of the rule file\n+ new line one of the rule file\n- old line two\n+ new line two\n```\n' + 'Each line keeps its section. '.repeat(6);
@@ -1441,7 +1446,7 @@ test('guard-stop-contract (C45): a referent approval is judged on what was shown
   // fabea019 L1421: a review verdict ask - 'send it back to the build' - is no send-this approval
   const verdict = [{ question: 'The review found one MATERIAL gap. Fix it now, or send it back to the build?', options: [{ label: 'Fix it now (Recommended)', description: 'x' }, { label: 'Send it back', description: 'y' }] }];
   assert.equal(askIn(transcript('c45-verdict', [typed('review it'), toolRow('v1')]), verdict).status, 0, 'send it back is no approval of a text');
-  assert.equal(askIn(transcript('c45-send', [typed('draft the reply'), toolRow('v2')]), [{ question: 'Send it to the customer?', options: [{ label: 'Send (Recommended)', description: 'x' }, { label: 'Hold', description: 'y' }] }]).status, 2,
+  assert.equal(askIn(transcript('c45-send', [typed('draft the reply'), toolRow('v2')]), [{ question: 'Send it to the customer?', options: [{ label: 'Send (Recommended)', description: 'x' }, { label: 'Hold', description: 'y' }] }]).status, 'ask',
     "'send it' is still the approval it was");
   // fabea019 L2845: the question recommended one option, the mark sat on another
   const tp = transcript('c45-mark', [assistantRow('m1', 'ok', { cache_read_input_tokens: 900 })]);
@@ -1449,7 +1454,7 @@ test('guard-stop-contract (C45): a referent approval is judged on what was shown
     { label: 'Swap the scripts on production (Recommended)', description: 'fast, risky' }, { label: 'Alpha site after the deploy', description: 'safe' }] }];
   const env = logEnv();
   const m = askIn(tp, mis, env);
-  assert.equal(m.status, 2, 'the mark contradicts the question');
+  assert.equal(m.status, 'ask', 'the mark contradicts the question');
   assert.match(m.stderr, /names another option than the one marked/);
   assert.equal(askIn(tp, mis, env).status, 0, 're-sent unchanged, it passes - never a loop');
   const agree = [{ ...mis[0], options: [{ label: 'Alpha site after the deploy (Recommended)', description: 'safe' }, { label: 'Swap the scripts on production', description: 'fast' }] }];
@@ -1473,7 +1478,7 @@ test('guard-stop-contract (U04): the blind-approval noun is the verb\'s own obje
   const side = ask('Post the 2 drafts as sub-tasks of the parent ticket, in order? I recommend posting them as shown; after that comes the proposed parent description, also not posted.');
   assert.equal(over('side-shown', [toolRow('a1'), assistantRow('a2', drafts)], side).status, 0, 'the drafts are shown - the side clause noun is not the subject');
   const sideBlind = over('side-blind', [toolRow('a3'), assistantRow('a4', status)], side);
-  assert.equal(sideBlind.status, 2, 'a status line shows no draft');
+  assert.equal(sideBlind.status, 'ask', 'a status line shows no draft');
   assert.match(sideBlind.stderr, /an approval of the drafts the chat has not shown since the user's last message/);
   assert.match(sideBlind.stderr, /re-send this same ask unchanged/, 'the denial says the fix is a re-send of the same ask');
 
@@ -1484,7 +1489,7 @@ test('guard-stop-contract (U04): the blind-approval noun is the verb\'s own obje
   // shape 3: the drafts ride the ask's own message, which the transcript has not written yet when the hook fires
   const env = logEnv();
   const lag = over('above-lag', [toolRow('c1')], above, env);
-  assert.equal(lag.status, 2, 'the hook cannot see the message in flight');
+  assert.equal(lag.status, 'ask', 'the hook cannot see the message in flight');
   assert.match(lag.stderr, /can lag the message in flight[\s\S]*re-send the ask unchanged now/, 'the denial names the lag and the re-send');
   assert.equal(over('above-lag', [toolRow('c1')], above, env).status, 0, 're-sent unchanged, it passes - once per ask text');
   assert.equal(over('above-lag-ondisk', [toolRow('c2'), assistantRow('c3', drafts)], above).status, 0, 'the same ask with the text on disk passes');
@@ -1494,7 +1499,7 @@ test('guard-stop-contract (U04): the blind-approval noun is the verb\'s own obje
     options: [{ label: 'A capital comes out lowercase (Recommended)', description: 'x' }, { label: 'A lowercase letter comes out capital', description: 'y' }] }];
   assert.equal(over('symptom', [toolRow('d1')], symptom).status, 0, "the page's 'send it' approves nothing");
   for (const q of ['Send it to the customer?', 'Shall I send it to the customer now?', 'Please approve the plan so I can start?'])
-    assert.equal(over(`send-${q.length}`, [toolRow('d2')], ask(q, ['Yes (Recommended)', 'Hold'])).status, 2, `still an approval over nothing: ${q}`);
+    assert.equal(over(`send-${q.length}`, [toolRow('d2')], ask(q, ['Yes (Recommended)', 'Hold'])).status, 'ask', `still an approval over nothing: ${q}`);
 
   // shape 5: the comment the write adds is quoted in the ask itself
   const allow = ['Allow the write (Recommended)', 'I will add it myself'];
@@ -1502,28 +1507,28 @@ test('guard-stop-contract (U04): the blind-approval noun is the verb\'s own obje
   assert.equal(over('quoted', [toolRow('e1')], quoted).status, 0, 'a quoted line is shown');
   for (const [name, text] of [['backtick', 'Allow this one write? The line: `# Reset the agent to the configured keys only`.'], ['double', 'Allow this one write? The line: "# Reset the agent to the configured keys only".']])
     assert.equal(over(`quoted-${name}`, [toolRow('e2')], ask(`Adding the comment above the reload function edits a file outside this project. ${text}`, allow)).status, 0, `a ${name} quote is shown too`);
-  assert.equal(over('reworded', [toolRow('e3')], ask('Adding the comment above the reload function edits a file outside this project, so the guard needs your OK for this one write. Allow it?', allow)).status, 2,
+  assert.equal(over('reworded', [toolRow('e3')], ask('Adding the comment above the reload function edits a file outside this project, so the guard needs your OK for this one write. Allow it?', allow)).status, 'ask',
     'reworded with no quote, the comment is unshown');
-  assert.equal(over('label-quote', [toolRow('e4')], ask("Adding the comment above the reload function edits a file outside this project. Pick 'Allow the write' to go on?", allow)).status, 2,
+  assert.equal(over('label-quote', [toolRow('e4')], ask("Adding the comment above the reload function edits a file outside this project. Pick 'Allow the write' to go on?", allow)).status, 'ask',
     'a quoted option label shows nothing');
 
   // shape 6 (the wrong pass): a pointer at 'the five groups above' when the chat shows no group
   const groups = ask('Commit the five groups above locally in ticket order, or hold while you read the diffs? Nothing leaves this machine either way.', ['Hold - I read them first (Recommended)', 'Commit now']);
   const pointer = over('groups-blind', [toolRow('f1'), assistantRow('f2', status)], groups);
-  assert.equal(pointer.status, 2, 'a pointer at groups nobody was shown');
+  assert.equal(pointer.status, 'ask', 'a pointer at groups nobody was shown');
   assert.match(pointer.stderr, /a pointer at the groups above that the chat has not shown since the user's last message/);
   const listed = 'Group 1 - the parser upgrade, three files.\nGroup 2 - the role filter, two files.\nGroup 3 - the retry policy, one file.\nGroup 4 - the page copy, four files.\nGroup 5 - the test fixtures, six files, all under the shared folder.\n';
   assert.ok(listed.length >= 200);
   assert.equal(over('groups-shown', [toolRow('f3'), assistantRow('f4', listed)], groups).status, 0, 'the groups are listed in the chat');
   // its neighbour, 'are ready' over groups kept in files the chat never showed, stays denied
-  assert.equal(over('ready', [toolRow('f5')], ask('All five groups are ready for your review in the patch files. Commit them locally in ticket order now, or hold?', ['Hold (Recommended)', 'Commit now'])).status, 2,
+  assert.equal(over('ready', [toolRow('f5')], ask('All five groups are ready for your review in the patch files. Commit them locally in ticket order now, or hold?', ['Hold (Recommended)', 'Commit now'])).status, 'ask',
     "'are ready' over unshown groups");
 
   // 'above' as a preposition points at nothing; a pointer naming no known noun needs SHOWN_MIN of chat text
   assert.equal(over('preposition', [toolRow('g1')], ask('Raise the limit above 5 retries for the import job?', ['Raise it (Recommended)', 'Keep it'])).status, 0, "'above 5' is a preposition");
   const values = ask('Use the values above for the next run, or change them first?', ['Use them (Recommended)', 'Change them']);
   const short = over('values-short', [toolRow('g2'), assistantRow('g3', status)], values);
-  assert.equal(short.status, 2, 'under SHOWN_MIN nothing is shown');
+  assert.equal(short.status, 'ask', 'under SHOWN_MIN nothing is shown');
   assert.match(short.stderr, /a pointer at something above that the chat has not shown/);
   assert.equal(over('values-long', [toolRow('g4'), assistantRow('g5', listed)], values).status, 0, 'over SHOWN_MIN the pointer has text to point at');
 
@@ -1531,7 +1536,7 @@ test('guard-stop-contract (U04): the blind-approval noun is the verb\'s own obje
   // that presents it ('The line: ...') - never an incidental command span in another sentence
   for (const q of ['Approve the plan? Its last step is `git push origin develop`.', 'Approve the plan? Its last step is: `git push origin develop`.',
     'Commit the five groups above locally in ticket order? Each one runs `npm run lint` first.'])
-    assert.equal(over(`incidental-${q.length}`, [toolRow('h1'), assistantRow('h2', status)], ask(q, ['Hold (Recommended)', 'Go'])).status, 2, `an incidental code span shows nothing: ${q}`);
+    assert.equal(over(`incidental-${q.length}`, [toolRow('h1'), assistantRow('h2', status)], ask(q, ['Hold (Recommended)', 'Go'])).status, 'ask', `an incidental code span shows nothing: ${q}`);
   assert.equal(over('own-clause', [toolRow('h3'), assistantRow('h4', status)], ask('Post the comment "Fixed in 1.2, the retry now waits for the lock" on the ticket?', ['Post it (Recommended)', 'Hold'])).status, 0,
     "a quote in the approval's own clause is shown");
   assert.equal(over('presented', [toolRow('h5'), assistantRow('h6', status)], ask('Post this reply? The reply: "Thanks, the fix ships in the next patch release".', ['Post it (Recommended)', 'Hold'])).status, 0,
@@ -1540,7 +1545,7 @@ test('guard-stop-contract (U04): the blind-approval noun is the verb\'s own obje
   for (const q of ['Keep the retry delay above zero for the import job?', 'Raise the limit above what the docs allow?', 'Is an above-average timeout fine for this job?',
     'Is there anything about how the project runs that the questions above did not cover?', 'Keep the cache size above or below the old default?'])
     assert.equal(over(`compare-${q.length}`, [toolRow('i1'), assistantRow('i2', status)], ask(q, ['Yes (Recommended)', 'No'])).status, 0, `no pointer: ${q}`);
-  assert.equal(over('noted-above', [toolRow('i3'), assistantRow('i4', status)], ask('Apply the fix as noted above, then rerun the suite?', ['Apply it (Recommended)', 'Hold'])).status, 2,
+  assert.equal(over('noted-above', [toolRow('i3'), assistantRow('i4', status)], ask('Apply the fix as noted above, then rerun the suite?', ['Apply it (Recommended)', 'Hold'])).status, 'ask',
     "'as noted above' still points at text the chat must show");
 });
 
@@ -1621,8 +1626,8 @@ test('guard-stop-contract: no stop-field notes on a turn where no step advanced 
   const report = transcript('nostep-report', [marker, step('s1', 'alfred-code:task-design'), design, ask('a2'), rejected('a2'),
     typed('Why do you keep asking about next work?'), assistantRow('nd-3', 'Because the design stop is still open.', { cache_read_input_tokens: 900 })]);
   const first = askIn(report, oneQ, env);
-  assert.equal(ctxOf(first), undefined, 'the first re-send is the re-ask deny');
-  assert.match(first.stdout, /"permissionDecision":"deny"/);
+  assert.equal(first.status, 'ask', 'the first re-send is the re-ask');
+  assert.match(first.stdout, /"permissionDecision":"ask"/);
   assert.equal(ctxOf(askIn(report, oneQ, env)), '', 'the valve send carries no field note');
   assert.match(ctxOf(askIn(transcript('step-after', [marker, design, ask('a3'), answered('a3'), step('s2', 'task-verify-plan'), assistantRow('nd-4', 'The plan passes.', { cache_read_input_tokens: 900 })]), oneQ)),
     /THREE named fields/, 'a step Skill call after the answer: the note');
@@ -1671,13 +1676,13 @@ test('PF1: the script\'s complete line closes the cycle for the re-offer (U13), 
   const hot = assistantRow('pf-h', 'Result: design done. Progress: 1 of 6 steps. Leftovers: none.', { cache_read_input_tokens: 362000 });
   const q = [{ question: 'Result: design done. Progress: 1 of 6 steps. Leftovers: none. Build it?', options: [{ label: 'Build (Recommended)', description: 'x' }, { label: 'Stop', description: 'y' }] }];
   const c08 = askIn(transcript('pf-nc-new', [...base, typed('now the manager view'), hot]), q, logEnv());
-  assert.equal(c08.status, 2, 'C08: the new cycle\'s first ask is sent back');
+  assert.equal(c08.status, 'ask', 'C08: the new cycle\'s first ask is sent back');
   assert.match(c08.stderr, /add a fresh-session option to this first ask of a new cycle/);
   // U09: a plain question after the close opens no cycle; an ask naming a plan does
   const u09 = [...base, typed('which node do I have here?'), assistantRow('pf-h2', 'Node 24 is installed through nvm.', { cache_read_input_tokens: 362000 })];
   assert.equal(askIn(transcript('pf-u09-plain', u09), [{ question: 'Should I install Node 26 through nvm now?', options: [{ label: 'Install it now (Recommended)', description: 'nvm' }, { label: 'Leave it', description: 'stay' }] }], logEnv()).status, 0,
     'U09: a plain question opens no cycle');
-  assert.equal(askIn(transcript('pf-u09-plan', u09), [{ question: 'How next?', options: [{ label: 'Write the plan first (Recommended)', description: 'a plan file' }, { label: 'Stop', description: 'hold' }] }], logEnv()).status, 2,
+  assert.equal(askIn(transcript('pf-u09-plan', u09), [{ question: 'How next?', options: [{ label: 'Write the plan first (Recommended)', description: 'a plan file' }, { label: 'Stop', description: 'hold' }] }], logEnv()).status, 'ask',
     'U09: an ask naming a plan still opens one');
   // U08: no field notes past the close and a typed turn
   const cycle = [marker, assistantRow('pf-d', 'Design done.', { cache_read_input_tokens: 900 }), ...pfCall('pf-w2', PF_COMPLETE, PF_CLOSED)];

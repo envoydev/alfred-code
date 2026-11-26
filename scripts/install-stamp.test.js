@@ -920,3 +920,15 @@ test('install-stamp: a second writeStamp with no new values keeps the lines', ()
     const second = write(p, carried);
     assert.strictEqual(second.text, first.text, 'the text is byte for byte the same');
 });
+
+test('kept-only: the items a root holds only for a set-aside child read back as lines, and an entry of another shape is dropped', () =>
+{
+    const stamp = require('./install/stamp.js');
+    const file = path.join(TMP, `kept-${seq++}.stamp`);
+    fs.writeFileSync(file, 'kept-only: skill/csharp,rule/x,hook/y,agent,skill/../up\nmember-picks: skill/csharp\n');
+    assert.deepStrictEqual(stamp.readKeptOnly(file), ['skill csharp', 'rule x']);
+    assert.deepStrictEqual(stamp.readMemberPicks(file), ['skill csharp']);
+    assert.strictEqual(stamp.readKeptOnly(path.join(TMP, 'no-such.stamp')), null);
+    fs.writeFileSync(file, 'member-picks: skill/csharp\n');
+    assert.strictEqual(stamp.readKeptOnly(file), null);
+});

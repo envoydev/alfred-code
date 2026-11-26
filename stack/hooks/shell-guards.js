@@ -21,7 +21,8 @@
 // with separate probe hooks): any block blocks - an exit 2, whose message is its stderr, or a JSON
 // `permissionDecision: deny`. Separate hooks showed the model ONE blocking reason, picked
 // non-deterministically; here every blocking guard's reason reaches it, in GUARDS order - except after a
-// PROTECTIVE guard's exit 2 (force-push, rm, secret), which is answered at once: the guards run one after
+// PROTECTIVE guard's deny (force-push, rm, secret; an exit 2 or a JSON deny - an ask does not end the run, so every later guard
+// judges the call and the one prompt names every harm), which is answered at once: the guards run one after
 // another, so a later one stalling past the budget would drop it - a timed-out command hook has its output
 // discarded and, on PreToolUse, the call continues through the normal permission flow with every verdict dropped
 // (code.claude.com/docs/en/hooks, 'Timeouts': 'A timed-out command ... hook doesn't block the tool call'; the
@@ -226,6 +227,7 @@ function runGuard(file, stdin)
     // A guard's ledger detail is a process GLOBAL: a separate process starts without one, so each guard
     // does here, and none survives it - a staged-scan detail used to ride the next guard's row.
     delete global.BLOCK_DETAIL;
+    delete global.BLOCK_VERDICT;
 
     const base = createRequire(file);
     const mod = { id: file, filename: file, path: path.dirname(file), exports: {}, loaded: false, children: [], paths: [] };
@@ -264,6 +266,7 @@ function runGuard(file, stdin)
         process.exitCode = saved.exitCode;
         restoreEnv(saved.env);
         delete global.BLOCK_DETAIL;
+        delete global.BLOCK_VERDICT;
     }
     if (compiled) compiled.save();
     result.code = exited;
@@ -290,6 +293,55 @@ const RANK = { allow: 1, ask: 2, defer: 3, deny: 4 };
 const firstLine = (text) => String(text || '').split('\n').map((l) => l.trim()).find(Boolean) || '';
 const joinBlocks = (texts) => (texts.length === 1 ? texts[0] : texts.map((t) => String(t).replace(/\s+$/, '')).join('\n\n'));
 
+// A block of the dispatcher's own (B3-B6), built the way a guard's block is: through the prelude's blockVerdict, so it asks where a
+// person can answer and denies where nobody can. A Cursor deny is exit 2 with the text on stderr. With no prelude (a copy set
+// without it) the block is today's exit 2. `guard` is the result's guard file name; the prompt names it without `.js`.
+function blockResult(payload, text, guard)
+{
+    try
+    {
+        const prelude = require('./hook-prelude.js');
+        const verdict = prelude.blockVerdict(payload, text, { guard: String(guard).replace(/\.js$/, '') });
+        const code = prelude.blockExitCode(payload, verdict.decision);
+        return { guard, code, stdout: JSON.stringify({ hookSpecificOutput: verdict.hookSpecificOutput }), stderr: code === 2 ? text : '' };
+    }
+    catch { return { guard, code: 2, stdout: '', stderr: text }; }
+}
+
+// Whether a guard's answer is a deny - an exit 2 or a JSON `permissionDecision: deny`. An ask is no deny: the protective
+// run goes on, so every later guard judges the call and the one prompt names every harm.
+function isDenied(result)
+{
+    if (!result) return false;
+    if (result.code === 2) return true;
+    const { json } = parseOut(result.stdout);
+    const hso = json && json.hookSpecificOutput && typeof json.hookSpecificOutput === 'object' ? json.hookSpecificOutput : {};
+    return hso.permissionDecision === 'deny';
+}
+
+// The prelude beside this file, or null where a copy set has none (a block ask then reads as any other context).
+function preludeOf()
+{
+    try { return require('./hook-prelude.js'); }
+    catch { return null; }
+}
+
+// The helper's recommendation line ends each of its prompts (hook-prelude.js ASK_RECOMMENDATION). Joined prompts keep it once,
+// after the last text, so the user reads one recommendation and never a copy beside each harm.
+const RECOMMENDED_LINE_RE = /\nRecommended: [^\n]*$/; // its own line only: a missing-helper ask's mid-line advice stays
+function joinPrompts(reasons)
+{
+    let recommended = '';
+    const texts = reasons.map((reason) =>
+    {
+        const m = RECOMMENDED_LINE_RE.exec(reason);
+        if (!m) return reason;
+        recommended = recommended || m[0].replace(/^\n/, '');
+        return reason.slice(0, m.index);
+    });
+    return [texts.join('\n\n'), recommended].filter(Boolean).join('\n');
+}
+
 function combine(results)
 {
     const blocks = [];
@@ -303,7 +355,8 @@ function combine(results)
         if (!r || r.missing) continue;
         const { json, invalid } = parseOut(r.stdout);
         const hso = json && json.hookSpecificOutput && typeof json.hookSpecificOutput === 'object' ? json.hookSpecificOutput : {};
-        if (typeof hso.additionalContext === 'string' && hso.additionalContext) contexts.push(hso.additionalContext);
+        const asked = askedReason(hso, preludeOf());
+        if (typeof hso.additionalContext === 'string' && hso.additionalContext) contexts.push({ text: hso.additionalContext, asked: asked !== null });
         if (json && typeof json.systemMessage === 'string' && json.systemMessage) notes.push(json.systemMessage);
         const reason = hso.permissionDecision === 'deny' ? String(hso.permissionDecisionReason || '')
             : json && json.decision === 'block' ? String(json.reason || '') : null;
@@ -316,12 +369,16 @@ function combine(results)
         }
         if (reason !== null) { blocks.push({ text: reason, exit: false }); continue; }
         if (hso.updatedInput && typeof hso.updatedInput === 'object' && !Array.isArray(hso.updatedInput)) inputs.push(hso.updatedInput);
-        if (hso.permissionDecision === 'ask' && hso.permissionDecisionReason) asks.push(String(hso.permissionDecisionReason));
-        // two guards that both ask: the prompt names every reason, so no harm is hidden behind another (2026-11-19)
+        // beside a block, an ask rides as the full reason the model would get on a decline, when the ask is a block ask
+        if (hso.permissionDecision === 'ask' && hso.permissionDecisionReason) asks.push(asked !== null ? asked : String(hso.permissionDecisionReason));
+        // two guards that both ask: the prompt names every reason, a blank line between, so no harm is hidden behind another (spec D2)
         if (decision && hso.permissionDecision === 'ask' && decision.value === 'ask' && hso.permissionDecisionReason)
-            decision.reason = [decision.reason, hso.permissionDecisionReason].filter(Boolean).join('\n');
+        {
+            decision.reasons.push(hso.permissionDecisionReason);
+            decision.reason = joinPrompts(decision.reasons.filter(Boolean));
+        }
         else if (RANK[hso.permissionDecision] > (decision ? RANK[decision.value] : 0))
-            decision = { value: hso.permissionDecision, reason: hso.permissionDecisionReason };
+            decision = { value: hso.permissionDecision, reason: hso.permissionDecisionReason, reasons: [hso.permissionDecisionReason] };
     }
 
     const out = (code, hso, stderr = '') =>
@@ -331,7 +388,13 @@ function combine(results)
         if (Object.keys(hso).length) body.hookSpecificOutput = { hookEventName: 'PreToolUse', ...hso };
         return { code, stdout: Object.keys(body).length ? JSON.stringify(body) : '', stderr };
     };
-    const context = contexts.length ? { additionalContext: contexts.join('\n') } : {};
+    // A block ends the call and nobody was asked, so a block ask's 'A guard asked the user' context does not ride beside it: its
+    // full reason is already in the `Also:` line. Any other context rides as before.
+    // A plain note joins the next with a line break; a block ask's model text is a paragraph, so it is set apart by a blank line.
+    const contextOf = (list) => (list.length
+        ? { additionalContext: list.reduce((all, c, k) => (k ? `${all}${c.asked || list[k - 1].asked ? '\n\n' : '\n'}${c.text}` : c.text), '') }
+        : {});
+    const context = blocks.length ? contextOf(contexts.filter((c) => !c.asked)) : contextOf(contexts);
     // A block ends the call, so an ask beside it would be lost: its reason rides after the block's (2026-11-21).
     const withAsks = (text) => (asks.length
         ? `${text.replace(/\s+$/, '')}\n\n${asks.map((a) => `Also: ${a}`).join('\n\n')}${/\n$/.test(text) ? '\n' : ''}`
@@ -343,7 +406,7 @@ function combine(results)
         // exit 2 beside a JSON deny shows the exit-2 text, bracketed with the command; a JSON deny, without).
         if (blocks.some((b) => b.exit))
             return out(2, context, withAsks(blocks.length === 1 ? blocks[0].text : `${joinBlocks(blocks.map((b) => b.text))}\n`));
-        return out(0, { permissionDecision: 'deny', permissionDecisionReason: withAsks(joinBlocks(blocks.map((b) => b.text))), ...context });
+        return out(0, { permissionDecision: 'deny', permissionDecisionReason: withAsks(joinBlocks(blocks.map((b) => b.text))), ...context }); // guard-ask: combine re-emits a deny
     }
     const hso = {};
     if (decision)
@@ -495,7 +558,7 @@ function ownChecks(stdin)
             + '2026-10-10). Run the read form instead (`git diff`, `git status`, `git stash list`, a dry run), write scratch output\n'
             + 'under the OS temp dir, or put the change you would make in your report for the caller to apply.';
         row({ reason: firstLine(text).slice(0, 200), agent: payload.agent_id || null, tool_use_id: payload.tool_use_id || null, detail: { branch: 'read-only-seat', seat, matched: seatWrite.matched.slice(0, 120) } });
-        out.results.push({ guard: `${SELF}.js`, code: 2, stdout: '', stderr: text });
+        out.results.push(blockResult(payload, text, `${SELF}.js`));
         return out;
     }
     if (!/^(?:Bash|Monitor)$/.test(tool)) return out;
@@ -541,7 +604,7 @@ function ownChecks(stdin)
             + `A sleeping \`until\` / \`while\` loop, a \`tail -f\` or a chain of bounded waits holds this turn and every message the user\n`
             + 'queues until it ends (measured: a question waited 6m58s; a sentinel that never matched ran the full 600s).';
         row({ reason: firstLine(text).slice(0, 200), detail: { branch: 'poll-loop' } });
-        out.results.push({ guard: `${SELF}.js`, code: 2, stdout: '', stderr: text });
+        out.results.push(blockResult(payload, text, `${SELF}.js`));
     }
 
     // -- the first background call: how to watch it (audit 2026-10-14 RU04) --
@@ -727,6 +790,18 @@ function slowProbe(timings, totalMs)
 // At most RUNNER_LINES_MAX lines are judged (each is two guard runs); a command handing the runner more, or one naming it
 // where the reader stopped (past the carried-script depth or the scan budget), blocks - judged conservatively past a cap,
 // never let through (final review 2026-10-30, FB: four `-- "true"` calls then `-- "cat .env"` passed).
+// The reason an inner guard's block ask carries for the model: after ASKED_PREFIX its additionalContext ends with
+// 'If the user declined: <the full reason>'. Any other ask (a guard's own question, no block) gives null and is ignored.
+const DECLINED_MARK = 'If the user declined: ';
+function askedReason(hso, prelude)
+{
+    if (hso.permissionDecision !== 'ask' || !prelude || typeof prelude.ASKED_PREFIX !== 'string') return null;
+    const context = String(hso.additionalContext || '');
+    if (!context.startsWith(prelude.ASKED_PREFIX)) return null;
+    const at = context.indexOf(DECLINED_MARK);
+    return at < 0 ? null : context.slice(at + DECLINED_MARK.length);
+}
+
 const OWN_READERS = ['guard-secret-value', 'guard-read-whole-file'];
 const RUNNER_LINES_MAX = 4;
 function runnerResults(stdin, guards)
@@ -756,7 +831,7 @@ function runnerResults(stdin, guards)
             + `Run at most ${RUNNER_LINES_MAX} runner calls per command, each at the top level or inside one shell; nothing ran.`;
         ledgerRow(payload, prelude, { reason: firstLine(text).slice(0, 200), agent: payload.agent_id || null, tool_use_id: payload.tool_use_id || null,
             detail: { branch: 'sensitive-runner-cap', lines: lines.length, unread: Boolean(lines.unread) } });
-        return [{ guard: `${guarded[0]}.js`, code: 2, stdout: '', stderr: `${text}\n` }];
+        return [blockResult(payload, `${text}\n`, `${guarded[0]}.js`)];
     }
     for (const line of lines)
     {
@@ -766,7 +841,9 @@ function runnerResults(stdin, guards)
             const r = runGuard(path.join(__dirname, `${g}.js`), inner);
             const { json } = parseOut(r.stdout);
             const hso = json && json.hookSpecificOutput && typeof json.hookSpecificOutput === 'object' ? json.hookSpecificOutput : {};
+            const asked = askedReason(hso, prelude);
             const why = r.code === 2 ? r.stderr : hso.permissionDecision === 'deny' ? String(hso.permissionDecisionReason || '')
+                : asked !== null ? asked
                 : hso.updatedInput ? `${String(hso.additionalContext || '')}\nRewritten outside the runner, it would run as: ${String((hso.updatedInput || {}).command || '').slice(0, 400)}` : null;
             if (why === null) continue;
             const text = `Blocked: the --with-sensitive runner runs \`${line.text.slice(0, 120)}\` through a shell, and that line is judged as the command it is - `
@@ -775,7 +852,7 @@ function runnerResults(stdin, guards)
                 + 'Run the line\'s safe form instead, outside the runner or inside it; nothing ran.';
             ledgerRow(payload, prelude, { reason: firstLine(text).slice(0, 200), agent: payload.agent_id || null, tool_use_id: payload.tool_use_id || null,
                 detail: { branch: 'sensitive-runner', guard: g, matched: line.text.slice(0, 120) } });
-            out.push({ guard: `${g}.js`, code: 2, stdout: '', stderr: text });
+            out.push(blockResult(payload, text, `${g}.js`));
         }
     }
     return out;
@@ -816,10 +893,10 @@ function main()
         const r = runGuard(path.join(__dirname, `${g}.js`), stdin);
         spent[g] = Math.round(performance.now() - at);
         results.push(r);
-        // A protective block is a correct answer alone, so it is answered now: a guard still to run that
+        // A protective deny is a correct answer alone, so it is answered now: a guard still to run that
         // stalls past the budget would otherwise drop it - a timed-out command hook's output is discarded and the
         // call runs (code.claude.com/docs/en/hooks, 'Timeouts').
-        if (r.code === 2 && PROTECTIVE.has(g)) { protectiveBlock = true; break; }
+        if (PROTECTIVE.has(g) && isDenied(r)) { protectiveBlock = true; break; }
     }
     // the sensitive runner's line, judged by the guards with a reader of their own (HK-01)
     if (!protectiveBlock && stdin.includes('with-sensitive'))
@@ -852,5 +929,5 @@ function main()
     if (!pending) process.exit(verdict.code);
 }
 
-module.exports = { GUARDS, SELF, MATCHER, PROTECTIVE, RUN_ORDER, SLOW_MS, BACKGROUND_NOTE, MONITOR_NOTE, wiringRows, runGuard, combine, parseOut, ownChecks, slowProbe, trustedCacheEntry };
+module.exports = { GUARDS, SELF, MATCHER, PROTECTIVE, RUN_ORDER, SLOW_MS, BACKGROUND_NOTE, MONITOR_NOTE, wiringRows, runGuard, combine, parseOut, blockResult, isDenied, ownChecks, slowProbe, trustedCacheEntry };
 if (require.main === module) main();

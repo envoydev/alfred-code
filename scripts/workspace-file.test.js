@@ -273,6 +273,7 @@ test('viewOf: the installer view of a record', () =>
     const view = wf.viewOf({ ...wf.emptyRecord(), parent: '..', children: ['api'], ignore: { docs: ['root'], skill: ['a', 'b'] } });
     assert.deepStrictEqual(view, {
         parent: '..', parentNone: false, role: null, above: null, children: ['api'], ignoredChildren: [],
+        includedChildren: [], includeAsked: [], keptFor: {},
         ignores: [{ category: 'docs', name: 'root' }, { category: 'skill', name: 'a' }, { category: 'skill', name: 'b' }],
     });
 });
@@ -421,4 +422,50 @@ test('covered: the path, a folder under it, a sibling sharing its prefix', () =>
     assert.strictEqual(wf.covered(undefined, '/r', '/r/app'), false);
     assert.strictEqual(wf.covered(['App'], '/r', '/r/app', true), true);
     assert.strictEqual(wf.covered(['App'], '/r', '/r/app', false), false);
+});
+
+// Workspace child stacks, Task 1: the include answer and the kept lines of a root's record.
+test('readRecord: the include lists read as child lists and keptFor as child -> ignore lines; a bad entry is kept and named', () =>
+{
+    const r = wf.readRecord(dirWith({ json: { children: ['api', 'web'], includedChildren: ['api', '/abs'], includeAsked: ['api', 'web'],
+        keptFor: { web: ['skill angular', 'nope x'], '/abs': ['skill a'] } } }));
+    assert.deepStrictEqual(r.record.includedChildren, ['api']);
+    assert.deepStrictEqual(r.record.includeAsked, ['api', 'web']);
+    assert.deepStrictEqual(r.record.keptFor, { web: ['skill angular'] });
+    assert.ok(r.problems.some((p) => /invalid included child '\/abs' kept, not applied/.test(p)));
+    assert.ok(r.problems.some((p) => /invalid kept line 'nope x' kept, not applied/.test(p)));
+    const bare = wf.readRecord(dirWith({ json: { role: 'root' } }));
+    assert.deepStrictEqual([bare.record.includedChildren, bare.record.includeAsked, bare.record.keptFor], [[], [], {}]);
+    assert.ok(wf.readRecord(dirWith({ json: { includeAsked: 'api' } })).problems.some((p) => /includeAsked \(not a list\)/.test(p)));
+    assert.ok(wf.readRecord(dirWith({ json: { keptFor: ['x'] } })).problems.some((p) => /keptFor \(not an object\)/.test(p)));
+});
+test('renderRecord writes the three keys after ignoredChildren, and viewOf passes them on', () =>
+{
+    const rec = { ...wf.emptyRecord(), children: ['api'], includedChildren: ['api'], includeAsked: ['api'], keptFor: { api: ['skill a'] } };
+    assert.deepStrictEqual(Object.keys(wf.renderRecord(rec)), ['children', 'includedChildren', 'includeAsked', 'keptFor']);
+    assert.deepStrictEqual(wf.viewOf(rec).keptFor, { api: ['skill a'] });
+    assert.ok(!('keptFor' in wf.renderRecord(wf.emptyRecord())));
+    assert.deepStrictEqual([wf.keptLinesFor(wf.viewOf(rec), 'api'), wf.keptLinesFor(wf.viewOf(rec), 'web')], [['skill a'], []]);
+});
+test('keptFor: a __proto__ key is kept and named, never read as a child or written onto the prototype', () =>
+{
+    const r = wf.readRecord(dirWith({ json: '{ "keptFor": { "__proto__": ["skill a"], "web": ["skill b"] } }' }));
+    assert.deepStrictEqual(r.record.keptFor, { web: ['skill b'] });
+    assert.strictEqual(Object.getPrototypeOf(r.record.keptFor), Object.prototype);
+    assert.ok(r.problems.some((p) => /invalid kept child '__proto__' kept, not applied/.test(p)));
+    const back = wf.renderRecord(r.record, r.unknown, r.invalid);
+    assert.deepStrictEqual(Object.keys(back.keptFor), ['web', '__proto__']);
+});
+test('keptFor: a key that names a prototype member reads, renders and looks up like any child', () =>
+{
+    for (const rel of ['constructor', 'toString', 'hasOwnProperty', 'valueOf'])
+    {
+        const r = wf.readRecord(dirWith({ json: { keptFor: { [rel]: ['skill a', 'nope x'] } } }));
+        assert.deepStrictEqual(r.record.keptFor[rel], ['skill a'], rel);
+        assert.deepStrictEqual(wf.renderRecord(r.record, r.unknown, r.invalid).keptFor[rel], ['skill a', 'nope x'], rel);
+        assert.deepStrictEqual(wf.keptLinesFor(wf.viewOf(r.record), rel), ['skill a'], rel);
+        const bad = wf.readRecord(dirWith({ json: { keptFor: { [rel]: 'x' } } }));
+        assert.deepStrictEqual(wf.renderRecord(bad.record, bad.unknown, bad.invalid).keptFor, { [rel]: 'x' }, rel);
+    }
+    assert.deepStrictEqual(wf.keptLinesFor(wf.viewOf(wf.emptyRecord()), 'constructor'), []);
 });

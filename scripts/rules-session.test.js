@@ -376,6 +376,42 @@ test('rulesFor: a member-held rule reaches the root and the member that picked i
     assert.deepStrictEqual(names(at(web).always), ['q']);
 });
 
+test('rulesFor: a rule the top keeps for a set-aside child loads in that child, and not in a sibling', () =>
+{
+    const t = W({ web: true });
+    ws(t.root, { parent: 'root', children: ['api', 'web'], includeAsked: ['api'], keptFor: { api: ['rule angular-conventions'] } });
+    stamp(t.root, ['member-picks: rule/angular-conventions']);
+    store(t.root, 'angular-conventions');
+    store(t.root, 'q');
+    assert.deepStrictEqual(names(at(t.api).always), ['angular-conventions', 'q']);
+    assert.deepStrictEqual(names(at(t.lib).always), ['angular-conventions', 'q'], 'a project below the child reads the same keep');
+    assert.deepStrictEqual(names(at(t.web).always), ['q']);
+    stamp(t.root, ['member-picks: rule/angular-conventions', 'kept-only: rule/angular-conventions']);
+    assert.deepStrictEqual(names(at(t.root).always), ['q'], 'the root\'s own session sheds a kept-only rule');
+    assert.deepStrictEqual(names(at(t.api).always), ['angular-conventions', 'q']);
+});
+
+test('rulesFor: a kept rule line is matched to its child the way the hook folds case', () =>
+{
+    const t = W({ web: true });
+    ws(t.root, { parent: 'root', children: ['api', 'web'], includeAsked: ['api'], keptFor: { [process.platform === 'linux' ? 'api' : 'API']: ['rule p'] } });
+    stamp(t.root, ['member-picks: rule/p']);
+    store(t.root, 'p');
+    assert.deepStrictEqual(names(at(t.api).always), ['p']);
+    assert.deepStrictEqual(names(at(t.web).always), []);
+});
+
+test('rulesFor: a middle root\'s keep for its set-aside grandchild overrides its own ignore of the rule', () =>
+{
+    const t = W({ apiIgnore: ['x'], lib2: true });
+    ws(t.api, { parent: '..', children: ['lib', 'lib2'], ignore: { rules: ['x'] }, includeAsked: ['lib'], keptFor: { lib: ['rule x'] } });
+    stamp(t.root, ['member-picks: rule/x']);
+    store(t.root, 'x');
+    assert.deepStrictEqual(names(at(t.lib).always), ['x']);
+    assert.deepStrictEqual(names(at(t.api).always), [], 'the middle root keeps its own ignore');
+    assert.deepStrictEqual(names(at(t.lib2).always), [], 'a sibling grandchild is not kept for');
+});
+
 test('rulesFor: a stamp that cannot be read keeps a member-held rule out', () =>
 {
     const t = W();

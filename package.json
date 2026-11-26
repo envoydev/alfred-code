@@ -1,6 +1,6 @@
 {
   "name": "alfred-code",
-  "version": "3.19.0",
+  "version": "3.19.2",
   "private": true,
   "description": "Alfred Code - the house coding-agent stack for Claude Code: skills, agents, rules and hooks, installed per project from one source. This package is the repo tooling: lint, tests, marketplace build.",
   "license": "MIT",
@@ -40,6 +40,7 @@
     "kit:check": "node .claude/kit/check.mjs"
   },
   "devDependencies": {
-    "js-yaml": "^4.1.0"
+    "js-yaml": "^4.1.0",
+    "typescript": "^6.0.3"
   }
 }

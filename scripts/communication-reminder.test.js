@@ -472,7 +472,7 @@ test('scoring: all four keys unset read the catalog defaults - on, level 80, rou
 test('mode command: scoring on writes the mode file and says the [mode] line; off writes 0 (AC7)', () => {
     const on = JSON.parse(said({ hook_event_name: 'UserPromptSubmit', prompt: `${SCORING} on`, session_id: 'a2' }, OFF));
     const ctx = on.hookSpecificOutput.additionalContext;
-    assert.ok(ctx.startsWith('[mode] scoring is ON (level 80)\n'), ctx.slice(0, 80));
+    assert.ok(ctx.startsWith('[mode] scoring is ON (level 80, rounds 3)\n'), ctx.slice(0, 80));
     assert.strictEqual(ctx.split('\n').filter((l) => l.startsWith('[mode]')).length, 1, 'one [mode] line, a line of its own');
     assert.match(ctx, /scoring: on \(level 80, rounds 3, env\)/);
     assert.strictEqual(on.systemMessage, 'Modes ON: scoring (level 80)');
@@ -481,7 +481,7 @@ test('mode command: scoring on writes the mode file and says the [mode] line; of
     assert.doesNotMatch(prompt('a2', 'next', OFF), /\[mode\]/, 'only the command\'s own prompt carries the line');
     assert.match(prompt('a3', 'next', OFF), /scoring: on/, 'every session reads the mode file');
     const off = prompt('a2', `${SCORING} OFF`);
-    assert.ok(off.startsWith('[mode] scoring is OFF (level 80 kept)\n'), off.slice(0, 80));
+    assert.ok(off.startsWith('[mode] scoring is OFF (level 80, rounds 3 kept)\n'), off.slice(0, 80));
     assert.match(off, / scoring: off$/);
     assert.strictEqual(modeOf().env.ALFRED_CODE_SCORING, '0');
     assert.doesNotMatch(prompt('a2', 'next'), /scoring:/, 'the file\'s 0 beats the unset default');
@@ -492,7 +492,7 @@ test('mode command: scoring off beats env on, and says so once (AC4)', () => {
     assert.doesNotMatch(prompt('a4', 'next', ON), /scoring:/);
 });
 test('mode command: a bare scoring command reports and writes nothing; anything but on or off switches nothing', () => {
-    assert.ok(prompt('a5', SCORING, ON).startsWith('[mode] scoring is ON (level 80)\n'));
+    assert.ok(prompt('a5', SCORING, ON).startsWith('[mode] scoring is ON (level 80, rounds 3)\n'));
     assert.ok(prompt('a5', SCORING, OFF).startsWith('[mode] scoring is OFF\n'));
     for (const text of [`${SCORING} yes`, `${SCORING} on now`, `${SCORING} on off`, `${SCORING} /task-solve x`, `go ${SCORING} on`, `what does \`${SCORING} on\` do`,
         `${AUTO_CMD} on`, '/alfred-code:mode:auto-compact on', '/alfred-code:mode:scoring-x on'])
@@ -807,15 +807,36 @@ test('T5 scoring at the prompt', () => {
 // ---------------------------------------------------------------------------------------------
 test('v2 scoring on 75: both keys stored, the line and the ON line say the level', () => { seedSkillCopy(); const m = outOf('s1', '/alfred-code:mode:scoring on 75');
     assert.deepStrictEqual(pick(modeOf(ROOT).env, ['ALFRED_CODE_SCORING', 'ALFRED_CODE_SCORING_LEVEL']), { ALFRED_CODE_SCORING: '1', ALFRED_CODE_SCORING_LEVEL: '75' });
-    assert.match(lineOf(m), /^\[mode\] scoring is ON \(level 75\)$/); assert.match(m.systemMessage, /Modes ON: .*scoring \(level 75\)/); });
-test('v2 scoring off 85, then on: off at 85 kept, then on at 85', () => { assert.match(lineOf(outOf('s1', '/alfred-code:mode:scoring off 85')), /^\[mode\] scoring is OFF \(level 85 kept\)$/);
-    assert.match(lineOf(outOf('s2', '/alfred-code:mode:scoring on')), /^\[mode\] scoring is ON \(level 85\)$/); });
+    assert.match(lineOf(m), /^\[mode\] scoring is ON \(level 75, rounds 3\)$/); assert.match(m.systemMessage, /Modes ON: .*scoring \(level 75\)/); });
+test('v2 scoring off 85, then on: off at 85 kept, then on at 85', () => { assert.match(lineOf(outOf('s1', '/alfred-code:mode:scoring off 85')), /^\[mode\] scoring is OFF \(level 85, rounds 3 kept\)$/);
+    assert.match(lineOf(outOf('s2', '/alfred-code:mode:scoring on')), /^\[mode\] scoring is ON \(level 85, rounds 3\)$/); });
 for (const n of ['59', '101']) test(`v2 scoring on ${n}: nothing changes`, () => { const before = rawMode(ROOT);
     assert.strictEqual(lineOf(outOf('s1', `/alfred-code:mode:scoring on ${n}`)), '[mode] the level is a whole number from 60 to 100 - nothing changed'); assert.strictEqual(rawMode(ROOT), before); });
 for (const n of ['60', '100']) test(`v2 scoring on ${n} is stored`, () => { outOf('s1', `/alfred-code:mode:scoring on ${n}`); assert.strictEqual(modeOf(ROOT).env.ALFRED_CODE_SCORING_LEVEL, n); });
 test('v2 the level is stored canonical, a number past the range is refused', () => { outOf('s1', '/alfred-code:mode:scoring on 080'); assert.strictEqual(modeOf(ROOT).env.ALFRED_CODE_SCORING_LEVEL, '80');
     outOf('s1', '/alfred-code:mode:scoring on 0075'); assert.strictEqual(modeOf(ROOT).env.ALFRED_CODE_SCORING_LEVEL, '75');
     assert.match(lineOf(outOf('s1', '/alfred-code:mode:scoring on 99999999999999999999')), /nothing changed$/); assert.strictEqual(modeOf(ROOT).env.ALFRED_CODE_SCORING_LEVEL, '75'); });
+const ROUNDS_LINE = '[mode] the rounds are a whole number from 1 to 10 - nothing changed';
+test('v2 scoring on 90 3: level and rounds stored, the line and the next prompt say both', () => { seedSkillCopy(); const m = outOf('s1', '/alfred-code:mode:scoring on 90 3');
+    assert.deepStrictEqual(pick(modeOf().env, ['ALFRED_CODE_SCORING', 'ALFRED_CODE_SCORING_LEVEL', 'ALFRED_CODE_SCORING_ROUNDS']), { ALFRED_CODE_SCORING: '1', ALFRED_CODE_SCORING_LEVEL: '90', ALFRED_CODE_SCORING_ROUNDS: '3' });
+    assert.match(lineOf(m), /^\[mode\] scoring is ON \(level 90, rounds 3\)$/);
+    assert.match(outOf('s9', 'hello').hookSpecificOutput.additionalContext, / scoring: on \(level 90, rounds 3, /); });
+for (const n of ['0', '11', '99999999999999999999']) test(`v2 scoring on 90 ${n}: the rounds line, nothing written`, () => { const before = rawMode();
+    assert.strictEqual(lineOf(outOf('s1', `/alfred-code:mode:scoring on 90 ${n}`)), ROUNDS_LINE); assert.strictEqual(rawMode(), before); });
+for (const n of ['1', '10']) test(`v2 scoring on 90 ${n} is stored`, () => { outOf('s1', `/alfred-code:mode:scoring on 90 ${n}`);
+    assert.strictEqual(modeOf().env.ALFRED_CODE_SCORING_ROUNDS, n); });
+test('v2 a level out of range is judged before the rounds, and nothing is written', () => { const before = rawMode();
+    assert.match(lineOf(outOf('s1', '/alfred-code:mode:scoring on 59 3')), /^\[mode\] the level is a whole number from 60 to 100/); assert.strictEqual(rawMode(), before); });
+test('v2 the rounds are stored canonical: 03 is 3', () => { outOf('s1', '/alfred-code:mode:scoring on 90 03'); assert.strictEqual(modeOf().env.ALFRED_CODE_SCORING_ROUNDS, '3'); });
+test('v2 scoring on 90 keeps the stored rounds', () => { outOf('s1', '/alfred-code:mode:scoring on 90 5');
+    assert.match(lineOf(outOf('s1', '/alfred-code:mode:scoring on 90')), /^\[mode\] scoring is ON \(level 90, rounds 5\)$/); assert.strictEqual(modeOf().env.ALFRED_CODE_SCORING_ROUNDS, '5');
+    assert.match(lineOf(outOf('s1', '/alfred-code:mode:scoring on')), /^\[mode\] scoring is ON \(level 90, rounds 5\)$/); });
+test('v2 scoring off 90 3: both stored and scoring off', () => { const m = outOf('s1', '/alfred-code:mode:scoring off 90 3');
+    assert.deepStrictEqual(pick(modeOf().env, ['ALFRED_CODE_SCORING', 'ALFRED_CODE_SCORING_LEVEL', 'ALFRED_CODE_SCORING_ROUNDS']), { ALFRED_CODE_SCORING: '0', ALFRED_CODE_SCORING_LEVEL: '90', ALFRED_CODE_SCORING_ROUNDS: '3' });
+    assert.match(lineOf(m), /^\[mode\] scoring is OFF \(level 90, rounds 3 kept\)$/); });
+// the extra line itself comes from guard-fresh-session-start.js (auto-mode.test.js); this hook only switches nothing and says nothing
+for (const text of ['scoring on 90 3 4', 'scoring on 90 x', 'scoring on x 3', 'auto-run on 3']) test(`v2 ${text} is extra: nothing written, no [mode] line from the scoring hook`, () => { const before = rawMode();
+    assert.strictEqual(lineOf(outOf('s1', `/alfred-code:mode:${text}`)), ''); assert.strictEqual(rawMode(), before); });
 test('v2 a new session reads the mode with no command typed in it', () => { outOf('s1', '/alfred-code:mode:scoring off'); assert.doesNotMatch(outOf('s9', 'hello').systemMessage || '', /scoring/);
     outOf('s1', '/alfred-code:mode:scoring on'); assert.match(outOf('s9', 'hello').systemMessage, /scoring \(level \d+\)/); });
 test('v2 no switch file is written, and one left by v1 is not read', () => { outOf('s1', '/alfred-code:mode:scoring off'); assert.ok(!fs.existsSync(switchFileOf('s1')));

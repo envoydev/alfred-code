@@ -47,6 +47,8 @@ const { shippedText } = require('./retired-rules.js');
 const uninstallLayer = require('./uninstall.js');
 const toolIgnoresLayer = require('./tool-ignores.js');
 const workspace = require('./workspace.js');
+const childKeep = require('./child-keep.js');
+const childHide = require('./child-hide.js');
 const { takeLock, sleepMs } = require('./file-lock.js');
 const links = require('./links.js');
 const fixedRoot = require('./fixed-root.js');
@@ -54,6 +56,7 @@ const variables = require('./variables.js');
 const modes = require('./modes.js');
 const memoryDir = require('./memory-dir.js');
 const { effectiveVersioning, chainValueOf, ownVersioningLine } = require('./versioning/effects.js');
+const { normaliseValue } = require('./versioning/rank.js');
 const agentFolders = require('./agent-folders/effects.js');
 const { isStackText } = require('./agent-folders/plan.js');
 const { KEY: DOCS_VERSIONING_KEY, staleSeedNotice } = require('./versioning/constants.js');
@@ -130,7 +133,7 @@ const NAV_CONTEXT = 'navigation-context.yml';
 // from its own root - so the copy route ships them and the plugin route removes them with the hooks.
 // shell-guards.js and file-guards.js are the dispatchers the copy route wires for the picked shell and file guards (no catalog row).
 const HOOK_MODULES = ['hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js', 'forge.js', 'forge-lexicon.json', 'shell-guards.js',
-    'file-guards.js', 'agent-cap.js', 'agent-models.js', 'session-status.js', 'mode-settings.js', 'json-file.js', 'reply-budget.js', 'rules-summary.js'];
+    'file-guards.js', 'agent-cap.js', 'agent-models.js', 'session-status.js', 'mode-settings.js', 'json-file.js', 'reply-budget.js', 'rules-summary.js', 'cross-read.js'];
 // The one rule copy.stampDocsRoot rewrites in place, after copyLibrary already hashed it - its
 // bare name, matching a copyLibrary/stamp key (no .md).
 const DOCS_ROOT_RULE = 'alfred-docs-root';
@@ -440,14 +443,14 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // switch says - the conversion carries every value; --print-plan writes nothing.
         if (!args.printPlan && args.action !== 'uninstall') workspace.convertOwn({ projectRoot, env, dataRoot: dataInfo.root, log: (m) => log(`  ${m}`) });
         // Workspace layering (workspace.js prepare): the chain, this project's ignores and own lines, and the parent's set.
-        const wsPrep = workspace.prepare({ projectRoot, env, args, sourceDir: resolved.dir, rt, log, note, dataRoot: dataInfo.root });
+        const wsPrep = workspace.prepare({ projectRoot, env, args, sourceDir: resolved.dir, rt, log, note, dataRoot: dataInfo.root, manifest });
         // D2 rank 2: a linked child whose chain holds a docs versioning is not reseeded - the stack's own local seed leaves through the remover.
         if (wsPrep.on && wsPrep.members.length && chainValueOf(projectRoot, env) !== undefined) docsReseed = null;
         // Workspace stage 3 (links.js): each kind's home - the store where git cannot commit a link, else .claude/<kind>. A local
         // install hides .claude first, and the stamped copies (either record, ruling 3) move in before the read-back.
         const writes = !args.printPlan && args.action !== 'uninstall';
         // D4: the agent-folder pass, with the docs versioning every rank but the carry gives (the carry exists after docsRootStep).
-        let agentRecord = { toldTracked: [], createdDirs: [], failed: [] };
+        let agentRecord = { toldTracked: [], createdDirs: [], failed: [], failedWant: {} };
         if (writes)
         {
             let early = null;
@@ -766,7 +769,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             instructionsAnswer: args.instructionsFile || stampLayer.readInstructionsAnswer(stampFile),
             instructionsKind: args.instructionsFile || stampLayer.readInstructionsFile(stampFile),
             // Workspace layering: prepare's answer, this run's own --add lines, and whether its read-back was blind.
-            workspace: wsPrep, userAdds, workspaceBlind: readBlind,
+            workspace: wsPrep, userAdds, workspaceBlind: readBlind, installedBefore,
         };
         const pinSnapshot = args.keepPins
             ? pinsLayer.snapshotPins({ files: pinFiles(ctx), log })
@@ -799,7 +802,10 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // The links: every item in a store is wanted; a kind git sees is wanted by what this run copied, so its line is said.
         const storeList = (k) => { try { return fs.readdirSync(homes[k].dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name); } catch { return []; } };
         const copied = (k) => (k === 'skills' ? lists.skills.map((e) => e.split('|').pop()) : ctx.routes.skills ? Object.keys((ctx.library && ctx.library.agents) || {}) : lists.agents.map((a) => a.replace(/\.md$/, '')));
-        const want = links.KINDS.flatMap((k) => (homes[k].store ? [...new Set([...storeList(k), ...(child && child.linked[k] ? copied(k) : [])])] : ['visible', 'unknown'].includes(homes[k].state) ? copied(k) : []).map((name) => ({ kind: k, name })));
+        const keptOnly = new Set(ctx.held ? ctx.held.keepOnly : []);
+        const want = links.KINDS.flatMap((k) => (homes[k].store ? [...new Set([...storeList(k), ...(child && child.linked[k] ? copied(k) : [])])] : ['visible', 'unknown'].includes(homes[k].state) ? copied(k) : []).filter((name) => !keptOnly.has(`${k.slice(0, -1)} ${name}`)).map((name) => ({ kind: k, name })));
+        // What the run links into the root's own .claude/skills: the skills a child may also list, which the root then hides (child-hide.js).
+        ctx.linkedSkills = want.filter((w) => w.kind === 'skills').map((w) => w.name);
         const linkRecord = links.syncLinks({ projectRoot, members: child ? wsPrep.members : [], want, prior: recorded, keep: !wsPrep.on, rt, log, said, report, pruneDangling: true });
         nameUsersItems(ctx, linkRecord);
         stampLayer.writeStamp({
@@ -816,7 +822,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             instructionsFile: ctx.instructionsAnswer,
             ownPicks: ctx.ownPicks, ownEnv: ctx.variablesFile ? null : stampLayer.readOwnEnv(stampFile), instructionsBoth: stampLayer.readInstructionsBoth(stampFile),
             memoryLift: ctx.memoryLift === undefined ? stampLayer.readMemoryLift(stampFile) : ctx.memoryLift,
-            untrackTold: Array.isArray(ctx.untrackTold) ? ctx.untrackTold : stampLayer.readUntrackTold(stampFile), links: linkRecord, memberPicks: ctx.held ? ctx.held.lines : [],
+            untrackTold: Array.isArray(ctx.untrackTold) ? ctx.untrackTold : stampLayer.readUntrackTold(stampFile), links: linkRecord, memberPicks: ctx.held ? ctx.held.lines : [], keptOnly: ctx.held ? ctx.held.keepOnly : [],
             answeredEnv: Array.isArray(ctx.answeredEnv) ? ctx.answeredEnv : stampLayer.readAnsweredEnv(stampFile),
             toldTracked: ctx.agentRecord.toldTracked,
             createdDirs: ctx.agentRecord.createdDirs,
@@ -824,7 +830,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // W1: after the stamp, which this run writes whole from its own ledger - a row dropped before it would come back.
         // A .variables git tracks that this run does not write (variablesStep: a local-scope run) is the team's: each equal
         // value is named, none removed (3.12).
-        const linkedChild = Boolean(ctx.childEnv && ctx.childEnv.linked);
+        const linkedChild = isLinkedChild(ctx);
         const noRepo = Boolean(ctx.versioning.advice && ctx.versioning.advice.noRepo);
         if (linkedChild || noRepo)
         {
@@ -833,8 +839,10 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 workspace.pruneChained(projectRoot, { env, log: (l) => log(`  ${l}`), write: Boolean(ctx.variablesFile) });
             // D3: the stack's own seed of the docs versioning, once the workspace answers it - or, outside any git repository, never
             // seeded (only a chosen value chains) - the same write rule.
-            workspace.pruneVersioningSeed(projectRoot, { env, advice: ctx.versioning.advice, log: (l) => log(`  ${l}`), write: Boolean(ctx.variablesFile),
+            // No advice (the read failed) has no firm mark to judge the seed by: the remover waits for the next run.
+            if (ctx.versioning.advice) workspace.pruneVersioningSeed(projectRoot, { env, advice: ctx.versioning.advice, log: (l) => log(`  ${l}`), write: Boolean(ctx.variablesFile),
                 answeredEnv: Array.isArray(ctx.answeredEnv) ? ctx.answeredEnv : stampLayer.readAnsweredEnv(stampFile) });
+            else if (variables.read(own).values[DOCS_VERSIONING_KEY] !== undefined) log(`  workspace: ${DOCS_VERSIONING_KEY} in ${path.relative(projectRoot, own).split(path.sep).join('/')} is left as it is - the docs versioning advice could not be read this run`);
         }
 
         if (args.action === 'install' || args.action === 'update') for (const l of workspace.ruleNotes({ projectRoot, env })) log(`  ${l}`);
@@ -842,8 +850,17 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // --print-plan returned before the stamp; a project with its switch off is left alone.
         if ((args.action === 'install' || args.action === 'update') && ctx.workspace && ctx.workspace.on && fs.existsSync(path.join(claudeDir, BRAND.stamp)))
         {
-            try { workspace.refreshBelow({ projectRoot, env, log, warnUnignored: (root, file) => warnUnignoredLocal(root, file, { rt, log }), release: args.action === 'update' ? releaseVersion(resolved.dir) : '', compare: compareVersions }); }
+            try
+            {
+                // The keep's record writes wait for the run's lock to be released; the rows a parent sets aside are read after them.
+                childKeep.writeBack(ctx.held ? ctx.held.rewrite : [], { top: projectRoot, log });
+                const aside = childKeep.asideRows(projectRoot, { env, dataRoot: dataInfo.root });
+                workspace.refreshBelow({ projectRoot, env, log, warnUnignored: (root, file) => warnUnignoredLocal(root, file, { rt, log }), release: args.action === 'update' ? releaseVersion(resolved.dir) : '', compare: compareVersions, aside });
+            }
             catch (e) { note(`workspace: the refresh of the projects below stopped - ${e.message}`); }
+            // After the re-link: the keys that hide each child's copy of a skill this root links are read as the run leaves the children.
+            try { if (childHide.syncSkillKeys(ctx).created) warnUnignoredLocal(projectRoot, path.join(claudeDir, 'settings.local.json'), ctx); }
+            catch (e) { note(`workspace: the skillOverrides keys for the projects below could not be written - ${e.message}`); }
         }
 
         // After every settings write of the run: an update from an older release leaves the shared settings.json as `{}`.
@@ -906,7 +923,7 @@ function runLayers(ctx)
     ignoreStep(ctx, docsPath);
     // D4: the agent folders again with the final answer; it writes only on a change, and a link-home change waits for the next run.
     if (!ctx.args.printPlan) ctx.agentRecord = agentFolders.apply({ projectRoot: ctx.projectRoot, claudeDir: ctx.claudeDir, scope: ctx.args.scope, log: ctx.log, rt: ctx.rt,
-        told: ctx.agentRecord.toldTracked, created: ctx.agentRecord.createdDirs }, { versioning: ctx.versioning.value, second: true, skip: ctx.agentRecord.failed });
+        told: ctx.agentRecord.toldTracked, created: ctx.agentRecord.createdDirs }, { versioning: ctx.versioning.value, second: true, skip: ctx.agentRecord.failedWant });
     if (!ctx.args.printPlan)
     {
         try { versioningNoticeStep(ctx, dataIgnoreBefore); }
@@ -1090,19 +1107,22 @@ function versioningStep(ctx)
     }
     catch (err)
     {
-        ctx.note(`the docs versioning could not be read (${err.message}) - the .gitignore keeps the docs committed`);
+        ctx.note(`the docs versioning could not be read (${err.message}) - the .gitignore keeps the docs committed; no docs versioning is seeded this run, the next run seeds it`);
         ctx.versioning = { value: null, source: 'seed', advice: null, linked: false, chain: undefined };
     }
 }
 
+// This run's project is a child joined to a workspace (workspace.envPlan, set by variablesStep).
+const isLinkedChild = (ctx) => Boolean(ctx.childEnv && ctx.childEnv.linked);
+
 // D6b: a linked child says what an inherited or pulled docs versioning changed; each value once, on the told-tracked record.
 function versioningNoticeStep(ctx, dataIgnoreBefore)
 {
-    if (!(ctx.childEnv && ctx.childEnv.linked) || !ctx.versioning.advice) return;
+    if (!isLinkedChild(ctx) || !ctx.versioning.advice) return;
     const { projectRoot, versioning } = ctx;
     const told = [...ctx.agentRecord.toldTracked];
     const lines = workspace.versioningNotices(projectRoot, {
-        scope: ctx.args.scope, before: dataIgnoreBefore, after: readOrNull(path.join(projectRoot, ...ctx.dataInfo.root.split('/'), '.gitignore')),
+        scope: ctx.args.scope, dataRoot: ctx.dataInfo.root, before: dataIgnoreBefore, after: readOrNull(path.join(projectRoot, ...ctx.dataInfo.root.split('/'), '.gitignore')),
         value: versioning.value, source: versioning.source, seed: versioning.advice.value, chain: versioning.chain,
         ownLine: ownVersioningLine({ projectRoot, dataRoot: ctx.dataInfo.root }), ledgerRow: (((ctx.ledger || {}).env || {})['.variables'] || {})[DOCS_VERSIONING_KEY],
         answered: (Array.isArray(ctx.answeredEnv) ? ctx.answeredEnv : stampLayer.readAnsweredEnv(ctx.stampFile)).includes(DOCS_VERSIONING_KEY), said: told,
@@ -1119,7 +1139,7 @@ function ignoreStep(ctx, docsPath)
     // The docs memory's union-merge attributes follow the versioning (memory-dir.js, R10).
     ctx.docsVersioningMode = mode;
     let data = null;
-    try { data = docs.ensureDataIgnore({ projectRoot, root, docsPath, mode, scope: ctx.args.scope, linkedChild: Boolean(ctx.childEnv && ctx.childEnv.linked), log }); }
+    try { data = docs.ensureDataIgnore({ projectRoot, root, docsPath, mode, scope: ctx.args.scope, linkedChild: isLinkedChild(ctx), log }); }
     catch (err) { note(`${root}/.gitignore could not be written (${err.message}) - add ${root}/ to the repo's own .gitignore, keeping its docs/ folder visible`); }
     ctx.dataIgnoreOk = data !== null;
     const dataCovered = STACK_IGNORE.includes(data);
@@ -1162,7 +1182,10 @@ function variablesStep(ctx)
         ctx.variablesHeld = variables.read(file).values;
         const now = layout().variablesOf(ctx.projectRoot, { env: { CLAUDE_CONFIG_DIR: ctx.configDir }, dataRoot: root }).values;
         const catalog = readJson(path.join(ctx.source.dir, 'meta', 'environment.json')).env || [];
-        const current = (key) => now[key] ?? String((catalog.find((r) => r.key === key) || {}).default ?? '');
+        // The docs versioning is held only against the tracked file's own valid line: the file the team shares answers for a key it holds.
+        const current = (key) => (key === DOCS_VERSIONING_KEY
+            ? (normaliseValue(ctx.variablesHeld[key]) ?? ctx.args.docsVersioning)
+            : (now[key] ?? String((catalog.find((r) => r.key === key) || {}).default ?? '')));
         for (const [flag, key, value] of [['memory', 'ALFRED_CODE_MEMORY', ctx.args.memory], ['autoCompact', 'ALFRED_CODE_AUTO_COMPACT', ctx.args.autoCompact && (ctx.args.autoCompact === 'on' ? '1' : '0')],
             ['docsVersioning', 'ALFRED_CODE_DOCS_VERSIONING', ctx.args.docsVersioning]])
         {
@@ -1814,9 +1837,12 @@ function pruneAway(ctx, away)
 // root here). A kind git sees holds none (ruling 8).
 function membersHeld(ctx, locked)
 {
-    const held = { skills: [], agents: [], rules: [], lines: [] };
+    const held = { skills: [], agents: [], rules: [], lines: [], keepOnly: [], keptRules: [], rewrite: [], was: null };
     if (locked === null) return held;
+    const priorOnly = (ctx.stampFile && stampLayer.readKeptOnly(ctx.stampFile)) || [];
     let lines = (ctx.stampFile && stampLayer.readMemberPicks(ctx.stampFile)) || [];
+    // What the last run held and recorded, read here under the lock: a rule store copy is pruned from this view and no later one.
+    if (locked === true) held.was = { lines: [...lines], rules: { ...((stampLayer.readLibrary(ctx.stampFile) || {}).rules || {}) } };
     if (locked === false) ctx.log('  !! workspace: the store is locked - member picks are read at the next run');
     else if (locked === true)
     {
@@ -1824,6 +1850,14 @@ function membersHeld(ctx, locked)
         for (const n of got.notes) ctx.log(`  ${n}`);
         lines = got.lines;
     }
+    // What a root keeps for a set-aside child is read from the records whether the store lock is taken or not (a record read
+    // needs no lock). A workspace switched off ('off') reads nothing: the last run's keep stays as it was.
+    const settled = childKeep.settleLines({ locked, lines, priorOnly, readArgs: { projectRoot: ctx.projectRoot, dataRoot: ctx.dataInfo.root, env: ctx.env, log: (l) => ctx.log(`  ${l}`),
+        ownLines: workspace.listLines(ctx.lists), priorOwn: ctx.installedBefore, renamed: ctx.manifest.renamed, retired: ctx.manifest.retired } });
+    for (const n of settled.notes) ctx.log(`  ${n}`);
+    held.rewrite = settled.rewrite;
+    const { keptStore, memberOwn } = settled;
+    lines = [...new Set([...settled.lines, ...keptStore])];
     const bare = (f) => f.replace(/\.md$/, '');
     const own = new Set([...ctx.lists.skills.map((e) => `skill ${e.split('|').pop()}`), ...ctx.lists.agents.map((a) => `agent ${bare(a)}`),
         ...ctx.lists.rules.map((r) => `rule ${bare(r)}`)]);
@@ -1837,6 +1871,8 @@ function membersHeld(ctx, locked)
         else { ctx.log(`  member pick ${cat}s/${name} not held: .claude/${cat}s is not ignored here`); continue; }
         held.lines.push(l);
     }
+    held.keepOnly = childKeep.keepOnlyLines(held.lines, keptStore, memberOwn);
+    held.keptRules = childKeep.keptRuleNames(keptStore);
     if (held.lines.length) ctx.log(`  kept for members below: ${held.lines.map((l) => l.split(' ')[1]).join(', ')}`);
     return held;
 }
@@ -2422,7 +2458,7 @@ function writeNativeRules(ctx)
     const bare = (f) => f.replace(/\.md$/, '');
     const { view } = workspace.readWorkspace(ctx.projectRoot, { dataRoot: ctx.dataInfo.root });
     const done = nativeRules.syncNative({ projectRoot: ctx.projectRoot, rulesDir: ctx.rulesDir, child: ctx.child, listedRules: ctx.lists.rules.map(bare),
-        heldRules: ctx.held ? ctx.held.rules : [], library: ctx.library, shippedRules: ctx.manifest.rules.map(bare), hasChildren: view.children.length > 0,
+        heldRules: ctx.held ? childKeep.memberOnlyRules(ctx.held.rules, ctx.held.keptRules) : [], library: ctx.library, shippedRules: ctx.manifest.rules.map(bare), hasChildren: view.children.length > 0,
         generated: [...selection.GENERATED_FILES, CANARY_RULE], log: ctx.log });
     // writeNative names a file it keeps; one it never writes (a member's pick at a root, a rule a chain root holds) is named here.
     const heldHere = new Set([...ctx.lists.rules.map(bare), ...(ctx.held ? ctx.held.rules : [])]);
@@ -2432,6 +2468,22 @@ function writeNativeRules(ctx)
     for (const name of ctx.heldTwice.filter((n) => heldHere.has(n) && !done.names.includes(n))) ctx.report.keep('rule', name);
     if (done.written.length || done.updated.length || done.removed.length)
         ctx.log(`native rules: .claude/rules - written ${done.written.length}, updated ${done.updated.length}, removed ${done.removed.length}`);
+}
+
+// A rule the last run held for a member or a keep that nothing holds now: its store copy goes, unless edited since the stack wrote
+// it. Judged only from what `membersHeld` read under the store lock - a run the lock refused saw a partial view, and a copy a child
+// added after the lock was released is no leftover.
+function pruneHeldRules(ctx)
+{
+    const { was } = ctx.held || {};
+    if (!was) return;
+    const gone = childKeep.goneRuleNames(was.lines, ctx.held.lines, ctx.lists.rules.map((f) => f.replace(/\.md$/, '')));
+    pruneCopies(ctx, ctx.rulesDir, gone.map((n) => `${n}.md`), 'rule', 'no member below picks it now', { keep: (f) =>
+    {
+        const recorded = was.rules[f.replace(/\.md$/, '')];
+        if (recorded === undefined) return 'it has no recorded hash, so it stays';
+        return recorded !== library.hashItem(path.join(ctx.rulesDir, f)) && 'edited since the stack wrote it, so it is yours';
+    } });
 }
 
 function installHooksAndRules(ctx)
@@ -2488,6 +2540,7 @@ function installHooksAndRules(ctx)
     });
     ctx.library.rules = rulesLibrary.rules;
     pruneAway(ctx, away);
+    pruneHeldRules(ctx);
     // W3: a project every stamped folder above is cut from (the workspace ignores it) seeds its own - with the switch on.
     const above = workspace.stampedAncestors(ctx.projectRoot, { env: ctx.env });
     const cut = Boolean(ctx.workspace && ctx.workspace.on) && above.length === above.cut.length;
@@ -2648,8 +2701,8 @@ function ledgerOf(ctx)
     const hooks = [...part.hooks, ...other(prior.hooks, (d, r) => settings.wiringsOf(d.hooks).some((w) => w.id === r.id))];
     const env = { ...part.env };
     for (const [name, keys] of Object.entries(prior.env || {})) if (!env[name]) env[name] = still(name, keys);
-    // A workspace array member (claudeMdExcludes[<hash>]) is carried apart from the keyed rows, below.
-    const keyed = (keys) => Object.fromEntries(Object.entries(keys || {}).filter(([at]) => !settings.MEMBER_PATH.test(at)));
+    // A workspace array member (claudeMdExcludes[<hash>]) and a key of an object (skillOverrides{<hash>}) are carried apart from the keyed rows, below.
+    const keyed = (keys) => Object.fromEntries(Object.entries(keys || {}).filter(([at]) => !settings.MEMBER_PATH.test(at) && !settings.KEY_PATH.test(at)));
     const settingsKeys = Object.fromEntries(Object.entries(part.settings || {}).map(([name, keys]) => [name, keyed(keys)]));
     // A row's path is read as the writer wrote it: one key (autoMemoryEnabled), two (attribution.commit) or three
     // (modelSettings.<id>.autoCompactWindow).

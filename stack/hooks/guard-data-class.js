@@ -44,8 +44,6 @@ const PART = Object.freeze({ dumps: 'dumps', documents: 'documents', egress: 'eg
 const GIT_READ_TIMEOUT_MS = 2000;
 const GIT_MAX_BUFFER = 4 * 1024 * 1024;
 const GIT_FATAL_STATUS = 128;
-const DENY_EXIT = 2;
-const NO_ANSWER_MODE = 'dontAsk';
 // A test and tuning knob: a positive whole number of ms replaces EGRESS_DEADLINE_MS for route 3.
 const DEADLINE_ENV = 'ALFRED_CODE_EGRESS_DEADLINE_MS';
 const SERVERS_ENV = 'ALFRED_CODE_EGRESS_SERVERS';
@@ -427,9 +425,9 @@ function rewriteBrief({ tool, text, paths, names, codeLines: lines, aliases }) {
 function askText(route, path, detail, listFile) {
   const clear = listFile === null ? '' : ` a '!${path}' line in ${listFile === undefined ? LIST_FILE : listFile} clears it for good.`;
   if (route === 'document') {
-    return `Read of ${path}: it is a business document (${detail}) - price lists, HR files and contracts belong only in an AI cleared for them. Allow only if this document is cleared for this AI;${clear}`.replace(/;$/, '.');
+    return `Read of ${path}: it is a business document (${detail}) - price lists, HR files and contracts belong only in an AI cleared for them; allow only if this document is cleared for this AI;${clear}`.replace(/;$/, '.');
   }
-  return `Read of ${path}: it looks like a data dump (${detail}). Real personal or production records should not enter this transcript - use a synthetic or anonymized sample. Allow only if this data is cleared for this AI;${clear}`.replace(/;$/, '.');
+  return `Read of ${path}: it looks like a data dump (${detail}); real personal or production records should not enter this transcript - use a synthetic or anonymized sample; allow only if this data is cleared for this AI;${clear}`.replace(/;$/, '.');
 }
 
 function denyText(route, path, detail) {
@@ -540,7 +538,7 @@ function readFacts(ctx, file, stat) {
 }
 
 function nobodyAnswers(ctx) {
-  return ctx.payload.permission_mode === NO_ANSWER_MODE || Boolean(ctx.prelude.unattended(ctx.payload));
+  return !ctx.prelude.canAsk(ctx.payload);
 }
 
 function readOutcome(ctx) {
@@ -662,10 +660,12 @@ function writeLedger(ctx, outcome) {
 function deliver(ctx, outcome) {
   writeLedger(ctx, outcome);
   if (outcome.mode === 'ask') {
-    process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: outcome.text } }));
+    // The helper's own prompt (its label, its recommendation, the model's context on a decline) around this guard's sentence.
+    const verdict = ctx.prelude.blockVerdict(ctx.payload, outcome.text, { guard: 'guard-data-class' });
+    process.stdout.write(JSON.stringify({ hookSpecificOutput: verdict.hookSpecificOutput }));
   } else if (outcome.mode === 'deny') {
-    process.stderr.write(outcome.text + '\n');
-    process.exit(DENY_EXIT);
+    const verdict = ctx.prelude.askOrBlock(ctx.payload, outcome.text, { guard: 'guard-data-class' });
+    process.exit(ctx.prelude.blockExitCode(ctx.payload, verdict));
   }
 }
 

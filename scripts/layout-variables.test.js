@@ -4,6 +4,7 @@
 // file while the switch is on - and applied once per process, so every envOf copy reads the winner unchanged.
 const test = require('node:test');
 require('./hook-test-env').isolateHookSuite();
+const { legacyBlock } = require('./hook-test-env');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -65,9 +66,9 @@ test('modeFile: the root file for a project at its top, the top file for a child
     assert.strictEqual(layout.modeFile(child, { platform: 'win32' }), path.join(child, '.claude', 'settings.local.json'));
     assert.strictEqual(layout.modeFile(loose), path.join(loose, '.claude', 'settings.local.json'));
 });
-test('MODE_KEYS: the four, AUTO_RUN outside VARIABLE_KEYS, the other three inside', () =>
+test('MODE_KEYS: the five, AUTO_RUN outside VARIABLE_KEYS, the other four inside', () =>
 {
-    assert.deepStrictEqual(layout.MODE_KEYS, [K('AUTO_RUN'), K('AUTO_COMPACT'), K('SCORING'), K('SCORING_LEVEL')]);
+    assert.deepStrictEqual(layout.MODE_KEYS, [K('AUTO_RUN'), K('AUTO_COMPACT'), K('SCORING'), K('SCORING_LEVEL'), K('SCORING_ROUNDS')]);
     assert.ok(!layout.VARIABLE_KEYS.includes(K('AUTO_RUN')));
     for (const k of layout.MODE_KEYS.slice(1)) assert.ok(layout.VARIABLE_KEYS.includes(k), k);
 });
@@ -80,6 +81,16 @@ test('a same-repository child reads the three modes from the top file, over its 
     assert.strictEqual(values[K('SCORING_LEVEL')], '75');
     assert.strictEqual(values[K('AUTO_RUN')], undefined, 'never read by the loader');
     assert.notStrictEqual(values[K('HISTORY')], '9', 'only the mode keys cross');
+});
+
+test('the scoring rounds: the mode file outranks a child\'s own .variables, and an older install\'s .variables value is still read', { skip: process.platform === 'win32' }, () =>
+{
+    const at = tree({ '.': { git: true, local: { env: { [K('SCORING_ROUNDS')]: '6' } } }, 'api': { vars: `${K('SCORING_ROUNDS')}=4\n` } });
+    const mode = varsOf(at('api'), UNSET);
+    assert.deepStrictEqual([mode.values[K('SCORING_ROUNDS')], mode.from[K('SCORING_ROUNDS')]], ['6', 'settings.local.json'], 'the command\'s value outranks .variables');
+    const older = tree({ '.': { git: true, vars: `${K('SCORING_ROUNDS')}=4\n` } });
+    const old = varsOf(older('.'), UNSET);
+    assert.deepStrictEqual([old.values[K('SCORING_ROUNDS')], old.from[K('SCORING_ROUNDS')]], ['4', 'own'], 'an install with no mode-file rounds reads .variables');
 });
 
 test('VARIABLE_KEYS equals the catalog minus the hook switch-offs and the auto-run mode key', () =>
@@ -375,8 +386,9 @@ test('Review Focus 5: a CRLF file and a project path with a space', () =>
 
 // ---- Review Focus 6: a guard switch in a .variables file is never read ----------------------------------------------
 const GUARD_LINES = (sibling) => `${K('CONFIG_PROTECT')}=0\n${K('PUSH_GATE')}=0\n${K('ALLOW_WRITE_OUTSIDE')}=${sibling}\n`;
-const hook = (file, payload, root, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, file)],
-    { input: JSON.stringify(payload), encoding: 'utf8', cwd: root, env: { ...process.env, ...ON, CLAUDE_PROJECT_DIR: root, ...env } });
+// A block is an ask or a deny now (guards ask, D3); `legacyBlock` reads it as the exit 2 these cases were written for.
+const hook = (file, payload, root, env = {}) => legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, file)],
+    { input: JSON.stringify(payload), encoding: 'utf8', cwd: root, env: { ...process.env, ...ON, CLAUDE_PROJECT_DIR: root, ...env } }));
 // A clone ahead of its upstream by one commit, so an ungated `git push` publishes something.
 function aheadClone(dir)
 {
@@ -479,6 +491,8 @@ test('A10: every catalog row\'s reader resolves its default with no file, no set
         FRESH_SESSION_AFTER_HOURS: (e) => { const n = fresh.afterHoursOf(e); return n === null ? fresh.AFTER_HOURS_FOLLOW : String(n); },
         FRESH_SESSION_PAYBACK: (e) => fresh.paybackOf(e),
         WORKSPACE: (e) => layout.workspaceOn({ env: e, projectRoot: empty }),
+        ROOT_SKILLS: (e) => layout.variablesOf(empty, { env: e }).values.ALFRED_CODE_ROOT_SKILLS || 'own',
+        GUARD_ASK: (e) => require('../stack/hooks/hook-prelude.js').canAsk({ hook_event_name: 'PreToolUse', tool_name: 'Bash' }, e),
     };
     // The user's ruling of 2026-10-21: an unset tier takes the DEFAULT trigger, never its own seed - so two tiers read
     // 180000 with nothing set while their seeds are 400000 and 280000. D5 seeds both everywhere, so only a vanished parent

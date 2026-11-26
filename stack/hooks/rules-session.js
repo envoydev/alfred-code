@@ -338,15 +338,19 @@ function rulesFor(start, env = process.env, { host = 'claude', prelude = loadPre
     };
     const top = chain && chain.members.length ? holders.length - 1 : -1;
     const memberPicks = top > 0 ? picks(holders[top].root, 'member-picks') : [];
-    const picked = memberPicks.length ? holders.slice(0, top).flatMap((h) => picks(h.root, 'own-picks')) : [];
+    // A holder keeps lines for the holder just below it: the rules among them count as picked there, and hide that holder's own ignore of them.
+    const keptRules = (h) => (h.kept || []).filter((line) => line.startsWith('rule ')).map((line) => `rule/${line.slice(5)}`);
+    const picked = memberPicks.length ? [...holders.slice(0, top).flatMap((h) => picks(h.root, 'own-picks')), ...holders.flatMap(keptRules)] : [];
+    const keptOnly = top < 0 ? picks(out.project, 'kept-only') : [];
     for (const [f, r] of won)
     {
         if (!r) { out.natives.push(f.slice(0, -3)); continue; }
-        const ignored = holders.slice(0, r.depth).some((h) => h.ignores.some((i) => i.category === 'rule' && i.name === r.name));
+        const ignored = holders.slice(0, r.depth).some((h) => !keptRules(h).includes(`rule/${r.name}`) && h.ignores.some((i) => i.category === 'rule' && i.name === r.name));
         if (ignored && LOCKED_RULES.includes(r.name)) out.notes.push(`ignore rule ${r.name} not honoured: the rule is locked`);
         else if (ignored) continue;
         const pick = `rule/${r.name}`;
         if (r.depth === top && memberPicks.includes(pick) && !picked.includes(pick)) continue;
+        if (top < 0 && keptOnly.includes(pick)) continue;
         let raw;
         try { raw = fs.readFileSync(r.file, 'utf8'); } catch { out.notes.push(`rule skipped: ${r.rel} - not read`); continue; }
         const rule = { name: r.name, file: r.file, rel: r.rel, root: r.root, text: render(raw), globs: pathsOf(raw) };

@@ -30,6 +30,11 @@ const os = require('node:os');
 const path = require('node:path');
 const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 const { RESULT, STEP, runnerEnv } = require('./gate-leg.js');
+const { WIN_NODE, WIN_STAGE } = require('./gate/constants.js');
+const { stageScript } = require('./gate/win-stage.js');
+const { nodeProbeScript, pickNode } = require('./gate/win-node.js');
+const { unknownTestFiles } = require('./gate/tests-arg.js');
+const { guestWorkers } = require('./gate/workers.js');
 
 const LEGS = ['mac', 'linux', 'win'];
 const HOOKS_PATH = 'scripts/git-hooks';
@@ -158,6 +163,7 @@ function winPaths(id, share)
     return {
         winId,
         work: `${VM_GATE_DIR}\\${winId}`,
+        leg: `${VM_GATE_DIR}\\${winId}\\${WIN_STAGE.folder}`,
         sweep: `${VM_GATE_DIR}\\*`,
         hostDir: path.join(share.hostPath, ...shareParts),
         guestDir: `${share.guestPath}\\${shareParts.join('\\')}`,
@@ -318,6 +324,13 @@ function prl(args, opts = {})
     return rt.execCommand('prlctl', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts });
 }
 
+// The VM's node.exe of CI's major, or null. Encoded, because prlctl exec drops quotes inside an argument.
+async function findWinNode(vm, major)
+{
+    try { return pickNode(await prlAsync(['exec', vm, 'powershell', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(nodeProbeScript(), 'utf16le').toString('base64')], 120000), major); }
+    catch { return null; }
+}
+
 // The calls made while the other legs run are async, so their output keeps draining while the VM boots.
 function prlAsync(args, timeout)
 {
@@ -360,31 +373,44 @@ async function guestBoot(vm)
 const sleepSync = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 const SETTLED = ['running', 'stopped', 'suspended', 'paused'];
 const TARGET = { stop: 'stopped', suspend: 'suspended', pause: 'paused' };
+const VM_POLL_MS = 3000;
+// How long one in-guest shutdown is given before it is sent again.
+const VM_STOP_WAIT_MS = 90 * 1000;
 
 // Puts the VM back; '' when it got there, else what is wrong. Synchronous, since it also runs from
 // the Ctrl-C handler. A stop is a shutdown started INSIDE Windows: `prlctl stop` logged an unexpected
 // shutdown, and `--acpi` was cancelled after 30s on a VM fresh from an update restart (both measured).
-// A VM mid-restart is let settle first.
-function restoreVm(vm, action, { timeoutMs = 5 * 60 * 1000 } = {})
+// A VM mid-restart is let settle first. One failed shutdown exec left the VM running on 2026-11-24 (no shutdown
+// reached Windows), so the shutdown is sent again until the VM stops or the time runs out.
+function restoreVm(vm, action, { timeoutMs = 5 * 60 * 1000, run = prl, info = vmInfo, sleep = sleepSync, now = Date.now } = {})
 {
-    const until = Date.now() + timeoutMs;
-    const state = () => { try { return String(vmInfo(vm).State || '').toLowerCase(); } catch { return ''; } };
-    while (!SETTLED.includes(state()) && Date.now() < until) sleepSync(3000);
+    const until = now() + timeoutMs;
+    const state = () => { try { return String(info(vm).State || '').toLowerCase(); } catch { return ''; } };
+    const firstLine = err => String(err.stderr || err.message).trim().split('\n')[0];
+    const waitFor = (target, ms) => { const end = Math.min(until, now() + ms); while (state() !== target && now() < end) sleep(VM_POLL_MS); };
+    while (!SETTLED.includes(state()) && now() < until) sleep(VM_POLL_MS);
     if (state() === TARGET[action]) return '';
-    try
+    let lastError = '';
+    if (action === 'stop')
     {
-        if (action === 'stop')
+        const ready = () => { try { return /ready/.test(run(['exec', vm, 'cmd', '/c', 'echo ready'], { timeout: 30000 })); } catch { return false; } };
+        while (state() !== TARGET.stop && now() < until)
         {
-            const ready = () => { try { return /ready/.test(prl(['exec', vm, 'cmd', '/c', 'echo ready'], { timeout: 30000 })); } catch { return false; } };
-            while (!ready() && Date.now() < until) sleepSync(3000);
-            prl(['exec', vm, 'shutdown', '/s', '/t', '0'], { timeout: 60000 });
+            while (!ready() && now() < until) sleep(VM_POLL_MS);
+            try { run(['exec', vm, 'shutdown', '/s', '/t', '0'], { timeout: 60000 }); lastError = ''; }
+            catch (err) { lastError = firstLine(err); }
+            waitFor(TARGET.stop, VM_STOP_WAIT_MS);
         }
-        else prl([action, vm], { timeout: 300000 });
     }
-    catch (err) { return `could not ${action} '${vm}': ${String(err.stderr || err.message).trim().split('\n')[0]}`; }
-    while (state() !== TARGET[action] && Date.now() < until) sleepSync(3000);
-    const now = state();
-    return now === TARGET[action] ? '' : `'${vm}' is ${now || 'unreadable'}, not ${TARGET[action]}, after ${Math.round(timeoutMs / 60000)} min - put it back by hand`;
+    else
+    {
+        try { run([action, vm], { timeout: 300000 }); }
+        catch (err) { return `could not ${action} '${vm}': ${firstLine(err)}`; }
+        waitFor(TARGET[action], timeoutMs);
+    }
+    const reached = state();
+    if (reached === TARGET[action]) return '';
+    return `'${vm}' is ${reached || 'unreadable'}, not ${TARGET[action]}, after ${Math.round(timeoutMs / 60000)} min${lastError ? ` (last shutdown: ${lastError})` : ''} - put it back by hand`;
 }
 
 async function waitForExec(vm)
@@ -425,7 +451,9 @@ async function legWin(ctx)
     else if (state !== 'running') return { reasons: [`VM '${vm}' is ${state || 'in an unknown state'}`] };
     if (!(await waitForExec(vm)))
         return { reasons: [`'${vm}' accepted no command within ${fmtMs(VM_READY_MS)} - it needs Parallels Tools running, and isolation from the Mac turned off`] };
-    const { winId, work, sweep: sweepGlob, hostDir, guestDir } = winPaths(ctx.id, share);
+    const winNode = process.env[WIN_NODE.env] || tryGit(ctx.root, ['config', '--get', WIN_NODE.config]) || (await findWinNode(vm, ctx.nodeMajor));
+    if (!winNode) return { reasons: [`no Node ${ctx.nodeMajor || ''} found in '${vm}' (SYSTEM's PATH, Program Files, each user's nvm) - install it, or git config ${WIN_NODE.config} '<path to node.exe>'`] };
+    const { winId, work, leg, sweep: sweepGlob, hostDir, guestDir } = winPaths(ctx.id, share);
     // Killing prlctl on the Mac leaves the run going in the VM: a timeout or Ctrl-C ends the guest
     // tree too and removes its work dir. Encoded, because prlctl exec drops quotes inside an argument.
     const guestKill = `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*${winId}*' } | ForEach-Object { taskkill /F /T /PID $_.ProcessId | Out-Null }; `
@@ -439,13 +467,14 @@ async function legWin(ctx)
     fs.copyFileSync(ctx.bundle, path.join(hostDir, 'repo.bundle'));
     copyLeg(hostDir);
     // SYSTEM's own temp dir is the Windows one nothing cleans: the run's temp sits in its work dir
-    writeLegFiles(hostDir, 'win', { ...ctx.legCfg, bundle: `${guestDir}\\repo.bundle`, work, tempDir: true });
+    const concurrency = guestWorkers(ctx.legCfg.concurrency, info.Hardware?.cpu?.cpus);
+    writeLegFiles(hostDir, 'win', { ...ctx.legCfg, concurrency, bundle: `${leg}\\${WIN_STAGE.bundle}`, work, tempDir: true });
     // one gate per machine, so a run dir already there is a dead run's (the VM went down under it) - only inside gate\
-    const sweep = `Remove-Item -Recurse -Force -ErrorAction SilentlyContinue '${sweepGlob}'`;
-    try { await prlAsync(['exec', vm, 'powershell', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(sweep, 'utf16le').toString('base64')], 120000); }
-    catch { /* the leg reports what matters */ }
+    const stage = stageScript({ sweep: sweepGlob, guestDir, leg });
+    try { await prlAsync(['exec', vm, 'powershell', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(stage, 'utf16le').toString('base64')], 300000); }
+    catch (err) { return { reasons: [`could not copy the leg's files from the share into ${leg}: ${String(err.stderr || err.message).trim().split('\n')[0]}`] }; }
     const bootBefore = await guestBoot(vm);
-    const r = await runProcess('win', 'prlctl', ['exec', vm, 'node', `${guestDir}\\gate-leg.js`, `${guestDir}\\win.json`],
+    const r = await runProcess('win', 'prlctl', ['exec', vm, winNode, `${leg}\\${WIN_STAGE.legScript}`, `${leg}\\${WIN_STAGE.config}`],
         { env: ctx.cleanEnv(process.env), log: ctx.log('win'), onKill });
     // A run cut off with no result: the VM went down under it - Windows Update restarts a VM that sat
     // off (MoNotificationUx.exe 'Service pack', TrustedInstaller 'Upgrade'), or someone shut it down from
@@ -686,7 +715,12 @@ async function main(argv)
         return 0;
     }
     const sha = git(root, ['rev-parse', '--verify', `${opts.ref}^{commit}`]);
-    const branch = /^refs\/heads\/(.+)$/.exec(tryGit(root, ['rev-parse', '--symbolic-full-name', opts.ref]))?.[1] || 'alfred-gate';
+    if (opts.tests)
+    {
+        const unknown = unknownTestFiles(opts.tests, new Set(git(root, ['ls-tree', '-r', '--name-only', sha]).split('\n')));
+        if (unknown.length) throw new Error(`--tests takes test files of the commit, as repo paths (scripts/<name>.test.js); not one: ${unknown.join(', ')}`);
+    }
+    const branch =/^refs\/heads\/(.+)$/.exec(tryGit(root, ['rev-parse', '--symbolic-full-name', opts.ref]))?.[1] || 'alfred-gate';
     if (opts.ref === 'HEAD')
     {
         const dirty = tryGit(root, ['status', '--porcelain']).split('\n').filter(Boolean).length;
@@ -701,4 +735,4 @@ if (require.main === module)
     main(process.argv.slice(2)).then(code => process.exit(code), err => { console.error(`alfred-gate: ${err.message || err}`); process.exit(2); });
 }
 
-module.exports = { LEGS, winPaths, VM_GATE_DIR, nodeSkew, stampsPass, skipsOnStamp, takeLock, parseArgs, parseLegs, readPrePush, ciNodeMajor, findNode, vmShare, isolated, WAKE, RESTORE, cleanEnv, legVerdict, configuredLegs, installHook, uninstallHook };
+module.exports = { restoreVm, LEGS, winPaths, VM_GATE_DIR, nodeSkew, stampsPass, skipsOnStamp, takeLock, parseArgs, parseLegs, readPrePush, ciNodeMajor, findNode, vmShare, isolated, WAKE, RESTORE, cleanEnv, legVerdict, configuredLegs, installHook, uninstallHook };

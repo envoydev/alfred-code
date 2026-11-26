@@ -1380,3 +1380,99 @@ stack's two files and a `.cursor` folder the stack made. Skills and agents move 
 - A root's update names each child whose `.gitignore` still reflects the old value (`workspace: <rel> reads versioning <v>
   from here - ...`); the child's own next update rewrites it.
 - Going back to an earlier release leaves the two new `.gitignore` files in place; delete them by hand.
+
+## after 3.19.1 - a guard asks you before it blocks
+
+**Every guard that stopped a tool call now shows Claude Code's permission prompt first.** The prompt names the guard and
+its reason. Yes runs that one call. No refuses it, and Claude gets the guard's full reason and its fix. The prompt comes
+each time: a yes typed in chat opens nothing, and a Yes at the prompt opens only the call it shows.
+
+Where no one can answer, the guard still blocks as before: in `dontAsk` and `bypassPermissions` mode, in `claude -p`, with
+`ALFRED_CODE_UNATTENDED=1`, in Cursor, and for a seat's hand-back in every mode. To get the plain block back everywhere,
+set `ALFRED_CODE_GUARD_ASK=0` in the launch environment, a settings `env` or `.alfred/.variables`.
+
+**The chat-yes openers are gone.** The `DISCARD-ALLOW`, `CROSS-WRITE-ALLOW`, `GUARD-OFF-ALLOW` and `STAGED-SCAN-ALLOW`
+files, a path you typed, and a discard picked in an answered question open no block now. No hook reads those files, and no hook deletes
+one an older release left under `.alfred/state/approvals/`: delete it by hand if you like. The `COMMIT-GATE`, `PUSH-GATE` and
+`APPROVAL` files stay as proof, and where their block fires it asks.
+
+Nothing to do in an installed project beyond the update. Report that the prompt replaces the block and that
+`ALFRED_CODE_GUARD_ASK=0` restores it.
+
+## after 3.19.1 - the scoring command takes the rounds
+
+**`/alfred-code:mode:scoring on 90 3` saves level 90 and 3 grading rounds.** Type it alone on its line. The rounds are a
+whole number from 1 to 10. `on 90` saves the level only and keeps the stored rounds, and `on` alone changes neither. The
+same holds for `off`.
+
+The command's rounds outrank `ALFRED_CODE_SCORING_ROUNDS` in `.alfred/.variables`, as the level does. A `.variables` value
+an older install holds is still read until you type a rounds value. `variables.js set` now refuses
+`ALFRED_CODE_SCORING_ROUNDS`, as it does the level: type the scoring command instead. A rounds value the stack seeded
+into an older install's `settings.local.json` loses its ledger row on update and stays as typed (default 3); uninstall
+still removes it.
+
+Nothing to do in an installed project beyond the update. Report that the scoring command takes the rounds.
+
+## after 3.19.1 - a root validate no longer re-offers what a child ignores
+
+**A root's fit check now leaves out an item a child project already ignores.** At a workspace root, `/alfred-code:validate`
+and the update's fit check list what each child inherits that fits none of its stacks. An item you answered 'Ignore' for
+is in that child's `workspace.json` already, and it no longer comes back as a removal on the next root validate.
+
+The check reads each child's own record and skips the items it names. A child with no record, or a record that cannot be
+read, is offered everything as before. 'Keep everything inherited' still writes nothing, so the next validate offers the
+same removals.
+
+Nothing to do in an installed project beyond the update. Report that a root validate skips what a child ignores.
+
+## after 3.19.1 - a joined child inherits its workspace's modes
+
+**A joined child now takes a mode its workspace root turned on or off, so a root that once typed `/alfred-code:mode:scoring off` turns scoring off in every joined child that holds no scoring value of its own (a join drops the stack's own seed of it), and the child's own `/alfred-code:mode:scoring on` keeps it on there.** A child reads
+each of the five mode keys from its own files first, then from the nearest workspace member's mode file
+(`.claude/settings.local.json`). Its own value always wins, `0` included.
+
+An inherited auto-run `1` counts only from a member file git does not track and that is your machine's alone. A tracked
+or unvouched file is said and never taken. After the update, a child under a root that already has auto-run on runs with
+it from its first new session: each prompt carries `auto-run: on, inherited from <rel>`, and the bare commands say
+`ON (from <rel>)` or `OFF (from <rel>)`. `/alfred-code:mode:auto-run off` typed in the child writes `0` there and leaves the
+root on. Where git tracks the child's own mode file, the off cannot be kept, and the command names `workspace.js ignore
+--root . --add 'env ALFRED_CODE_AUTO_RUN'` instead.
+
+The update copies no inherited value into a child's file. A child that leaves its workspace keeps what it read in its own
+mode file, never in its tracked `.variables`, and an inherited auto-run ends there.
+
+Nothing to do in an installed project beyond the update. Report that a joined child inherits its workspace's modes and
+that its own `off` or `on` wins.
+
+## after 3.19.1 - a read past the workspace asks first
+
+**Every Read, Grep and Glob past the workspace now asks first, and so does a shell command that reads there.
+`guard-cross-project-write:read` in `ALFRED_CODE_HOOKS_OFF` turns the read half off.** Before, the cross-project guard
+asked only for a write. Now it also asks before a read of another project's files.
+
+The ask covers the project zone: the folders under your home folder that hold projects, and another project's Claude Code
+memory folder. These stay open: dot-folders, `Library` and `AppData`, the toolchain folders (`go/pkg`, `miniconda3`,
+`snap`, `Android`, `flutter`, `sdk` and the like), the temp dir, this project's own memory and its workspace members', and
+the plugin's own root. A workspace member's folder is inside the boundary and never asks. `ALFRED_CODE_ALLOW_WRITE_OUTSIDE`
+opens a tree for both halves.
+
+- A search pattern word, such as the first word of `grep`, is never judged as a path.
+- A script a command runs is read one level deep.
+- A command that reads and also writes past the boundary gets ONE prompt for both.
+- A subagent gets the same prompt. After a No, it stops and reports which files it needed.
+
+Known limits, said once here:
+- A directory you granted Claude Code in `permissions.additionalDirectories` of your account settings file stays open (a project's own settings files open nothing). A grant that holds the project opens that folder's siblings too. The CLI's `--add-dir` is not seen by a hook, so such a directory still asks.
+- `git commit -F` or `git tag -F` of a file past the workspace gives no ask.
+- A script nested two levels deep is not read.
+- A `CLAUDE_CONFIG_DIR` outside your home folder is judged only in part.
+- Words past the 512th, paths past the 64th and scripts past the 8th in one command are not judged.
+- `git commit` and `git tag` are found by their word anywhere in git's words, so a `-F` file can pass unasked.
+- A `CLAUDE_PLUGIN_ROOT` set to the account folder would open other projects' memory. Claude Code never sets it so.
+- `rm` of another project's memory folder asks with 'reads' wording.
+
+The plugin's own root (`CLAUDE_PLUGIN_ROOT`) is open for reads. A plugin loaded with `--plugin-dir` from a folder under
+your home folder would otherwise ask on every guard call, since the secret guard's runner reads files there.
+
+Nothing to do in an installed project beyond the update. Report that a read past the workspace now asks first and that
+`guard-cross-project-write:read` in `ALFRED_CODE_HOOKS_OFF` turns it off.

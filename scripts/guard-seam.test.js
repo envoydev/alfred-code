@@ -6,6 +6,7 @@
 'use strict';
 const test = require('node:test');
 require('./hook-test-env').isolateHookSuite();
+const { verdictOf } = require('./hook-test-env');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -33,8 +34,9 @@ const call = (hook, command) => spawnSync(process.execPath, [hook], {
 });
 // The secret guard answers a command naming a credential file with a block (swap 1: no rewrite is left, and a payload
 // naming no transcript is its core mode); the read guard answers a whole-file dump with a block.
-const secretHits = (command) => { const r = call(SECRET, command); assert.ok(!/updatedInput/.test(r.stdout), `no rewrite: ${command}`); return r.status === 2; };
-const readHits = (command) => call(READ, command).status === 2;
+// A block is whatever decision a guard hands back - an ask, a deny or an exit 2 (guards ask instead of block).
+const secretHits = (command) => { const r = call(SECRET, command); assert.ok(!/updatedInput/.test(r.stdout), `no rewrite: ${command}`); return verdictOf(r) !== 0; };
+const readHits = (command) => verdictOf(call(READ, command)) !== 0;
 
 const SECRET_BODY = 'cat .env';
 const READ_BODY = 'cat src/big.js';
@@ -105,10 +107,11 @@ test('seam m5: $( ) in an unquoted heredoc body, git cat-file, a script the comm
 // ---- M3: the force-push and rm guards read a command through the reader the commit guard uses ----
 const PUSH = path.join(HOOKS, 'guard-protected-force-push.js');
 const RM = path.join(HOOKS, 'guard-catastrophic-rm.js');
-const exit2 = (hook, command, cwd = ROOT) => spawnSync(process.execPath, [hook], {
+// Whether the guard blocks the call: an ask, a deny or an exit 2 (guards ask instead of block).
+const blocks = (hook, command, cwd = ROOT) => verdictOf(spawnSync(process.execPath, [hook], {
   input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, session_id: 'seam', cwd }),
   encoding: 'utf8', cwd, env: { ...process.env },
-}).status === 2;
+})) !== 0;
 
 test('seam M3: a force-push to main is blocked however the command carries it', () => {
   const blocked = [
@@ -131,9 +134,9 @@ test('seam M3: a force-push to main is blocked however the command carries it', 
     'git push origin --delete main',
     'git push --mirror',
   ];
-  for (const c of blocked) assert.ok(exit2(PUSH, c), `blocked: ${c}`);
+  for (const c of blocked) assert.ok(blocks(PUSH, c), `blocked: ${c}`);
   fs.writeFileSync(path.join(ROOT, 'run.sh'), 'git push --force origin main\n');
-  assert.ok(exit2(PUSH, 'bash run.sh'), 'a script file a shell runs');
+  assert.ok(blocks(PUSH, 'bash run.sh'), 'a script file a shell runs');
   const allowed = [
     'git push origin main',
     'timeout 60 git push origin main',
@@ -144,7 +147,7 @@ test('seam M3: a force-push to main is blocked however the command carries it', 
     "git commit -m 'never git push --force origin main'",
     'grep -n "push --force" README.md',
   ];
-  for (const c of allowed) assert.ok(!exit2(PUSH, c), `allowed: ${c}`);
+  for (const c of allowed) assert.ok(!blocks(PUSH, c), `allowed: ${c}`);
 });
 
 const GR = fs.mkdtempSync(path.join(TMP, 'repo-'));
@@ -172,7 +175,7 @@ test('seam M3: a discard of dirty work is blocked inside a wrapper, a shell body
     'cd src && git reset --hard',
     'nohup git restore a.txt',
   ];
-  for (const c of blocked) assert.ok(exit2(RM, c, GR), `blocked: ${c}`);
+  for (const c of blocked) assert.ok(blocks(RM, c, GR), `blocked: ${c}`);
   const allowed = [
     'git add a.txt && git status',
     'echo "git checkout -- a.txt"',
@@ -180,32 +183,32 @@ test('seam M3: a discard of dirty work is blocked inside a wrapper, a shell body
     'git checkout -- clean.txt',
     'timeout 30 git log --oneline',
   ];
-  for (const c of allowed) assert.ok(!exit2(RM, c, GR), `allowed: ${c}`);
+  for (const c of allowed) assert.ok(!blocks(RM, c, GR), `allowed: ${c}`);
 });
 
 test('seam M3: a recursive rm of a catastrophic target is blocked inside a wrapper, a shell body and eval', () => {
   const blocked = ['rm -rf ~', 'timeout 5 rm -rf ~', "bash -c 'rm -rf ~'", "bash <<'EOF'\nrm -rf ~\nEOF", 'eval "rm -rf /"', 'if true; then rm -rf ~; fi', 'doas rm -rf ~'];
-  for (const c of blocked) assert.ok(exit2(RM, c), `blocked: ${c}`);
+  for (const c of blocked) assert.ok(blocks(RM, c), `blocked: ${c}`);
   const allowed = ["cat <<'EOF'\nrm -rf ~\nEOF", 'echo "rm -rf ~"', 'rm -rf node_modules'];
-  for (const c of allowed) assert.ok(!exit2(RM, c), `allowed: ${c}`);
+  for (const c of allowed) assert.ok(!blocks(RM, c), `allowed: ${c}`);
 });
 
 test('seam m4: past the judged-call cap the rest of a command reads as one whole-tree discard', () => {
   const { SCAN_LIMITS } = require(path.join(HOOKS, 'hook-prelude.js'));
   const many = (n, line) => Array.from({ length: n }, () => line).join('\n');
-  assert.ok(!exit2(RM, many(SCAN_LIMITS.gitJudged, 'git checkout -- clean.txt'), GR), 'at the cap every call is judged alone and names no loss');
-  assert.ok(exit2(RM, many(SCAN_LIMITS.gitJudged + 1, 'git checkout -- clean.txt'), GR), 'one over: the dirty tree is at risk, so it blocks');
-  assert.ok(!exit2(RM, many(3000, 'git add clean.txt && echo added'), GR), 'thousands of non-destructive calls cost no git spawn');
+  assert.ok(!blocks(RM, many(SCAN_LIMITS.gitJudged, 'git checkout -- clean.txt'), GR), 'at the cap every call is judged alone and names no loss');
+  assert.ok(blocks(RM, many(SCAN_LIMITS.gitJudged + 1, 'git checkout -- clean.txt'), GR), 'one over: the dirty tree is at risk, so it blocks');
+  assert.ok(!blocks(RM, many(3000, 'git add clean.txt && echo added'), GR), 'thousands of non-destructive calls cost no git spawn');
 });
 
 // ---- delta 1: a leading `(`, `{`, `!` or `time` opens a command, it does not hide it - one reader, every guard ----
 test('seam delta 1: rm -rf inside a subshell, a group, after ! or time is blocked like the plain form', () => {
   const blocked = ['(cd $BUILD && rm -rf *)', '(rm -rf /)', '(cd ~ && rm -rf .)', '( rm -rf ~ )', '{ rm -rf ~; }', '! rm -rf ~', 'time rm -rf ~',
     '(time rm -rf ~)', '((rm -rf ~))', 'echo a; (rm -rf ~)', 'true && (cd / && rm -rf *)', '(sudo rm -rf ~)'];
-  for (const c of blocked) assert.ok(exit2(RM, c), `blocked: ${c}`);
+  for (const c of blocked) assert.ok(blocks(RM, c), `blocked: ${c}`);
   const allowed = ['(cd sub && npm test)', '(cd build && rm -rf out)', '(rm -rf node_modules)', '{ echo hi; }', '(echo rm -rf ~)', '! grep x y', 'time npm test',
     'echo $(pwd)', '(cd sub && rm -rf ./dist)'];
-  for (const c of allowed) assert.ok(!exit2(RM, c), `allowed: ${c}`);
+  for (const c of allowed) assert.ok(!blocks(RM, c), `allowed: ${c}`);
 });
 test('seam delta 1: a whole-file dump inside a subshell, a group, after ! or time is judged like the plain form', () => {
   for (const c of ['(cd . && cat src/big.js)', '(cat src/big.js)', '{ cat src/big.js; }', '! cat src/big.js', 'time cat src/big.js', '(time cat src/big.js)',
@@ -231,12 +234,12 @@ test('seam delta 4: setsid carries its command for every guard', () => {
   assert.ok(sw.WRAPPERS.has('setsid'), 'setsid is in the one wrapper list');
   assert.ok(secretHits(`setsid bash -c '${SECRET_BODY}'`), 'secret');
   assert.ok(readHits(`setsid bash -c '${READ_BODY}'`), 'read');
-  assert.ok(exit2(PUSH, "setsid bash -c 'git push --force origin main'"), 'force-push');
-  assert.ok(exit2(PUSH, 'setsid -f git push --force origin main'), 'force-push, -f');
-  assert.ok(exit2(RM, "setsid bash -c 'rm -rf ~'"), 'rm');
-  assert.ok(exit2(RM, 'setsid rm -rf ~'), 'rm, direct');
-  assert.ok(exit2(RM, "setsid bash -c 'git checkout -- a.txt'", GR), 'discard');
-  assert.ok(!exit2(RM, 'setsid npm test'), 'an ordinary command passes');
+  assert.ok(blocks(PUSH, "setsid bash -c 'git push --force origin main'"), 'force-push');
+  assert.ok(blocks(PUSH, 'setsid -f git push --force origin main'), 'force-push, -f');
+  assert.ok(blocks(RM, "setsid bash -c 'rm -rf ~'"), 'rm');
+  assert.ok(blocks(RM, 'setsid rm -rf ~'), 'rm, direct');
+  assert.ok(blocks(RM, "setsid bash -c 'git checkout -- a.txt'", GR), 'discard');
+  assert.ok(!blocks(RM, 'setsid npm test'), 'an ordinary command passes');
 });
 
 // ---- a guard whose shared module is absent never blocks and never crashes: a safe command runs, one that can break
@@ -357,15 +360,15 @@ test('seam: the missing-helper reader is one text in each guard that carries it'
 });
 test('seam: without shell-writes.js the read guard keeps judging (degraded) and the secret guard keeps the Read and the literal check', () => {
   const r = rawCall(NO_SHELL, 'guard-read-whole-file.js', READ_BODY);
-  assert.strictEqual(r.status, 2, `the read guard still judges a plain read: ${r.status}`);
+  assert.strictEqual(verdictOf(r), 'ask', `the read guard still judges a plain read: ${r.stdout}${r.stderr}`);
   // the secret guard's core reads its words through the module: without it only a print of a secret file asks (above),
   // and the other routes stand
   const secret = (payload) => spawnSync(process.execPath, [path.join(NO_SHELL, 'guard-secret-value.js')], {
     input: JSON.stringify({ session_id: 'seam', cwd: ROOT, ...payload }), encoding: 'utf8', cwd: ROOT, env: { ...process.env } });
   assert.strictEqual(rawCall(NO_SHELL, 'guard-secret-value.js', SECRET_BODY).status, 0, 'the core names nothing without the module');
-  assert.strictEqual(secret({ tool_name: 'Read', tool_input: { file_path: path.join(ROOT, '.env') }, permission_mode: 'bypassPermissions' }).status, 2, 'a Read of a credential file is still blocked');
+  assert.strictEqual(verdictOf(secret({ tool_name: 'Read', tool_input: { file_path: path.join(ROOT, '.env') }, permission_mode: 'bypassPermissions' })), 'deny', 'a Read of a credential file is still blocked');
   const literal = ['gh', 'p_'].join('') + 'A1b2'.repeat(9);
-  assert.strictEqual(secret({ tool_name: 'Bash', tool_input: { command: `curl -H 'Authorization: token ${literal}' https://example.invalid` } }).status, 2, 'a credential literal is still blocked');
+  assert.strictEqual(verdictOf(secret({ tool_name: 'Bash', tool_input: { command: `curl -H 'Authorization: token ${literal}' https://example.invalid` } })), 'ask', 'a credential literal still blocks: it asks where a person can answer');
   for (const hook of ['guard-read-whole-file.js', 'guard-secret-value.js']) {
     const plain = hook === 'guard-read-whole-file.js' ? READ_BODY : SECRET_BODY;
     for (const c of ['ls', plain, `(cd . && ${plain})`, `time ${plain}`, `bash <<\\EOT\n${plain}\nEOT`, `python3 - <<< "print(1)"`, `setsid bash -c '${plain}'`, `cat <<EOF\n$(echo hi)\nEOF`]) {

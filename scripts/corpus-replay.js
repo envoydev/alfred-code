@@ -30,7 +30,7 @@ const HOOKS_DIR = path.join(__dirname, '..', 'stack', 'hooks');
 // ---------------------------------------------------------------------------
 // The wiring. This is the SAME table the installers write into settings.json -
 // keep it in step with meta/stack-manifest.json's `hooks` list, which is the
-// source of truth. `deny` marks a route whose verdict is exit 2; `probe` a LOG-ONLY route, which fires
+// source of truth. `deny` marks a route whose verdict is a block (exit 2, an ask or a deny); `probe` a LOG-ONLY route, which fires
 // when it wrote its own `mode: probe` row of that kind to the hook-blocks ledger; the rest are
 // injection routes, where firing means additionalContext came back on stdout.
 // ---------------------------------------------------------------------------
@@ -64,7 +64,7 @@ const ROUTES = [
   // The output-scoring's seal (mode-output-scoring): a seat's hand-back is written to its score file, logged, never decided.
   { hook: 'guard-stop-contract.js', event: 'PreToolUse', tools: ['SubagentHandback'], deny: false, probe: 'scoring-seal' },
   { hook: 'guard-fresh-session-start.js', event: 'PreToolUse', tools: ['Skill'], deny: true, needsTranscript: true },
-  { hook: 'guard-cross-project-write.js', event: 'PreToolUse', tools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Monitor'], deny: true },
+  { hook: 'guard-cross-project-write.js', event: 'PreToolUse', tools: ['Read', 'Grep', 'Glob', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Monitor'], deny: true },
   { hook: 'guard-config-protection.js', event: 'PreToolUse', tools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Monitor'], deny: true },
   // Wired on a regular-expression matcher (`pattern`, the manifest's own), replayed on tool names it matches under any
   // registration (N6, 2026-10-24 - the stack ships no server, so the name is the user's). A bare server spelling is built
@@ -402,7 +402,7 @@ function runOne(job, scratch) {
     child.on('error', () => resolve({ ...job, status: -1, fired: false, error: 'spawn' }));
     child.on('close', (status) => {
       if (prefixPath) { try { fs.unlinkSync(prefixPath); } catch {} }
-      // A deny route fires on exit 2. A probe route fires when its row landed in the job's own
+      // A deny route fires on exit 2, or on an ask or a deny the guard prints (guards ask where a person can answer). A probe route fires when its row landed in the job's own
       // session ledger. An injection route fires when it actually emitted additionalContext - a
       // silent exit 0 is the hook deciding there was nothing to say.
       const probed = () => {
@@ -411,7 +411,7 @@ function runOne(job, scratch) {
             .some((l) => { try { const o = JSON.parse(l); return o.mode === 'probe' && o.kind === job.probe; } catch { return false; } });
         } catch { return false; }
       };
-      const fired = job.deny ? status === 2 : job.probe ? probed() : /additionalContext/.test(out);
+      const fired = job.deny ? status === 2 || /"permissionDecision":"(?:ask|deny)"/.test(out) : job.probe ? probed() : /additionalContext/.test(out);
       resolve({ key: job.key, route: job.route, status, fired, error: status !== 0 && status !== 2 ? err.slice(0, 200) : '' });
     });
     child.stdin.end(JSON.stringify(payload));

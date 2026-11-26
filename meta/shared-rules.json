@@ -4028,23 +4028,6 @@
         }
       ]
     },
-    "cross-write-allow-receipt": {
-      "_note": "The cross-project write guard's block ends in ONE AskUserQuestion (task card - recommended / allow that tree for this session / drop), and the 'allow' answer is honoured through a receipt at <data root>/state/approvals/CROSS-WRITE-ALLOW - one root per line, this session's own, under 8h, a root containing the project dropped. The hook owns the path (it resolves and reads the file); the docs-root rule and the repo hook notes name the same path (the habits-commit-checkpoint copy went in the 2026-10-08 audit - the guard's denial carries the ask and the receipt at the moment of need). A rename in one place leaves the model writing a receipt the guard never reads.",
-      "owner": {
-        "file": "stack/hooks/guard-cross-project-write.js",
-        "marker": "'flow', 'CROSS-WRITE-ALLOW'"
-      },
-      "sites": [
-        {
-          "file": "stack/rules/alfred-docs-root.md",
-          "marker": "`<data root>/state/approvals/CROSS-WRITE-ALLOW` receipt"
-        },
-        {
-          "file": ".claude/rules/repo-hooks.md",
-          "marker": "`<data root>/state/approvals/CROSS-WRITE-ALLOW` receipt"
-        }
-      ]
-    },
     "cross-project-task-card-home": {
       "_note": "A change another repo needs is handed off as a task card at <docs-path>/work/cross-project-tasks/<other-project>.md, never written into that repo (guard-cross-project-write blocks the write). The hook is canonical - it prints the path in its block text; the docs-root rule lists the home, the habits-commit-checkpoint skill binds the receipt rule to it, and the three flows that hand off write the card.",
       "owner": {
@@ -5830,19 +5813,6 @@
         {
           "file": "stack/skills/loop-architecture-quality/SKILL.md",
           "marker": "Never weaken a test or delete an assertion to make a con look resolved"
-        }
-      ]
-    },
-    "discard-allow-receipt": {
-      "_note": "The DISCARD-ALLOW receipt is the escape from guard-catastrophic-rm.js's denial: the guard READS it, and its denial carries the whole route - the three-option ask, the receipt path and spelling, the retry - at the moment of need ('no prose copy to consult'). The habits-commit-checkpoint copy went in the 2026-10-08 audit: that skill never fires on a discard, so it was paid on every commit for a receipt written a few times a year. The repo hook notes name the same path, pinned here so a rename in the hook re-syncs them.",
-      "owner": {
-        "file": "stack/hooks/guard-catastrophic-rm.js",
-        "marker": "layout.findState(root, 'approvals', 'DISCARD-ALLOW')"
-      },
-      "sites": [
-        {
-          "file": ".claude/rules/repo-hooks.md",
-          "marker": "`<data root>/state/approvals/DISCARD-ALLOW`"
         }
       ]
     },

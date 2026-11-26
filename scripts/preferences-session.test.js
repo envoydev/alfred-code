@@ -3,6 +3,7 @@
 'use strict';
 const test = require('node:test');
 require('./hook-test-env').isolateHookSuite({ ownTmp: true });
+const { verdictOf, legacyBlock, blockText, askText } = require('./hook-test-env');
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint never decides a case - the hold is made unattended too
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -70,8 +71,10 @@ const pre = (tool, input, session, extra = {}) => ({ hook_event_name: 'PreToolUs
 const edit = (file, session, extra) => pre('Edit', { file_path: file, old_string: 'x', new_string: 'y' }, session, extra);
 const bash = (command, session, extra) => pre('Bash', { command }, session, extra);
 const out = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput || {}; } catch { return {}; } };
-const denied = (r) => out(r).permissionDecision === 'deny';
-const reason = (r) => String(out(r).permissionDecisionReason || '');
+// The hold asks where a person can answer (guards ask): `denied` is a hold, `reason` the text the model reads after it (the pushed
+// pieces and the PATH line), `legacyBlock` giving the reason of an ask or a deny alike.
+const denied = (r) => verdictOf(r) === 'ask';
+const reason = (r) => (verdictOf(r) ? legacyBlock(r).stderr : '');
 // A hand-over that lets the call run (card item 13): the docs ride additionalContext, no permission decision.
 const handed = (r) => (out(r).permissionDecision === undefined ? String(out(r).additionalContext || '') : '');
 // A read or review hand-over: the docs as context, the call let run (no deny) - the PATH line or memory may lead the text.
@@ -2291,6 +2294,8 @@ function joined({ apiPrefs = true, apiRepo = true, tools = false } = {})
     return p;
 }
 const API_LINE = 'Project api - paths below are from api/.';
+// A hold's PATH line is the second line: the first is the sentence the prompt shows (review fix round 1).
+const pathSecond = (text, line = API_LINE) => text.split('\n')[1] === line;
 const keyOfRel = (rel) => require('node:crypto').createHash('sha256').update(rel).digest('hex').slice(0, 12);
 
 test('member: the first edit under a child is denied with the child\'s code docs and the path line, the retry passes', () =>
@@ -2301,10 +2306,32 @@ test('member: the first edit under a child is denied with the child\'s code docs
         const s = sid();
         const held = p.hook(edit('api/src/x.ts', s));
         assert.ok(denied(held), held.stdout);
-        assert.ok(reason(held).startsWith(`${API_LINE}\n`), reason(held));
+        assert.ok(pathSecond(reason(held)), reason(held));
         assert.match(reason(held), /API-CODE/);
         assert.doesNotMatch(reason(held), /ROOT-CODE/);
         assert.ok(!denied(p.hook(edit('api/src/x.ts', s))));
+    }
+    finally { p.rm(); }
+});
+
+test('preferences-session: the hold asks with the docs pieces in the model text, and denies with today\'s text where nobody can answer', () =>
+{
+    const p = joined();
+    try
+    {
+        const held = p.hook(edit('api/src/x.ts', sid()));
+        assert.strictEqual(verdictOf(held), 'ask', held.stdout);
+        assert.match(askText(held), /^alfred-code preferences-session: /);
+        assert.doesNotMatch(askText(held), /API-CODE/, 'the user\'s line is the first sentence, not the docs');
+        assert.match(askText(held), /read the user's/, 'the prompt says what is held, not the PATH line (review fix round 1)');
+        assert.match(askText(held), /^alfred-code preferences-session: Before changing/, 'the prompt opens with the hold, not the PATH line');
+        assert.ok(pathSecond(blockText(held)), 'the model text keeps the PATH line, ahead of the paths it governs');
+        assert.match(blockText(held), /API-CODE/);
+        const dontAsk = p.hook(edit('api/src/x.ts', sid(), { permission_mode: 'dontAsk' }));
+        assert.strictEqual(verdictOf(dontAsk), 'deny', dontAsk.stdout);
+        assert.ok(pathSecond(blockText(dontAsk)), 'a deny carries the same text');
+        assert.match(blockText(dontAsk), /API-CODE/);
+        assert.strictEqual(out(dontAsk).additionalContext, undefined, 'a deny carries no additionalContext');
     }
     finally { p.rm(); }
 });
@@ -2334,7 +2361,7 @@ test('member: two children, one hold each', () =>
         const s = sid();
         assert.match(reason(p.hook(edit('api/src/x.ts', s))), /API-CODE/);
         const web = p.hook(edit('web/src/x.ts', s));
-        assert.ok(reason(web).startsWith('Project web - paths below are from web/.\n')); assert.match(reason(web), /WEB-CODE/);
+        assert.ok(pathSecond(reason(web), 'Project web - paths below are from web/.')); assert.match(reason(web), /WEB-CODE/);
         assert.ok(!denied(p.hook(edit('api/src/x.ts', s))));
     }
     finally { p.rm(); }
@@ -2363,7 +2390,7 @@ test('member: from the root\'s folder, cd api && git commit and git -C api commi
         {
             const r = p.hook(bash(command, sid()));
             assert.ok(denied(r), command);
-            assert.ok(reason(r).startsWith(`${API_LINE}\n`), command);
+            assert.ok(pathSecond(reason(r)), command);
             assert.match(reason(r), /API-GIT/, command);
         }
     }
@@ -2410,7 +2437,7 @@ test('member: a command that edits under a child and writes git elsewhere is the
         assert.match(reason(p.hook(edit('api/src/x.ts', s))), /API-CODE/);
         const t = sid();
         const api = p.hook(bash('git -C api commit -m x && sed -i s/a/b/ web/src/x.ts', t));
-        assert.ok(reason(api).startsWith(`${API_LINE}\n`)); assert.match(reason(api), /API-GIT/); assert.doesNotMatch(reason(api), /WEB-CODE/);
+        assert.ok(pathSecond(reason(api))); assert.match(reason(api), /API-GIT/); assert.doesNotMatch(reason(api), /WEB-CODE/);
         assert.match(reason(p.hook(edit('web/src/x.ts', t))), /WEB-CODE/);
     }
     finally { p.rm(); }
@@ -2434,7 +2461,7 @@ test('member: a child with no preferences folder is held once with the root\'s d
     {
         const s = sid();
         const r = p.hook(edit('api/src/x.ts', s));
-        assert.ok(reason(r).startsWith(`${API_LINE}\n`)); assert.match(reason(r), /ROOT-CODE/);
+        assert.ok(pathSecond(reason(r))); assert.match(reason(r), /ROOT-CODE/);
         assert.ok(!denied(p.hook(edit('api/src/x.ts', s))));
         assert.match(reason(p.hook(edit('src/app.ts', s))), /ROOT-CODE/, 'the root\'s own hold is still unopened');
     }
@@ -2680,7 +2707,7 @@ test('entry: a held first call carries the push in its denial; a compact start s
         const s = sid();
         const held = p.hook(edit('api/src/x.ts', s));
         assert.ok(denied(held));
-        assert.ok(reason(held).startsWith(`${API_LINE}\n`));
+        assert.ok(pathSecond(reason(held)));
         assert.strictEqual(timesOf(reason(held), API_LINE), 1);
         assert.ok(reason(held).includes('API-CODE') && reason(held).includes(ORDER_LEAD) && reason(held).includes(PERSONAL_LEAD), reason(held));
         assert.strictEqual(p.hook(readIn('api/src/x.ts', s)).stdout, '');
@@ -2790,4 +2817,18 @@ test('entry: the first hook\'s push at 3,599 / 3,600 / 3,601', () =>
         }
         finally { p.rm(); }
     }
+});
+
+test('withPathLine: the line follows the first sentence, else the first line, else the end of a one-line reason', () => {
+    const { withPathLine } = require(path.join(HOOKS, 'preferences-session.js'));
+    const line = 'Project api - paths below are from api/.';
+    assert.strictEqual(withPathLine('Docs not read yet in this session. Before changing src/b.ts, read it.\nMore.', line),
+        `Docs not read yet in this session.\n${line}\nBefore changing src/b.ts, read it.\nMore.`);
+    assert.strictEqual(withPathLine('Docs not read yet in this session.\nBefore changing src/b.ts.', line),
+        `Docs not read yet in this session.\n${line}\nBefore changing src/b.ts.`);
+    assert.strictEqual(withPathLine('Before changing src/b.ts, read the preferences:\nRule one.', line),
+        `Before changing src/b.ts, read the preferences:\n${line}\nRule one.`, 'no sentence end on line one: after the line');
+    assert.strictEqual(withPathLine('Held: one line with no end', line), `Held: one line with no end\n${line}`);
+    assert.strictEqual(withPathLine('Held: x.', line), `Held: x.\n${line}`);
+    assert.strictEqual(withPathLine('A reason', ''), 'A reason', 'no member, no line');
 });

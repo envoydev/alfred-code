@@ -237,7 +237,8 @@ batches per command.
 `convert.md` gives the commands. A committed green batch is undone with `git revert` of its commit, the batches in
 reverse order, the toolchain commit last. An uncommitted batch is restored:
 `git restore --staged --worktree --source=HEAD -- <the batch's old and new paths and every other file it touched>`,
-then the new paths git does not track are removed (`git clean -f -- <those paths>`).
+then the new paths git does not track are removed (`git clean -f -- <those paths>`). A guard or the permission
+mode that blocks one of these stops the run, as the `execution` rule's 'Blocked commands' says.
 
 ## Safety
 

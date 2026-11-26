@@ -134,7 +134,8 @@ test('set refuses a mode key: exit 1, the command named, nothing written - anoth
     put(varsOf(root), 'ALFRED_CODE_HISTORY=5\n');
     put(localOf(root), '{ "env": { "MY_KEY": "a" } }\n');
     const commands = { ALFRED_CODE_AUTO_RUN: 'auto-run on\\|off', ALFRED_CODE_AUTO_COMPACT: 'auto-compact on\\|off',
-        ALFRED_CODE_SCORING: 'scoring on\\|off', ALFRED_CODE_SCORING_LEVEL: 'scoring on\\|off <level>' };
+        ALFRED_CODE_SCORING: 'scoring on\\|off', ALFRED_CODE_SCORING_LEVEL: 'scoring on\\|off <level>',
+        ALFRED_CODE_SCORING_ROUNDS: 'scoring on\\|off <level> <rounds>' };
     for (const [key, words] of Object.entries(commands))
     {
         const run = cli(['set', '--root', root, 'ALFRED_CODE_HISTORY=4', `${key}=1`], env);

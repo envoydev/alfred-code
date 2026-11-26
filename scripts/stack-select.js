@@ -13,6 +13,10 @@ const fs = require('fs');
 const path = require('path');
 const { USER_OFF_WINS } = require('./install/plugins.js');
 const { parseJson } = require('./install/json-file.js');
+const { probeTsServer } = require('./ts-server/effects.js');
+const { IGNORED_IN_FLAG } = require('./redundant-ignored/constants.js');
+const { dropIgnoredRows } = require('./redundant-ignored/drop-ignored.js');
+const { readIgnoresOf } = require('./redundant-ignored/effects.js');
 // Expand raw = { skills?, agents?, rules?, mcps?, plugins?, hooks? } into the
 // dependency-complete set. Edges (skills never pull skills): rule -> skill/agent,
 // agent -> skill/agent (to fixpoint), then every kept skill/agent/rule -> its
@@ -189,6 +193,9 @@ function detectEnvironment(opts)
     const BINS = ['node', 'npx', 'git', 'claude', 'dotnet', 'csharp-ls', 'typescript-language-server', 'brew'];
     const bins = {};
     for (const b of BINS) bins[b] = onPath(b);
+    // typescript-lsp's server counts only when its TypeScript holds tsserver.js: a global TypeScript 7 leaves it on PATH
+    // and unable to start (2026-11-24); the prereq's `how` installs the TypeScript 6 it reads.
+    if (bins['typescript-language-server'] && probeTsServer() === 'missing') bins['typescript-language-server'] = false;
     // No prerequisite reads an env value since 2.10.1 (the documentation server's key left with it); kept as the shape.
     const envs = {};
     let forgeCli = null;
@@ -738,7 +745,10 @@ function main(argv)
             try { only = new Set(fs.readFileSync(arg('--only') || '', 'utf8').split('\n').map((l) => l.trim().replace(/\s+/g, ' ')).filter(Boolean)); }
             catch (e) { console.error(`stack-select: cannot read --only ${arg('--only')}: ${e.code || e.message}`); process.exit(2); }
         }
-        for (const r of findStackRedundant(graph, recs, installed, detected, foundFile ? (foundFile.found || foundFile) : null))
+        // --ignored-in <dir>: the child project's folder; a row that project's workspace record already ignores does not print.
+        const ignores = has(IGNORED_IN_FLAG) ? readIgnoresOf(arg(IGNORED_IN_FLAG)) : [];
+        const rows = dropIgnoredRows(findStackRedundant(graph, recs, installed, detected, foundFile ? (foundFile.found || foundFile) : null), ignores);
+        for (const r of rows)
             if (!only || only.has(`${r.category} ${r.name}`)) console.log(`redundant: ${r.category} ${r.name} - owned by ${r.ownedBy}, not detected`);
         return;
     }
@@ -814,7 +824,7 @@ function main(argv)
     }
 
     const rawFile = arg('--selection');
-    if (!rawFile) { console.error('usage: stack-select.js --selection <raw.json> [--graph <path>] [--emit <file>] [--hooks-answered] [--dropped <dropped.json>] [--check [--defer-init]] [--forge-cli] | --redundant --installed <inv.json> --recs <recs.json> --stacks <detected> [--only <added.txt>]'); process.exit(2); }
+    if (!rawFile) { console.error('usage: stack-select.js --selection <raw.json> [--graph <path>] [--emit <file>] [--hooks-answered] [--dropped <dropped.json>] [--check [--defer-init]] [--forge-cli] | --redundant --installed <inv.json> --recs <recs.json> --stacks <detected> [--only <added.txt>] [--ignored-in <child dir>]'); process.exit(2); }
     let raw;
     try { raw = JSON.parse(fs.readFileSync(rawFile, 'utf8')); }
     catch (e) { console.error(`stack-select: cannot read selection ${rawFile}: ${e.code || e.message}`); process.exit(1); }

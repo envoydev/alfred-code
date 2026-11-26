@@ -65,8 +65,8 @@ test('the three mode commands: user-typed only, on|off, a short body around the 
         const fm = (/^---\n([\s\S]*?)\n---\n/.exec(text) || ['', ''])[1];
         const body = text.slice(text.indexOf('\n---\n', 4) + 5);
         assert.match(fm, /^disable-model-invocation: true$/m, `${name}: only the user types it`);
-        // mode commands v2 stage 3: scoring takes a level after on|off
-        assert.match(fm, name === 'scoring' ? /^argument-hint: on\|off \[level\]$/m : /^argument-hint: on\|off$/m, `${name}: the argument hint`);
+        // mode commands v2 stage 3: scoring takes a level, then the rounds, after on|off
+        assert.match(fm, name === 'scoring' ? /^argument-hint: on\|off \[level\] \[rounds\]$/m : /^argument-hint: on\|off$/m, `${name}: the argument hint`);
         assert.match(fm, new RegExp(`^description: .*/alfred-code:mode:${name} on\\|off`, 'm'), `${name}: the description names the typed form`);
         assert.ok(body.split('\n').filter((l) => l.trim()).length <= 12, `${name}: a body of at most 12 lines`);
         assert.ok(body.includes('[mode]'), `${name}: the body acts on the hook's [mode] line`);
@@ -1511,8 +1511,8 @@ test('init\'s install phase and configure read permissions.defaultMode with the 
         const transcript = (version) => { const p = path.join(home, `t-${version}.jsonl`); fs.writeFileSync(p, JSON.stringify({ type: 'user', entrypoint: 'cli', version }) + '\n'); return p; };
         const HOSTS = { 'above the floor': { transcript_path: transcript('2.1.322') }, 'an older Claude Code': { transcript_path: transcript('2.1.321') },
             Cursor: { cursor_version: '2.1.0', hook_event_name: 'preToolUse' } };
-        const guard = (payload) => spawnSync(process.execPath, [path.join(ROOT, 'stack', 'hooks', 'guard-secret-value.js')],
-            { input: JSON.stringify({ session_id: 'suite', cwd: dir, ...payload }), encoding: 'utf8', env });
+        const guard = (payload) => require('./hook-test-env').legacyBlock(spawnSync(process.execPath, [path.join(ROOT, 'stack', 'hooks', 'guard-secret-value.js')],
+            { input: JSON.stringify({ session_id: 'suite', cwd: dir, ...payload }), encoding: 'utf8', env }));
         const before = (host, command) => guard({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command }, ...HOSTS[host] });
         const read = (host) => {
             const command = cmd.replace('<file>', 'settings.json');
@@ -1718,8 +1718,53 @@ test('update-workspace.md is cat only behind a workspace line', () =>
     const walk = flat(refBody('update-walk'));
     const cats = walk.match(/[^;]*cat "\$TMP\/plan\.txt" "\$TMP\/repo\/setup-plugin\/references\/update-workspace\.md"/g) || [];
     assert.strictEqual(cats.length, 1, 'one read of update-workspace.md, in step 2\'s call');
-    assert.match(cats[0], /^ grep -E '\^workspace-plan: \(\[2-9\]\|\[0-9\]\{2,\}\) \|\^gone: \|\^rescan: \|\^nested: ' "\$TMP\/plan\.txt" && cat /, 'only behind a second project, a gone child, a rescan row or a nested row');
+    assert.match(cats[0], /^ grep -E '\^workspace-plan: \(\[2-9\]\|\[0-9\]\{2,\}\) \|\^set-aside: \|\^gone: \|\^rescan: \|\^nested: ' "\$TMP\/plan\.txt" && cat /, 'only behind a second project, a set-aside row, a gone child, a rescan row or a nested row');
     assert.match(walk, /node "\$TMP\/repo\/scripts\/workspace\.js" plan --root \. --rescan --source "\$TMP\/repo" > "\$TMP\/plan\.txt" ;/);
+});
+
+test('validate at a workspace root carries its reconcile to the joined children instead of reaching none of them', () =>
+{
+    const walk = flat(cmdBody('validate'));
+    const cats = walk.match(/[^;]*cat "\$TMP\/plan\.txt" "\$TMP\/repo\/setup-plugin\/references\/validate-workspace\.md"/g) || [];
+    assert.strictEqual(cats.length, 1, 'one read of validate-workspace.md, in step 10');
+    assert.match(cats[0], /^ grep -E '\^workspace-plan: \(\[2-9\]\|\[0-9\]\{2,\}\) \|\^set-aside: ' "\$TMP\/plan\.txt" && cat /, 'only behind a second project or a set-aside row');
+    assert.match(walk, /node "\$TMP\/repo\/scripts\/workspace\.js" plan --root \. --rescan --source "\$TMP\/repo" > "\$TMP\/plan\.txt" ;/);
+    assert.ok(walk.indexOf('validate-workspace.md') < walk.indexOf('## 11. Post-check'), 'the children are carried before the post-check');
+
+    const ref = flat(refBody('validate-workspace'));
+    assert.match(ref, /--redundant --ignored-in <rel> --installed "\$TMP\/parent\.json" --found "\$TMP\/found-<n>\.json"/, 'the fit check reads the set this run just wrote');
+    assert.match(ref, /node "\$TMP\/repo\/scripts\/workspace\.js" cascade --root \. --source "\$TMP\/repo" --answers "\$TMP\/answers\.json"/);
+    assert.match(ref, /workspace\.js" answer --file "\$TMP\/answers\.json" --hold/, 'only this project is a hold, never a skipped call');
+    assert.match(ref, /nobody answers a fit ask .* take 'Keep everything inherited'/, 'an unanswered run never ignores what a child may own');
+    assert.match(ref, /validate joins no project/);
+    assert.match(ref, /Paste the plan's table in your message verbatim, its `total:` line included/, 'the layer-table gate proves the plan by its total line');
+    assert.match(ref, /`\/alfred-code:validate` in `<rel>` - this run checked only what `<rel>` inherits, not its own picks/, 'the close says what was not checked');
+});
+
+test('a fit check with nothing to ignore still prints the word the layer-table gate proves a --redundant call by', () =>
+{
+    const gate = fs.readFileSync(path.join(PLUGIN_DIR, 'hooks', 'guard-layer-table.js'), 'utf8');
+    const proof = new RegExp(/const AUDIT_PROOF = \/(.+)\/;/.exec(gate)[1]);
+    for (const name of ['validate-workspace', 'update-workspace'])
+    {
+        const ref = flat(refBody(name));
+        assert.match(ref, /one row per line with the state word `REDUNDANT`/, `${name}: each child's lines are shown with the proof word`);
+        const none = [...ref.matchAll(/`(<rel>: no REDUNDANT row[^`]*)`/g)].map((m) => m[1]);
+        assert.ok(none.length >= 1, `${name}: a child with no line still says so`);
+        for (const line of none) assert.match(line, proof, `${name}: '${line}' carries the gate's proof word`);
+    }
+});
+
+test('the stack\'s auto-run answers no ask of the plugin\'s own walks: no walk file counts it as nobody answering (3.14.1)', () =>
+{
+    const files = fs.readdirSync(path.join(PLUGIN_DIR, 'commands')).filter((f) => f.endsWith('.md')).map((f) => cmdBody(f.slice(0, -3)))
+        .concat(fs.readdirSync(path.join(PLUGIN_DIR, 'references')).filter((f) => f.endsWith('.md') && f !== 'update-history.md').map((f) => refBody(f.slice(0, -3))));
+    for (const text of files.map(flat))
+    {
+        assert.doesNotMatch(text, /nobody answers[^.]*auto-run/i);
+        assert.doesNotMatch(text, /takes the Recommended options \(auto-run\)/);
+    }
+    assert.match(flat(refBody('validate-workspace')), /The stack's auto-run answers no ask of this walk: each goes to the user/);
 });
 
 test('update offers to remove an install nested in the same repository: one ask per nested row, a removal that never joins or counts it', () =>
@@ -1733,7 +1778,7 @@ test('update offers to remove an install nested in the same repository: one ask 
     assert.match(flatWorkspace, /- `nested: <rel>` - an install inside this repository[\s\S]*?never joined, never counted as a project below/);
     assert.match(flatWorkspace, /node "\$TMP\/repo\/scripts\/workspace\.js" remove-nested --root \. --path <rel>/);
     assert.match(flatWorkspace, /once the answers are applied and before the installer call/);
-    assert.match(flatWorkspace, /Whenever nobody answers this ask - `unattended: on`, no ask tool, or a mode that takes the Recommended options \(auto-run\) - take 'Keep it', never 'Remove the nested install': an unanswered run never removes what a project may own/);
+    assert.match(flatWorkspace, /Whenever nobody answers this ask - `unattended: on` or no ask tool - take 'Keep it', never 'Remove the nested install': an unanswered run never removes what a project may own/);
     assert.match(flatWorkspace, /A joined child whose `\.git` is gone is one too: it prints only as `nested:`, never as a `project:` row, and the cascade counts it `nested`[^.]*and never runs the installer there/);
     const slow = flat(refBody('update-slow-path'));
     assert.match(slow, /with a `rescan:` row run `update-workspace\.md`'s joins first, and with a `nested:` row answered 'Remove the nested install' its removal, as step 3 does; then run the installer/);
@@ -1821,9 +1866,9 @@ test('update rescans every time, joins each found project with no ask and asks o
     assert.ok(!/parent-<n>/.test(flatCascade), 'no parent file per child');
     assert.ok(!/<rel>\/<up>|a row below another/.test(flatCascade), 'the parent of a rescan row is always this project');
     assert.match(flatCascade, /scan-evidence\.js" --root <rel> --catalog "\$TMP\/repo\/meta\/evidence\.json" --out "\$TMP\/found-<n>\.json"/);
-    assert.match(flatCascade, /stack-select\.js" --redundant --installed "\$TMP\/parent\.json" --found "\$TMP\/found-<n>\.json" --recs "\$TMP\/repo\/meta\/recommendations\.json" --graph "\$TMP\/repo\/meta\/stack-graph\.json" --stacks "<the child's stacks, csv>"/);
+    assert.match(flatCascade, /stack-select\.js" --redundant --ignored-in <rel> --installed "\$TMP\/parent\.json" --found "\$TMP\/found-<n>\.json" --recs "\$TMP\/repo\/meta\/recommendations\.json" --graph "\$TMP\/repo\/meta\/stack-graph\.json" --stacks "<the child's stacks, csv>"/);
     assert.match(flatCascade, /cat "\$TMP\/repo\/setup-plugin\/references\/stack-detection\.md"/);
-    assert.match(flatCascade, /keeps everything it inherits/);
+    assert.match(flatCascade, /no REDUNDANT row to offer - it keeps what it inherits, beside what it already ignores/);
     assert.ok(!/its fit is checked at its own next update/.test(flatCascade), 'it has no own next update to wait for');
     assert.match(flatCascade, /`\/alfred-code:validate` in that project offers the same check/);
     // the order: the joins after step 2's answers (this project's own role answer first) and before the installer call;
@@ -1833,7 +1878,7 @@ test('update rescans every time, joins each found project with no ask and asks o
     assert.match(walk, order);
     assert.match(flatCascade, /The check runs after this project's own installer run \(step 3\) and before the cascade/);
     assert.match(flatCascade, /A join that prints `!!` is reported and skipped/);
-    assert.match(flatCascade, /Whenever nobody answers this ask - `unattended: on`, no ask tool, or a mode that takes the Recommended options \(auto-run\) - take 'Keep everything inherited', never 'Ignore the <k> suggested': an unanswered run never drops what a project may own/);
+    assert.match(flatCascade, /Whenever nobody answers this ask - `unattended: on` or no ask tool - take 'Keep everything inherited', never 'Ignore the <k> suggested': an unanswered run never drops what a project may own/);
     assert.match(flatCascade, /The cascade runs when the plan names a child or a `rescan:` row joined/);
     // the fit ask: three labels, the Recommended one first, one per joined child with a `redundant:` line
     const fitAsks = askBlocks(cascade).filter((b) => /joined this workspace as a child/.test(b[0]));
@@ -1993,6 +2038,22 @@ test('validate: a catalog row\'s follow word is valid, named in the INVALID rule
     for (const row of rows) assert.ok(text.includes(`\`${row.validate.follow}\``), `${row.key}: '${row.validate.follow}' is named valid in the INVALID rule`);
 });
 
+// variables.js set refuses a mode key and drops the whole call, so validate reports the five MODE keys as modes with their
+// command, in step 8 and again where step 10 builds the one set call, and keeps each out of it (configure.md does the same).
+test('validate: the five mode keys are reported as modes with their command and kept out of the variables.js set call', () => {
+    const body = cmdBody('validate');
+    const step8 = flat(/## 8\. Environment[\s\S]*?\n## 9\./.exec(body)[0]);
+    const step10 = flat(/## 10\. Apply[\s\S]*?stack-select\.js/.exec(body)[0]);
+    const layout = require('../stack/hooks/layout.js');
+    for (const [name, text] of [['step 8', step8], ['step 10', step10]]) {
+        for (const key of layout.MODE_KEYS) assert.ok(text.includes(`\`${key}\``), `${name} names ${key}`);
+        assert.match(text, /mode key[^.]*(is|are) (reported|a mode)/i, `${name} reports them as modes`);
+    }
+    for (const command of ['/alfred-code:mode:auto-run on|off', '/alfred-code:mode:auto-compact on|off', '/alfred-code:mode:scoring on|off [level] [rounds]'])
+        assert.ok(step8.includes(`\`${command}\``), `step 8 names ${command}`);
+    assert.match(step10, /never in that `variables\.js set`/, 'step 10 keeps every mode key out of the set call');
+});
+
 // R115 (burn-down 2026-11-04): Claude Code reads a multi-select submitted with nothing ticked as unanswered, so an
 // area ask that promised 'None ticked walks all four' left the default pick unreachable. The whole walk is now the
 // ask's own first option, marked Recommended, and no ask promises anything for an empty pick.
@@ -2065,4 +2126,93 @@ test('update-history: an after 3.12.1 section names the switch, the kept copies 
     const section = flat(history.slice(at, next < 0 ? undefined : next));
     for (const part of ['overwriting a hand-edited copy', '--seats-route', '/alfred-code:configure', 'is kept on either route', 'A project\'s own seat file', 'bare names'])
         assert.ok(section.includes(part), part);
+});
+
+// ---- the walks ask once which joined children they include (workspace child stacks, Task 6) ----
+const INCLUDE_CALL = 'node "$TMP/repo/scripts/workspace.js" include --root . > "$TMP/include.txt" 2>&1 ; grep -E \'^(included|set-aside|unasked|below|unattended|!!)\' "$TMP/include.txt" && cat "$TMP/include.txt" "$TMP/repo/setup-plugin/references/workspace-include.md"';
+const countOf = (text, part) => text.split(part).length - 1;
+
+test('the four walks run the one include call, ahead of what reads the children', () =>
+{
+    const walks = [
+        ['validate', cmdBody('validate'), 'setup-plugin/references/stack-detection.md'],
+        ['init install', installBody(), 'scripts/scan-evidence.js" --root . --catalog'],
+        ['configure', cmdBody('configure'), 'installed-only --print-plan --plan-out "$TMP/installed.json"'],
+        ['update walk', refBody('update-walk'), 'node "$TMP/repo/scripts/update-preflight.js" --snapshot'],
+    ];
+    for (const [name, text, later] of walks)
+    {
+        assert.strictEqual(countOf(text, INCLUDE_CALL), 1, `${name}: the call, once`);
+        assert.ok(text.indexOf(INCLUDE_CALL) < text.indexOf(later.replace('setup-plugin/references/', '')), `${name}: the call comes before ${later}`);
+    }
+    const validate = cmdBody('validate');
+    assert.ok(validate.indexOf(INCLUDE_CALL) < validate.indexOf('stack-detection.md'), 'validate: before its first stack-detection.md read');
+    assert.ok(validate.indexOf(INCLUDE_CALL) < validate.indexOf('node "$TMP/repo/scripts/stack-select.js"'), 'validate: before any stack-select.js call');
+});
+
+test('workspace-include.md: the one ask, the unattended and !! cases, the scans and the keep call', () =>
+{
+    const ref = refBody('workspace-include');
+    const asks = askBlocks(ref);
+    assert.strictEqual(asks.length, 1, 'one ask template');
+    const opts = asks[0].filter((l) => /^- '/.test(l));
+    assert.strictEqual(opts.length, 3);
+    assert.ok(opts[0].startsWith("- 'Include the <n> new one(s) (Recommended)' - "), 'the first option is the marked one');
+    assert.ok(opts[1].startsWith("- 'Pick which to include' - ") && opts[2].startsWith("- 'Set them aside' - "));
+    assert.strictEqual(opts.filter((l) => /\(Recommended\)'/.test(l)).length, 1);
+    const text = flat(ref);
+    for (const part of [
+        "The stack's auto-run answers none of it",
+        '`unattended: on`',
+        '`!!`',
+        'node "$TMP/repo/scripts/workspace.js" include --root . --include <csv> --set-aside <csv>',
+        '`--children none`',
+        'kept for <rels>',
+        "include --root . --keep '<category> <name>'",
+        'One report line each: `set aside <rel>`',
+        '`included: <rel>`', '`set-aside: <rel>`', '`unasked: <rel>`', '`below: <rel>`',
+        'cross-check',
+        'kept lines of <rel> rewritten: ...',
+        "`<category> <name>` stays at the root: its keep was not written",
+        'plugin <name> stays on at user scope: <rel> uses it',
+    ]) assert.ok(text.includes(part), part);
+    assert.match(text, /--children <[^>]+> --out "\$TMP\/found\.json"/, 'the root scan names its children');
+    assert.ok(text.includes('node "$TMP/repo/scripts/workspace.js" include --root . --keep'), 'the keep call is a real gated call');
+});
+
+test('validate: the keep covers REDUNDANT and accepted JUDGMENT-DROP rows, never a retired row, and runs before the apply', () =>
+{
+    const validate = flat(cmdBody('validate'));
+    assert.match(validate, /kept for <rels>/);
+    assert.match(validate, /REDUNDANT and accepted JUDGMENT-DROP rows/);
+    assert.match(validate, /never a (migration|retired) row/);
+    assert.match(validate, /each keep call runs before step 10's apply/);
+    assert.ok(validate.includes('--children'), 'the audit block scans the included children');
+    assert.match(flat(cmdBody('configure')), /scan-evidence\.js" --root \. --catalog "\$TMP\/repo\/meta\/evidence\.json" --children <csv\|none> --out/, 'configure: the evidence scan carries --children');
+    assert.match(flat(installBody()), /scan-evidence\.js" --root \. --catalog [^`]*`\. Add `--role root`[^.]*and `--children <csv\|none>` as `workspace-include\.md` says/, 'init install: the evidence scan carries --children');
+    assert.match(flat(validate), /--judgment "\$TMP\/repo\/meta\/judgment\.json" --children "<csv\|none>" --out/, 'validate scan carries --children');
+    assert.match(validate, /leave that row's `--drop` flag off the installer call/, 'a failed keep and a user-scope plugin leave the drop set');
+    const configureText = flat(cmdBody('configure'));
+    assert.match(configureText, /'Keep' makes no call\. Any other answer is ONE call[^.]*run at once, before step 11's installer/, 'configure: the include answer is written before the installer');
+    const include = flat(refBody('workspace-include'));
+    assert.match(include, /root scan takes `--children none` and the close says the children were not read/, 'the !! case names the scan value');
+    assert.match(include, /`below:` folder under those children/, 'detection reads the below folders');
+    assert.match(include, /No `included:`, `set-aside:` or `unasked:` line printed: this project's own record is the bad one[^.]*\. Take every joined child as included for the cascade/, 'the !! case applies to a garbage root record alone, and the cascade reads it as included');
+    assert.match(include, /Any of those lines printed: the bad record is a child's or a grandchild's\. Follow sections 2 to 4 on the lines printed/, 'a child\'s !! line never stops the scan of the rest');
+    for (const name of ['workspace-include', 'update-workspace', 'validate-workspace'])
+        assert.ok(!/left out of the count|counted|left out/.test(refBody(name).replace(/never counted\n?\s*as a project below/, '')), `${name}: no forbidden state word`);
+    const configure = flat(cmdBody('configure'));
+    assert.match(configure, /at a root with a set-aside child[^.]*take the same keep call before (its|the) apply/i);
+});
+
+test('the workspace greps carry the set-aside row, and the two workspace references name it', () =>
+{
+    assert.ok(cmdBody('validate').includes("grep -E '^workspace-plan: ([2-9]|[0-9]{2,}) |^set-aside: '"), 'validate step 10');
+    assert.ok(refBody('update-walk').includes('|^set-aside: '), 'update step 2');
+    for (const name of ['validate-workspace', 'update-workspace'])
+    {
+        const text = flat(refBody(name));
+        assert.match(text, /`set-aside: <rel>`[^.]*no child for the fit check, the carry ask or the cascade/, name);
+        assert.ok(text.includes('`/alfred-code:update` in `<rel>` brings it up to date'), `${name}: the close line`);
+    }
 });

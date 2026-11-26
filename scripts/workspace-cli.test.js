@@ -982,3 +982,143 @@ test('a non-ASCII folder name round-trips', () =>
     assert.strictEqual(cli('parent', '--root', child).out, 'parent: ..\tchild=yes\tname=проєкт-ü\n');
     assert.match(cli('role', '--root', child, '--when', 'init').out, /^ask: Child of \.\. \(проєкт-ü\) \(Recommended\)\tchild$/m);
 });
+
+test('a later ignore and a register keep the root\'s include answer and its kept lines', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { role: 'root', children: ['api'], includedChildren: [], includeAsked: ['api'], keptFor: { api: ['skill csharp'] } } },
+        'ws/api': { stamp: true, git: true, record: { parent: '..' } }, 'ws/web': { git: true } });
+    assert.strictEqual(cli('ignore', '--root', at('ws'), '--add', 'skill dotnet').code, 0);
+    assert.strictEqual(cli('register', '--root', at('ws/web')).code, 0);
+    const v = readWorkspaceRecord(at('ws')).record;   // the full record: wsFile drops an empty list
+    assert.deepStrictEqual([v.includedChildren, v.includeAsked, v.keptFor, v.children], [[], ['api'], { api: ['skill csharp'] }, ['api', 'web']]);
+});
+
+// ---------------------------------------------------------------- include: which joined children a root includes
+
+const cliWith = (extraEnv, ...argv) => { const r = spawnSync(process.execPath, [CLI, ...argv], { encoding: 'utf8', env: { ...ENV, ...extraEnv } }); return { out: r.stdout, err: r.stderr, code: r.status }; };
+const recordOf = (root) => readWorkspaceRecord(root).record;
+const childOfRoot = { stamp: true, git: true, record: { parent: '..' } };
+
+test('include lists each joined child unasked until answered, and says why a project has none', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { role: 'root', children: ['api', 'web'] } },
+        'ws/api': { stamp: true, git: true, record: { parent: '..' } }, 'ws/web': { stamp: true, git: true, record: { parent: '..' } },
+        lone: { stamp: true, git: true }, empty: { stamp: true, record: { role: 'root' } } });
+    assert.deepStrictEqual(cli('include', '--root', at('ws')), { out: 'unasked: api\nunasked: web\ninclude: 0 included, 0 set aside, 2 unasked\n', err: '', code: 0 });
+    assert.strictEqual(cli('include', '--root', at('lone')).out, 'include: not a root\n');
+    assert.strictEqual(cli('include', '--root', at('empty')).out, 'include: no children\n');
+});
+
+test('include leaves a joined child whose folder holds no install out of the states, the count and an answer\'s lines', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { role: 'root', children: ['api', 'old', 'web'], includedChildren: ['web'], includeAsked: ['web'] } }, 'ws/api': childOfRoot, 'ws/web': childOfRoot });
+    assert.strictEqual(cli('include', '--root', at('ws')).out, 'unasked: api\nincluded: web\ninclude: 1 included, 0 set aside, 1 unasked\n', 'the gone child is not asked about');
+    assert.strictEqual(cli('include', '--root', at('ws'), '--include', 'api').out, 'included: api\nincluded: web\ninclude: saved 2 included, 0 set aside, 0 unasked\n');
+});
+
+test('include --include and --set-aside merge, and a child joined later is the only one unasked', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { role: 'root', children: ['api', 'web'] } }, 'ws/api': childOfRoot, 'ws/web': childOfRoot, 'ws/docs': childOfRoot });
+    const first = cli('include', '--root', at('ws'), '--set-aside', 'api', '--include', 'web');
+    assert.deepStrictEqual(first, { out: 'set-aside: api\nincluded: web\ninclude: saved 1 included, 1 set aside, 0 unasked\n', err: '', code: 0 });
+    assert.deepStrictEqual(wsFile(at('ws')), { role: 'root', children: ['api', 'web'], includedChildren: ['web'], includeAsked: ['api', 'web'] });
+    ws.writeWorkspace(at('ws'), (m) => { m.children.push('docs'); });
+    assert.strictEqual(cli('include', '--root', at('ws')).out, 'set-aside: api\nincluded: web\nunasked: docs\ninclude: 1 included, 1 set aside, 1 unasked\n');
+    const second = cli('include', '--root', at('ws'), '--include', 'docs');
+    assert.strictEqual(second.out, 'set-aside: api\nincluded: web\nincluded: docs\ninclude: saved 2 included, 1 set aside, 0 unasked\n');
+    assert.deepStrictEqual(wsFile(at('ws')), { role: 'root', children: ['api', 'web', 'docs'], includedChildren: ['web', 'docs'], includeAsked: ['api', 'web', 'docs'] });
+    const bytes = recordBytes(at('ws'));
+    assert.strictEqual(cli('include', '--root', at('ws'), '--include', 'docs').code, 0);
+    assert.strictEqual(recordBytes(at('ws')), bytes, 'the same answer again writes nothing');
+});
+
+test('include --keep records a line once for each set-aside child and says who ignores it', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { role: 'root', children: ['api', 'web', 'app'], includedChildren: ['web'], includeAsked: ['api', 'web', 'app'] } },
+        'ws/api': { stamp: true, git: true, record: { parent: '..', ignore: { skill: ['dotnet'] } } }, 'ws/web': childOfRoot, 'ws/app': childOfRoot });
+    const first = cli('include', '--root', at('ws'), '--keep', 'skill csharp');
+    assert.deepStrictEqual(first, { out: 'include: kept skill csharp for api\ninclude: kept skill csharp for app\n', err: '', code: 0 });
+    const bytes = recordBytes(at('ws'));
+    assert.strictEqual(cli('include', '--root', at('ws'), '--keep', 'skill csharp').out, first.out);
+    assert.strictEqual(recordBytes(at('ws')), bytes, 'a second keep writes nothing');
+    assert.strictEqual(cli('include', '--root', at('ws'), '--keep', 'skill dotnet').out, 'include: kept skill dotnet for app\ninclude: api ignores skill dotnet - not kept\n');
+    assert.deepStrictEqual(recordOf(at('ws')).keptFor, { api: ['skill csharp'], app: ['skill csharp', 'skill dotnet'] });
+    const none = tree({ ws: { stamp: true, record: { role: 'root', children: ['api'], includedChildren: ['api'], includeAsked: ['api'] } }, 'ws/api': childOfRoot });
+    const before = recordBytes(none('ws'));
+    assert.strictEqual(cli('include', '--root', none('ws'), '--keep', 'skill a').out, 'include: no child set aside\n');
+    assert.strictEqual(recordBytes(none('ws')), before);
+    const badLine = cli('include', '--root', at('ws'), '--keep', 'skill');
+    assert.strictEqual(badLine.code, 2);
+    assert.match(badLine.out, /^!! workspace: 'skill' is no ignore entry.*\n$/);
+    const badKind = cli('include', '--root', at('ws'), '--keep', 'nonsense thing');
+    assert.deepStrictEqual([badKind.code, badKind.out.split('\n').filter((l) => l.startsWith('!!')).length], [2, 1]);
+});
+
+test('include refuses a stranger or a rel named twice with exit 2 and writes nothing', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { role: 'root', children: ['api'] } }, 'ws/api': childOfRoot });
+    const bytes = recordBytes(at('ws'));
+    const refused = (...flags) => { const r = cli('include', '--root', at('ws'), ...flags); assert.strictEqual(recordBytes(at('ws')), bytes); return [r.code, r.out]; };
+    assert.deepStrictEqual(refused('--include', 'nope'), [2, "!! workspace: 'nope' is no joined child\n"]);
+    assert.deepStrictEqual(refused('--include', 'api', '--set-aside', 'api'), [2, "!! workspace: 'api' is named by both --include and --set-aside\n"]);
+    assert.deepStrictEqual(refused('--include', 'api,api'), [2, "!! workspace: 'api' is named twice\n"]);
+    assert.deepStrictEqual(refused('--keep', 'skill a', '--include', 'api'), [2, '!! workspace: --keep cannot be combined with --include or --set-aside\n']);
+    assert.deepStrictEqual(refused('--include'), [2, "!! workspace: '--include' needs a value\n"]);
+});
+
+test('include names a deeper project below: and prints unattended: on under ALFRED_CODE_UNATTENDED=1', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { role: 'root', children: ['api'] } }, 'ws/api': { stamp: true, git: true, record: { parent: '..', children: ['tool'] } }, 'ws/api/tool': { stamp: true, git: true, record: { parent: '..' } } });
+    const expected = 'unasked: api\ninclude: 0 included, 0 set aside, 1 unasked\nbelow: api/tool\n';
+    assert.strictEqual(cli('include', '--root', at('ws')).out, expected);
+    assert.strictEqual(cliWith({ ALFRED_CODE_UNATTENDED: '1' }, 'include', '--root', at('ws')).out, `${expected}unattended: on\n`);
+});
+
+test('include on a garbage record prints one !! line and exits 1; a held lock exits 3 on a write and on a keep', () =>
+{
+    const bad = tree({ ws: { stamp: true, record: { role: 'root', children: ['api'] } }, 'ws/api': childOfRoot });
+    fs.writeFileSync(path.join(bad('ws'), '.alfred', 'workspace.json'), '{ nope');
+    for (const argv of [[], ['--include', 'api'], ['--keep', 'skill a']])
+    {
+        const r = cli('include', '--root', bad('ws'), ...argv);
+        assert.strictEqual(r.code, 1, r.out);
+        assert.strictEqual(r.out.split('\n').filter((l) => l.startsWith('!!')).length, 1, r.out);
+        assert.match(r.out, /is not valid JSON/);
+    }
+    const at = tree({ ws: { stamp: true, record: { role: 'root', children: ['api'], includedChildren: [], includeAsked: ['api'] } }, 'ws/api': childOfRoot });
+    const lock = path.join(at('ws'), '.alfred', 'workspace.lock');
+    fs.writeFileSync(lock, String(process.pid));
+    const bytes = recordBytes(at('ws'));
+    const write = cli('include', '--root', at('ws'), '--include', 'api');
+    assert.deepStrictEqual([write.code, write.out], [3, "!! workspace: this project's workspace file could not be written (locked)\n"]);
+    const keep = cli('include', '--root', at('ws'), '--keep', 'skill a');
+    assert.deepStrictEqual([keep.code, keep.out], [3, "!! workspace: this project's workspace file could not be written (locked)\n"]);
+    assert.strictEqual(recordBytes(at('ws')), bytes);
+});
+
+test('include prints the off line when ALFRED_CODE_WORKSPACE is 0', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { role: 'root', children: ['api'] } }, 'ws/api': childOfRoot });
+    const bytes = recordBytes(at('ws'));
+    for (const argv of [[], ['--include', 'api']])
+        assert.deepStrictEqual(cliWith({ ALFRED_CODE_WORKSPACE: '0' }, 'include', '--root', at('ws'), ...argv), { out: 'include: off - ALFRED_CODE_WORKSPACE is 0\n', err: '', code: 0 });
+    assert.strictEqual(recordBytes(at('ws')), bytes);
+});
+
+test('include drops a kept line the child ignores or the root holds, and a kept entry of a child that left', () =>
+{
+    const at = tree({ ws: { stamp: true, record: { role: 'root', children: ['api', 'web'], includeAsked: ['api'], keptFor: { api: ['skill a', 'skill b'], gone: ['skill z'] } } },
+        'ws/api': { stamp: true, git: true, record: { parent: '..', ignore: { skill: ['a'] } } }, 'ws/web': childOfRoot });
+    assert.strictEqual(cli('include', '--root', at('ws'), '--include', 'web').code, 0);
+    assert.deepStrictEqual(recordOf(at('ws')).keptFor, { api: ['skill b'] });
+});
+
+test('include keeps and extends a kept entry whose key differs from its child only in case, where the disk folds case', { skip: process.platform !== 'darwin' && process.platform !== 'win32' }, () =>
+{
+    const at = tree({ ws: { stamp: true, record: { role: 'root', children: ['api', 'web'], includedChildren: ['web'], includeAsked: ['api', 'web'], keptFor: { API: ['skill a'] } } },
+        'ws/api': childOfRoot, 'ws/web': childOfRoot });
+    assert.strictEqual(cli('include', '--root', at('ws'), '--include', 'web').code, 0);
+    assert.deepStrictEqual(recordOf(at('ws')).keptFor, { API: ['skill a'] });
+    assert.strictEqual(cli('include', '--root', at('ws'), '--keep', 'skill b').out, 'include: kept skill b for api\n');
+    assert.deepStrictEqual(recordOf(at('ws')).keptFor, { API: ['skill a', 'skill b'] });
+});

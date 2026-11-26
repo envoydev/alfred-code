@@ -162,5 +162,53 @@ function statusAccount()
     return statusAccountDir;
 }
 
-module.exports = { isolateHookSuite, statusAccount, scrubbed, strayWrites, strayRoots, checkoutLedgers, ledgerSnapshot, ledgerGrowth, LIVE_SESSION_FILE,
-    reviewedTranscript, foreignWords, REVIEW_ROW, STACK_KEY, SESSION_KEYS, userPick };
+// What a hook run decided, as one word. `r` is a spawnSync result (`status`) or a dispatcher result (`code`): a raw exit 2
+// is 2; else stdout read as ONE JSON object gives its permissionDecision when `ask` or `deny`; else 0. Non-empty stdout
+// that opens with `{` and does not parse as one object throws - two JSON objects read as no decision in Claude Code.
+function hookOutputOf(r)
+{
+    const out = String(r.stdout ?? '').trim();
+    if (out === '' || out[0] !== '{') return {};
+    let parsed;
+    try { parsed = JSON.parse(out); } catch { throw new Error('stdout is not one JSON object'); }
+    return (parsed && parsed.hookSpecificOutput) || {};
+}
+function verdictOf(r)
+{
+    if ((r.status ?? r.code) === 2) return 2;
+    const decision = hookOutputOf(r).permissionDecision;
+    return decision === 'ask' || decision === 'deny' ? decision : 0;
+}
+// The text the model gets from a block: an ask's additionalContext, a deny's reason, an exit 2's stderr.
+function blockText(r)
+{
+    const verdict = verdictOf(r);
+    if (verdict === 2) return String(r.stderr ?? '');
+    if (verdict === 'ask') return String(hookOutputOf(r).additionalContext ?? '');
+    return verdict === 'deny' ? String(hookOutputOf(r).permissionDecisionReason ?? '') : '';
+}
+// The text the user sees on an ask.
+const askText = (r) => (verdictOf(r) === 'ask' ? String(hookOutputOf(r).permissionDecisionReason ?? '') : '');
+
+// A block as the suites written before guards asked read it: an ask or a deny becomes exit 2 with the full reason on stderr
+// and nothing on stdout. For the many cases that pin WHAT a guard refuses; the ask and the deny have their own cases.
+const ASK_REASON_MARK = 'If the user declined: ';
+function legacyBlock(r)
+{
+    const verdict = verdictOf(r);
+    if (verdict !== 'ask' && verdict !== 'deny') return r;
+    const text = blockText(r);
+    const at = verdict === 'ask' ? text.indexOf(ASK_REASON_MARK) : -1;
+    return { ...r, status: 2, stdout: '', stderr: at < 0 ? text : text.slice(at + ASK_REASON_MARK.length) };
+}
+
+// A spawn result with `status` as the one-word decision (verdictOf) and, for an ask or a deny, `stderr` as the guard's own
+// reason (the text after an ask's 'If the user declined: '). For the suites that read what a guard decided and said.
+function verdictResult(r)
+{
+    const verdict = verdictOf(r);
+    return { ...r, status: verdict, stderr: verdict === 'ask' || verdict === 'deny' ? legacyBlock(r).stderr : r.stderr };
+}
+
+module.exports = { isolateHookSuite, legacyBlock, statusAccount, scrubbed, strayWrites, strayRoots, checkoutLedgers, ledgerSnapshot, ledgerGrowth, LIVE_SESSION_FILE,
+    reviewedTranscript, foreignWords, REVIEW_ROW, STACK_KEY, SESSION_KEYS, userPick, verdictOf, blockText, askText, verdictResult };

@@ -94,7 +94,7 @@ if (cursorOff) process.exit(0);
   process.stderr.write = (chunk, ...rest) => { last = String(chunk); return w(chunk, ...rest); };
   const exit = process.exit.bind(process);
   process.exit = (code) => {
-    if (code === 2) {
+    if (code === 2 || global.BLOCK_VERDICT) {
       try {
         const fs = require('fs');
         const path = require('path');
@@ -113,7 +113,7 @@ if (cursorOff) process.exit(0);
           // blocks read as the main session's), and the call id joins the row to the transcript without a clock.
           agent: payload.agent_id || null,
           tool_use_id: payload.tool_use_id || null,
-          reason: last.split('\n')[0].slice(0, 200),
+          reason: (global.BLOCK_VERDICT ? global.BLOCK_VERDICT.reason : last).split('\n')[0].slice(0, 200),
           // A hook may name the BRANCH that fired and what matched, when it has more than one
           // (`global.BLOCK_DETAIL`, dropped by JSON.stringify when nothing set it). A block whose
           // cause cannot be reconstructed cannot be tuned - this is the field that reconstructs it.
@@ -124,6 +124,23 @@ if (cursorOff) process.exit(0);
     exit(code);
   };
 })();
+
+// The one exit of a PreToolUse block (guards ask, D1): the prelude asks or denies; with no prelude, today's exit 2.
+// A hold or an offer that ASKS is itself the offer, shown once: `askedOffer`, set by the hold or the offer before its block,
+// runs when the prompt went out, so the next call is not held again whatever the user answered (the model never puts the
+// AskUserQuestion once the user approved the call). A deny - nobody to ask - leaves the state to its older readers.
+let askedOffer = null;
+function blockCall(input, text) {
+  let code = 2;
+  try {
+    const p = require('./hook-prelude.js');
+    const decision = p.askOrBlock(input, text, { guard: 'guard-fresh-session-start' });
+    if (decision === 'ask' && askedOffer) { try { askedOffer(); } catch { /* state is best effort */ } }
+    code = p.blockExitCode(input, decision);
+  }
+  catch { process.stderr.write(text); }
+  process.exit(code);
+}
 // One MEASUREMENT row in the hook-blocks ledger: it carries a `mode`, which the analyzer reads as a probe, never a
 // block. Best-effort - a lost row is a lost measurement, never a changed turn.
 function ledgerRow(row) {
@@ -471,12 +488,13 @@ function compactHold() {
   const verdict = fresh.freshVerdict(ctx);   // its break-even is the payback the AC-6 exit's count is held under
   try { fs.writeFileSync(compactHoldFile(), JSON.stringify({ ...hold, denied: (Number(hold.denied) || 0) + 1, payback: verdict.breakEven })); } catch { /* the cap still ends it */ }
   global.BLOCK_DETAIL = { branch: kind, ctx, floor };
+  askedOffer = () => release('offered-by-ask', { ctx, floor });
   const pay = fresh.payText(ctx, verdict);
   if (tick && hold.dir) {
     // PF1: the cursor as the status file holds it NOW - the build moves it after the tick through the script
     let resume = String(hold.resume || '');
     try { if (folderStatus) resume = planStatusEngine().resumeText(folderStatus) || resume; } catch { /* the text read at the tick */ }
-    process.stderr.write(
+    blockCall(payload,
       `Held once: plan task '${hold.task}' was just ticked DONE in ${hold.rel}, and the next task is a clean point\n`
       + `to resume from. ${pay}\n`
       + `The plan's Resume line is the cursor a fresh session picks up from${resume ? ` (now: '${resume}')` : ''} - keep it naming\n`
@@ -484,13 +502,12 @@ function compactHold() {
       + `AskUserQuestion: 'Resume in a fresh session (Recommended)' quoting those numbers (end the turn with the paste-ready\n`
       + `resume block naming the plan), or continue here. ${HOLD_EXIT}`,
     );
-    process.exit(2);
   }
   if (tick) {
     // PF1 flat plan - until 4.0.0: the Resume line as the plan holds it NOW - the build rewrites it after the tick, and that edit passes
     let resume = String(hold.resume || '');
     try { resume = resumeLine(fs.readFileSync(String(hold.plan), 'utf8')) || resume; } catch { /* the line read at the tick */ }
-    process.stderr.write(
+    blockCall(payload,
       `Held once: plan task '${hold.task}' was just ticked DONE in ${relPlan(hold.plan)}, and the next task is a clean point\n`
       + `to resume from. ${pay}\n`
       + `The plan's Resume line is the cursor a fresh session picks up from${resume ? ` (now: '${resume}')` : ''} - keep it naming\n`
@@ -498,14 +515,13 @@ function compactHold() {
       + `AskUserQuestion: 'Resume in a fresh session (Recommended)' quoting those numbers (end the turn with the paste-ready\n`
       + `resume block naming the plan), or continue here. ${HOLD_EXIT}`,
     );
-    process.exit(2);
   }
   if (idle) {
     // the gap as the offer printed it: minutes under an hour since the wait follows the cache (U16), a hold an older
     // release wrote carrying only its hours
     const gap = Number(hold.gapMs) > 0 && typeof fresh.gapText === 'function' ? fresh.gapText(Number(hold.gapMs))
       : Number(hold.gapH) ? `${Number(hold.gapH)}h` : 'past its wait';
-    process.stderr.write(
+    blockCall(payload,
       (hold.via === 'ask'
         ? `Held once: this session's last ask waited ${gap} for its answer and its prompt cache went cold; the turns since have re-written it, so the choice\n`
           + `is priced as from now, and it has not been put to the user yet. ${pay}\n`
@@ -515,16 +531,14 @@ function compactHold() {
       + `'Resume in a fresh session (Recommended)' quoting those numbers (end the turn with the paste-ready resume\n`
       + `block and the plan or state file it resumes from), or continue here. ${HOLD_EXIT}`,
     );
-    process.exit(2);
   }
-  process.stderr.write(
+  blockCall(payload,
     `Held once: this session AUTO-COMPACTED and the fresh-session choice has not been put to the user yet. ${pay}\n`
     + `The compaction summary's closing line - continue 'without asking the user\n`
     + `any further questions' - is the harness's default, and this hold supersedes it. Before this call, put the choice to\n`
     + `the user as ONE AskUserQuestion: 'Resume in a fresh session (Recommended)' quoting those numbers (end the turn\n`
     + `with the paste-ready resume block and the plan or state file it resumes from), or continue here. ${HOLD_EXIT}`,
   );
-  process.exit(2);
 }
 // THE RE-OFFER STEP on both idle routes (review fix pass, run B, M4): the newest fresh-session ask answered in any turn -
 // 'Continue here' included - is the last offer, so neither the prompt route nor the ask route speaks again until the
@@ -782,6 +796,7 @@ function modeCommand(pre, flags, root, stamp, markerFile) {
   if (flags.mode !== 'auto-run' && flags.mode !== 'auto-compact') return '';   // scoring: communication-reminder.js saves it and says the line
   const ms = require('./mode-settings.js');
   const [input, held, envIs] = [{ ...payload, cwd: root }, ms.autoRunHeld(root), (k) => String(pre.envOf(process.env, k) ?? '').trim()];
+  const inherited = flags.mode === 'auto-run' && !held ? ms.autoRunInherited(root, process.env) : null;   // D2: read before the write below, which it never sees
   const refusal = flags.autoRun === 'on' ? pre.autoRunRefusal(input, undefined, flags) : '';   // a seat: the prompt never gets here
   const r = refusal ? { why: refusal }
     : flags.autoRun ? ms.writeModes(root, flags.autoRun === 'on' ? { ALFRED_CODE_AUTO_RUN: '1', ALFRED_CODE_AUTO_COMPACT: '1' } : { ALFRED_CODE_AUTO_RUN: '0' })
@@ -799,8 +814,10 @@ function modeCommand(pre, flags, root, stamp, markerFile) {
     try { const text = fs.readFileSync(file, 'utf8').slice(0, 4096);
       if (/^AUTO\b/.test(text) && /^session:/m.test(text)) { fs.rmSync(file); ended = true; } } catch { /* none, or left: an old reader */ }
     if (markerFile && fs.existsSync(markerFile)) try { fs.rmSync(markerFile); ended = true; } catch { /* left: the hold reads it */ }
-    if (ended || (held && !why)) ledgerRow({ mode: 'auto', kind: 'auto-end', reason: 'auto-run ended: the user typed /alfred-code:mode:auto-run off' });
+    if (ended || (held && !why) || (inherited && inherited.held === 'own' && !why)) ledgerRow({ mode: 'auto', kind: 'auto-end', reason: 'auto-run ended: the user typed /alfred-code:mode:auto-run off' });
   }
+  if (flags.autoRun === 'off' && inherited && inherited.held === 'own')   // D3: an off over an inherited on
+    return why ? ms.offRefused(inherited.from, r.why) : ms.offHere(inherited.from) + ms.said(r);
   if (why && ended) return `[mode] ${flags.mode} could not be saved: ${why} - this session's run is ended, the file is unchanged`;
   if (why) return `[mode] ${flags.mode} could not be saved: ${why} - nothing changed`;
   if (flags.autoRun === 'on') return AUTO_ON + ms.said(r);
@@ -808,7 +825,12 @@ function modeCommand(pre, flags, root, stamp, markerFile) {
     return `[mode] auto-run is OFF${envIs('AUTO_COMPACT') === '1' ? ' - auto-compact stays ON until /alfred-code:mode:auto-compact off' : ''}${ms.said(r)}`;
   if (held && held !== 'own' && flags.mode === 'auto-run')   // a 1 nobody vouches for is said, never taken
     return `[mode] auto-run is OFF: the file holds it, but ${ms.WHY[held === 'tracked' ? held : 'unvouched']} - asks stay with you`;
-  if (!r) return `[mode] ${flags.mode} is ${(flags.mode === 'auto-run' ? pre.autoRunFor : pre.compactCause)(input, undefined, flags) ? 'ON' : 'OFF'}`;
+  if (!r && inherited && ['tracked', 'unvouched'].includes(inherited.held))   // the same, for the member's file
+    return `[mode] auto-run is OFF: ${inherited.from}'s file holds it, but ${ms.WHY[inherited.held]} - asks stay with you`;
+  if (!r) {
+    const on = Boolean((flags.mode === 'auto-run' ? pre.autoRunFor : pre.compactCause)(input, undefined, flags));
+    return `[mode] ${flags.mode} is ${on ? 'ON' : 'OFF'}${ms.fromTag(root, flags.mode === 'auto-run' ? 'ALFRED_CODE_AUTO_RUN' : 'ALFRED_CODE_AUTO_COMPACT', on, process.env)}`;
+  }
   ledgerRow({ mode: 'auto', kind: 'compact-flag', reason: `auto-compact ${flags.compact}` });
   const allOff = ['FOR_1M', 'FOR_300K', 'FOR_200K', 'DEFAULT'].every((k) => envIs(`CONTEXT_WINDOW_${k}`) === '0');
   if (flags.compact === 'off') return '[mode] auto-compact is OFF: fresh-session asks are back. From the next session Claude Code no longer compacts'
@@ -1265,13 +1287,12 @@ if (IS_SKILL_CALL && skill) {
       break;
     }
     if (/^disable-model-invocation:\s*true\s*$/m.test(head)) {
-      process.stderr.write(
+      blockCall(payload,
         `Blocked: ${skill} is marked disable-model-invocation - it is the USER's to type, never yours\n` +
         `to call. Do not retry it under another spelling and do not spend the turn explaining that you\n` +
         `cannot: name the command, say in ONE line what it does, and hand the turn back so the user\n` +
         `can run /${skill} themselves.`,
       );
-      process.exit(2);
     }
   } catch { /* no such skill on disk, or unreadable - not this guard's business */ }
 }
@@ -1294,12 +1315,11 @@ if (IS_SKILL_CALL && Object.prototype.hasOwnProperty.call(BUILTIN_REVIEW, skill.
   const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
   if (!off && !skillHeads(root, name).some((f) => fs.existsSync(f)) && oursLoadable(root, BUILTIN_REVIEW[name].slice(1))) {
     global.BLOCK_DETAIL = { branch: 'builtin-review', skill: name };
-    process.stderr.write(
+    blockCall(payload,
       `Blocked: ${name} is Claude Code's built-in review, not this stack's. Use ${BUILTIN_REVIEW[name]} instead - load it\n` +
       `with the Skill tool; never retry the built-in under another spelling. If the user asked for the built-in by name,\n` +
       `say so: the user can type /${name} themselves.\n`,
     );
-    process.exit(2);
   }
 }
 // A phase Skill call after a compaction is a change like any other (the post-compaction hold above).
@@ -1385,13 +1405,12 @@ function gatedStepHold() {
   try { fs.writeFileSync(marker, new Date().toISOString()); } catch { return; }   // no marker, no deny - never a loop
   global.BLOCK_DETAIL = { branch: 'gated-stop', skill: name, after: prev };
   const step = prev === 'task-design' ? 'step 1 DESIGN' : 'step 2 GATE';
-  process.stderr.write(
+  blockCall(payload,
     `Held once: this solve-task cycle's spec check printed \`path: gated\`, so ${step} ends with a STOP before ${name} runs,\n`
     + `and none landed since ${prev} ran. Put the stop to the user now: \`Result:\` (the plan path${prev === 'task-verify-plan' ? ', and each fix the gate applied, named' : ''}), \`Progress:\`\n`
     + `and \`Leftovers:\`, then ONE AskUserQuestion with the next step recommended${prev === 'task-verify-plan' ? ' - on a gate pass with no open item, step 3\'s approval ask is this stop' : ''}.\n`
     + `Call ${name} after the answer.`,
   );
-  process.exit(2);
 }
 
 // --- AUTO-RUN: on for the SESSION (stack-modes spec section 2, 2026-10-27; the mode-commands spec, 2026-11-12) ---
@@ -1497,6 +1516,12 @@ function acwIgnoredNote() {
 const PROJECT_ROOT = () => process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
 const lasts = () => { try { return require('./hook-prelude.js').autoLasts(PROJECT_ROOT()); } catch { return 'auto-run stays on for the session until'; } };
 const standingHere = () => { try { return require('./hook-prelude.js').autoRunStanding(PROJECT_ROOT()); } catch { return false; } };
+// Where the standing auto-run is held, for the run contract: this folder's own mode file, or - mode inheritance D3 - the member's it inherits.
+const standingFile = () => {
+  try { const i = require('./mode-settings.js').autoRunInherited(PROJECT_ROOT(), process.env);
+    if (i && i.held === 'own') return `${i.from}/.claude/settings.local.json holds ALFRED_CODE_AUTO_RUN=1 - this folder inherits it`; } catch { /* the own file's wording */ }
+  return '.claude/settings.local.json holds ALFRED_CODE_AUTO_RUN=1';
+};
 function modeBanner(autoOn) {
   const model = fresh.sessionModelId();
   // the model's own capacity, never a declared default: with none known, no window is quoted and the trigger is said
@@ -1598,7 +1623,7 @@ if (auto && !auto.marker && !auto.markerFailed) {
 if (auto) {
   const m = auto.marker;
   const contract = (auto.markerFailed ? '!! the run marker could not be written - each ask still takes its (Recommended) option, but no hook sends a turn back between steps; tell the user so in one line.\n' : '')
-    + `auto-run is ON for this /${auto.run} run: ${standingHere() ? 'auto-run is on for this checkout, new sessions included (.claude/settings.local.json holds ALFRED_CODE_AUTO_RUN=1)'
+    + `auto-run is ON for this /${auto.run} run: ${standingHere() ? `auto-run is on for this checkout, new sessions included (${standingFile()})`
       : `auto-run is on for this session (${auto.file} holds the user's words)`}${m ? `, and ${m} marks this run` : ''}. `
     + 'Nobody answers until the run ends. '
     + '(1) Every stop takes its (Recommended) option: an AskUserQuestion whose every question marks one is answered with it by the stop hook, '
@@ -1830,8 +1855,8 @@ function chainedOfferSpent() {
 // here anyway with the cost stated' - and until 0.2.74 nothing honoured that answer: no receipt, no
 // state, no re-arm, so the retry re-blocked on the identical call and the route the guard itself
 // offered was a route the guard denied (measured 2026-09-12: the same Skill call replayed twice,
-// exit 2 both times). That is the failure DISCARD-ALLOW was bought for on the rm guard and
-// CROSS-WRITE-ALLOW on the cross-project guard. The sibling `guard-stop-contract.js` already solved
+// exit 2 both times). That is the failure a receipt once answered on the rm and cross-project guards, which now ask
+// through the permission prompt instead. The sibling `guard-stop-contract.js` already solved
 // it for its own fresh-session offer with exactly this shape, so this is the shape used here:
 // record the context the offer was made at, and stay silent until the context has grown REOFFER_GROWTH
 // times past it. An answered question is not re-asked; a run that has since doubled its carry is a
@@ -1935,10 +1960,10 @@ if (EVENT === 'UserPromptExpansion') {
   process.exit(0);
 }
 
-process.stderr.write(
+askedOffer = () => { try { fs.writeFileSync(sizeOfferFile(), String(ctx)); } catch { /* the file keeps its size: the offer then waits for an answered ask */ } };   // no size: read as answered, so only growth re-offers
+blockCall(payload,
   `Blocked: ${skill} ${why}\n`
   + `Put it to the user as ONE AskUserQuestion: start it in a fresh session (recommended - end\n`
   + `this turn with the paste-ready invocation and the state file it resumes from), or run it\n`
   + `here anyway with the cost stated. Do not start the run before that answer lands.`,
 );
-process.exit(2);

@@ -193,7 +193,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   the one call that scope takes) and never installed beside, uninstalled, disabled, moved or named with a
   `--scope managed` command (`plugins.leftAt`).
 - **The mode block (mode commands v2 stage 3, 3.11.0; before it the auto-compact window per model of 2026-10-14).**
-  The four mode keys (`layout.MODE_KEYS`: `ALFRED_CODE_AUTO_RUN`, `_AUTO_COMPACT`, `_SCORING`, `_SCORING_LEVEL`) in the
+  The five mode keys (`layout.MODE_KEYS`: `ALFRED_CODE_AUTO_RUN`, `_AUTO_COMPACT`, `_SCORING`, `_SCORING_LEVEL`, `_SCORING_ROUNDS`) in the
   env of the checkout's own settings file (`layout.modeFile`: `<root>/.claude/settings.local.json`; a same-repository
   child and a worktree resolve to the top's) are the user's typed modes, and ONE writer holds them, `stack/hooks/
   mode-settings.js writeModes(root, updates, env)`, which also writes Claude Code's `autoCompactEnabled` and
@@ -204,7 +204,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   still at the stack's own ledger hash taking its reseed row), and seeds no mode key into a local file with no
   `.variables`; after the pass one `refresh` call runs `writeModes` - `--auto-compact on` writes `1`, `off` removes the
   key, else a team's `1` (`.variables`, a chain member's included) is copied once into a file without the key; a
-  refused flag (`ctx.compactHeld`) copies nothing - and uninstall's `remove` takes the four keys out (an emptied file
+  refused flag (`ctx.compactHeld`) copies nothing - and uninstall's `remove` takes the five keys out (an emptied file
   goes). `ALFRED_CODE_AUTO_COMPACT` is never seeded since 3.11.0 (`seed: false`, its `flag` the installer's own), and
   the `auto-compact-seed-retired` migration takes a seeded `0` out of `settings.json` and `.variables`. The settings
   pass writes no window any more: rows an earlier release ledgered (`managed-settings: <file>:modelSettings.<id>.
@@ -276,18 +276,21 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   the child's own seeds a member answers, and every installer run in a joined child that writes `.variables` (and the
   join) removes each value equal to the one the chain hands it (`pruneChained`: after the stamp, since the run
   rewrites the ledger; a line stays, named, where the project's `settings.json`, the account's or the launch
-  environment holds another value; never a `MEMBER_NEVER`, `CHAIN_PRUNE_NEVER` (`ALFRED_CODE_DOCS_VERSIONING`: it reaches members, and no join or W1 prune removes a child's own value) or `ignore env` key; a run that does not write a `.variables`
-  git tracks - a local-scope one - removes nothing and names each equal key in one line, `write: false`, 3.12); leaving - configure's leave, or the parent's uninstall
+  environment holds another value; never a `MEMBER_NEVER`, `CHAIN_PRUNE_NEVER` (`ALFRED_CODE_DOCS_VERSIONING`: it
+  reaches members, and no join or W1 prune removes a child's own value) or `ignore env` key; a run that does not write a
+  `.variables` git tracks - a local-scope one - removes nothing and names each equal key in one line, `write: false`,
+  3.12); leaving - configure's leave, or the parent's uninstall
   (`releaseChildren`) - first writes every value the child read through the chain into its own `.variables`
-  (`keepOnLeave`, which now also copies the docs versioning), so nothing it reads changes. DOCS VERSIONING in a child (the
-  mechanism is in `repo-memory-data.md`): `settings.js childSeeds` seeds the key only for a FIRM answer that differs from the
-  chain, `workspace.js pruneVersioningSeed` is the one remover (`versioning/rank.js seedLeaves`: a stack seed at its ledger hash, off `answered-env:`; at `local` scope it is
-  named, not removed), and a project outside any git repository gets no stack seed of it (a seed there leaves). The root's
-  `refreshBelow` writes nothing into a child's git files: it names each child whose `.gitignore` head marker lags the
-  effective versioning (`workspace: <rel> reads versioning <v> from here - ...`). The child's own run prints the D6b notices
-  (a tracked `.alfred/.gitignore` changed by an inherited value; a pulled line that outranks the workspace's). The walks pass
-  `--docs-versioning` only for an answer that differs from the parent's value, and `variables.js recommend --child` and
-  `stamp-docs-root.js --seed-versioning` read the same ranked answer (a key the chain answers is no MISSING row). A child's
+  (`keepOnLeave`, which now also copies the docs versioning), so nothing it reads changes. DOCS VERSIONING in a child
+  (the mechanism is in `repo-memory-data.md`): `settings.js childSeeds` seeds the key only for a FIRM answer that
+  differs from the chain, `workspace.js pruneVersioningSeed` is the one remover (`versioning/rank.js seedLeaves`: a
+  stack seed at its ledger hash, off `answered-env:`; at `local` scope it is named, not removed), and a project outside
+  any git repository gets no stack seed of it (a seed there leaves). The root's `refreshBelow` writes nothing into a
+  child's git files: it names each child whose `.gitignore` head marker lags the effective versioning (`workspace: <rel>
+  reads versioning <v> from here - ...`). The child's own run prints the D6b notices (a tracked `.alfred/.gitignore`
+  changed by an inherited value; a pulled line that outranks the workspace's). The walks pass `--docs-versioning` only
+  for an answer that differs from the parent's value, and `variables.js recommend --child` and `stamp-docs-root.js
+  --seed-versioning` read the same ranked answer (a key the chain answers is no MISSING row). A child's
   `--drop` of a line its parent holds writes that `ignore` line and an `--add` of an ignored one lifts it
   (`recordWord`, never on `--print-plan`), so validate and a hand-run update stick; a whole hook the child's own
   `ALFRED_CODE_HOOKS_OFF` names by hand is never added back from the parent's set (3.12, stage 6 M6) unless this run's
@@ -319,6 +322,8 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   launch `0` freezes it whatever the files say, else the project's own value decides (settings.local.json, its
   `.variables`, the settings `env`, so a file `0` beats a launch `1`), else the launch value, and only a `0` turns it
   off; off freezes everything - no lookup, ask, cascade or delta, and nothing it wrote is removed.
+- **A root hides what its children also load (2026-11-25; `install/child-hide.js`, `settings-keys.js`, `workspace-include/hide.js`, `install-root-hides.test.js`).** Claude Code lists a child's `.claude/skills/<name>` in a root session as `<rel>:<name>` once it works there, so a root saw `npm` and `web-app:npm`. The run's last step (`child-hide.js syncSkillKeys`, after the stamp and after `refreshBelow` re-links the children, so the keys read the links as the run leaves them) writes into the root's own `settings.local.json` one `skillOverrides` key `"<rel>:<name>": "off"` (`<rel>` as the disk spells the child's path) for each skill a child below it (the record's `children` walked down, set-aside ones too, ignored and gone ones not) holds as the stack's - its stamp's `links:` or `library-skills:` line names it and the folder exists - that the root links into its own `.claude/skills` this run (the link step's want: a held member pick counts, a store item kept for a set-aside child alone does not); a child's own folder is never hidden. The ledger row is `skillOverrides{<sha256 of the key>}` at the hash of `"off"` (`settings-keys.js`; `stamp.js SETTINGS_PATH` reads it; `workspaceStep` carries the rows still in the file, the last step re-renders the root's `managed-settings` line through `stamp.settingsLine` and puts the file back when that write fails; `carryMemberRows`, `removeManagedSettings` and `refreshBelow` treat it as a member row): a key already in the file with no row, or a value the user changed, is theirs. `workspaceStep` adds the root's native `.claude/rules/<name>.md` of each rule it keeps for a set-aside child alone (`held.keepOnly`) to the `claudeMdExcludes` sync, unless a child that keeps it shares the root's repository (`sameRepo`: such a child reads the root's settings), then the rule stays and one line names it and the child. Known limit: a child's own later run that adds a link leaves the root's key missing until the root's next run. Measured in `docs/workspace-layering-evidence.md`, 'A child's skills seen from the root'.
+- **A root trims its child-only skills to their names (2026-11-25; `install/children-only.js`, `children-only-read.js`, `child-skills.js`, `install-root-trims.test.js`).** A root keeps every skill its children need linked, since its own agents preload them (`skills:` in `stack-graph.json`) and a root session never loads a child's agents. The same last step merges `"<name>": "name-only"` keys into its want map for each skill the top root links that a joined child also links, that no same-repository child holds, that is not locked, and that has a signal - its `evidence.json` entry, the paths of a rule that loads it, or the rule paths of a stack that seeds it - with no hit in the root's own files. Those files are one `walk()` with every joined child excluded and every other repository of its own pruned (`pruneRepos`), handed to `scan` as `files`. A walk stopped at the depth cap, an unreadable catalog or `ALFRED_CODE_ROOT_SKILLS=all` trims nothing, and the step then removes the trim keys it wrote. Why `name-only`: `off` and `user-invocable-only` also take the skill from every agent that preloads it, and `name-only` keeps the preload (`docs/workspace-layering-evidence.md`, d72dc516). The keys share the hide keys' ledger rows, so a user's `"on"` is theirs. A trimmed skill's `<rel>:<name>` key is wanted at `"on"` instead of `"off"` while the bare key is in effect (absent, or `name-only` under the stack's row), so a root session working in that child sees the child's copy in full: a `<rel>:<name>` key outranks the bare key for that copy (1344eea9, same evidence file). A bare key the user set keeps the child key `"off"`, and `settings-keys.js syncKeys` rewrites a key it owns when its wanted value changes. Before a revert of that step run the root once with `ALFRED_CODE_ROOT_SKILLS=all`, which puts the child keys back to `"off"`; the older `syncKeys` keeps a still-wanted key at its recorded value.
 - **A root's start names its members (`rules-session.js memberIndex`).** The main-session start at a workspace root opens
   rules part 1 with a short index - one line a child the root's record lists (ignored ones out, and one whose own record does not point back at the root, rule N1; none while the workspace switch is 0), naming the child's
   instruction file and its `.claude/rules` count - so a session reads each child's instructions before it plans there.

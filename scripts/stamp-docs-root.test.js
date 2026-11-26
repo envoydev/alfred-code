@@ -314,6 +314,18 @@ test('--seed-versioning writes nothing when the chain answers', () => {
     finally { fs.rmSync(at.top, { recursive: true, force: true }); }
 });
 
+test('--seed-versioning does not say \'from the workspace\' to a firm local-scope child whose value differs from the workspace\'s', () => {
+    const at = linkedChild('ALFRED_CODE_DOCS_VERSIONING=git\n');
+    try
+    {
+        fs.writeFileSync(path.join(at.child, '.claude', 'alfred-code.stamp'), 'sha: x\nscope: local\nmanaged-env: \n');
+        const out = seedIn(at.child, path.join(at.top, 'acct'));
+        assert.doesNotMatch(out, /from the workspace/, out);
+        assert.match(out, /ALFRED_CODE_DOCS_VERSIONING (seeded|not written)/, out);
+    }
+    finally { fs.rmSync(at.top, { recursive: true, force: true }); }
+});
+
 test('--seed-versioning under a chain keeps an own value as it is, and a garbage chain value is no answer', () => {
     const own = linkedChild('ALFRED_CODE_DOCS_VERSIONING=local\n', 'ALFRED_CODE_DOCS_VERSIONING=git\n');
     const garbage = linkedChild('ALFRED_CODE_DOCS_VERSIONING=maybe\n');

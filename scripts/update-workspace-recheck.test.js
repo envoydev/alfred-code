@@ -16,7 +16,7 @@ test('the re-check section names added.txt, its sources and the --only call', ()
     const text = flat(body('update-workspace'));
     assert.match(text, /## Children joined earlier - re-checked on the items this update added/);
     assert.match(text, /every `new:` row whose verdict is `arrives` and for each offer taken as an `--add`/);
-    assert.match(text, /stack-select\.js" --redundant --only "\$TMP\/added\.txt" --installed "\$TMP\/parent\.json"/);
+    assert.match(text, /stack-select\.js" --redundant --only "\$TMP\/added\.txt" --ignored-in <rel> --installed "\$TMP\/parent\.json"/);
     assert.match(text, /that this run did NOT join \(not a `rescan:` row\) and that is not ignored/);
     assert.match(text, /No such row and no offer taken: the file stays empty, and this section runs nothing and asks nothing/);
     assert.match(text, /A grandchild is not checked here/);
@@ -34,7 +34,7 @@ test('the re-check ask is a second fit-style template: three options, the Recomm
 test('unattended, the re-check keeps everything inherited, and the walk and the slow path run it', () =>
 {
     const text = flat(body('update-workspace'));
-    assert.match(text, /Whenever nobody answers this ask - `unattended: on`, no ask tool, or auto-run - take 'Keep everything inherited', as the join ask does/);
+    assert.match(text, /Whenever nobody answers this ask - `unattended: on` or no ask tool - take 'Keep everything inherited', as the join ask does/);
     assert.match(flat(body('update-slow-path')), /run its re-check on the added items too/);
 });
 

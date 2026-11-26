@@ -3,7 +3,7 @@
 const test = require('node:test');
 // No inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
 require('./hook-test-env').isolateHookSuite();
-const { reviewedTranscript } = require('./hook-test-env');
+const { reviewedTranscript, legacyBlock } = require('./hook-test-env');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -35,10 +35,10 @@ function repo({ remote = false } = {}) {
 }
 const helper = (dir, args, { cwd = dir, env = {} } = {}) =>
   spawnSync(process.execPath, [HELPER, ...args], { cwd, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir, ...env } });
-const guard = (dir, command, env = {}) => spawnSync(process.execPath, [GUARD], {
+const guard = (dir, command, env = {}) => legacyBlock(spawnSync(process.execPath, [GUARD], {
   input: JSON.stringify({ hook_event_name: 'PreToolUse', session_id: 'receipt-test', tool_name: 'Bash', tool_input: { command }, cwd: dir, transcript_path: REVIEWED }),
   cwd: dir, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir, ...env },
-});
+}));
 // 2.8.0 layout: the receipt lives in <data root>/state/approvals/, whatever the docs root
 const receiptOf = (dir, name = 'COMMIT-GATE', data = '.alfred') => fs.readFileSync(path.join(dir, data, 'state', 'approvals', name), 'utf8');
 const COMMIT = ['commit', '--verified', 'the parser change', '--authorized', 'commit it', '--probe', 'npm test 12/12', '--format', 'npx prettier --check', '--findings', 'none'];

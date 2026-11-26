@@ -1304,7 +1304,8 @@ const SETUP_ASK_TEMPLATES = {
     // +1: step 8's copy of the old memory files to the new place (memory P3, 2026-11-04).
     // -2: step 8's data-root asks, the move and the keep-or-change one (the fixed root, 2026-11-11).
     // +2: step 8's agents-route ask, one template per current route (the agents route switch, 2026-11-18).
-    'setup-plugin/commands/configure.md': 15,
+    // +1: step 8's children-included change ask (workspace child stacks, 2026-11-25).
+    'setup-plugin/commands/configure.md': 16,
     // audit 2026-10-11: update's three asks plus step 6's re-spell of the project's own AGENTS.md (session b3f8193f).
     // Audit 2026-10-20 C15: update.md is a router, so a gate-refused run carries none of them - the data-root and
     // instruction-file asks ride the walk (steps 1-3), the re-spell and git-hygiene asks the close (steps 6-8).
@@ -1324,6 +1325,8 @@ const SETUP_ASK_TEMPLATES = {
     // +1: the re-check of children joined earlier, on the items this update added (the user's ruling of 2026-11-19).
     'setup-plugin/references/update-workspace.md': 6,
     'setup-plugin/references/update-close.md': 2,
+    // +1: the one ask about the children no answer covers yet, read by every walk's include call (workspace child stacks, 2026-11-25).
+    'setup-plugin/references/workspace-include.md': 1,
     // audit 2026-10-21 commands T2-12: the prune confirm and the guard-hook adoption ask; uninstall's confirm; status's
     // area pick; init's machine-install ask.
     'setup-plugin/references/update-slow-path.md': 2,
@@ -3132,7 +3135,7 @@ const REALPATH_PINS = {
     'scripts/audit-2026-10-30-fixpass-gaps.test.js': 2,
     'scripts/audit-2026-10-30-fixpass-receipts.test.js': 2,
     'scripts/audit-2026-10-30-fixpass-shell.test.js': 2,
-    'scripts/audit-2026-11-03-guard-asks.test.js': 12,
+    'scripts/audit-2026-11-03-guard-asks.test.js': 10,
     'scripts/code-quality.test.js': 1,
     'scripts/docs-engine.test.js': 2,
     'scripts/docs-versioning-rule.test.js': 1,
@@ -3442,7 +3445,7 @@ function lintHooksEntry(liveIn)
 
     // Every wired hook file exists, and every hook file that exists is either wired or an engine.
     const ENGINES = new Set(['docs.js', 'history.js', 'layout.js', 'handoff.js', 'secret-chain.js', 'secrets-run.js', 'hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js', 'forge.js', 'agent-cap.js', 'agent-models.js', 'session-status.js', 'workspace-file.js', 'plan-status.js',
-        'mode-settings.js', 'json-file.js', 'reply-budget.js', 'rules-summary.js']);
+        'mode-settings.js', 'json-file.js', 'reply-budget.js', 'rules-summary.js', 'cross-read.js']);
     const wired = new Set();
     for (const [event, blocks] of Object.entries(stack))
         for (const block of blocks)

@@ -137,6 +137,14 @@ over the result.
 
 ## 2. Detect the project's stacks - and show the evidence
 
+First, which joined children this run includes - ONE call, before the detection read and before any `stack-select.js` call:
+
+```bash
+node "$TMP/repo/scripts/workspace.js" include --root . > "$TMP/include.txt" 2>&1 ; grep -E '^(included|set-aside|unasked|below|unattended|!!)' "$TMP/include.txt" && cat "$TMP/include.txt" "$TMP/repo/setup-plugin/references/workspace-include.md"
+```
+
+Nothing printed: no child is joined - go on. Otherwise follow `workspace-include.md`, printed with it: the one ask on `unasked:` lines, the detection over `.` and the included folders, and the scan below with its `--children` value.
+
 The install phase's step-3 artifact scan: read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/stack-detection.md` (the one marker list, init's too) in one Bash `cat` and apply every bullet, its suppressions included.
 
 Report the detected set AND, for every stack you will treat as ABSENT, the exact signal you looked
@@ -174,7 +182,7 @@ answered with 8 ad hoc catalog reads before this block's own pass had even run):
 
 ```
 node "$TMP/repo/scripts/scan-evidence.js" --root . --catalog "$TMP/repo/meta/evidence.json" \
-  --judgment "$TMP/repo/meta/judgment.json" --out "$TMP/found.json"
+  --judgment "$TMP/repo/meta/judgment.json" --children "<csv|none>" --out "$TMP/found.json"
 node "$TMP/repo/scripts/stack-select.js" --redundant --installed "$TMP/installed.json" \
   --found "$TMP/found.json" \
   --recs "$TMP/repo/meta/recommendations.json" --graph "$TMP/repo/meta/stack-graph.json" \
@@ -189,6 +197,8 @@ node "$TMP/repo/scripts/stack-select.js" --evidence-gaps --found "$TMP/found.jso
 node "$TMP/repo/scripts/stack-select.js" --judgment "$TMP/repo/meta/judgment.json" \
   --installed "$TMP/installed.json" > "$TMP/judgment.out"
 ```
+
+`--children` takes the value `workspace-include.md` gives: every `included:` and `unasked:` rel, or `none`. A set-aside child is never scanned.
 
 `redundant:` lines = installed, whole owning stack absent, no evidence signal (remove candidates). `missing:` lines =
 detected-stack + baseline closure not installed (add candidates), each with `needed by <stack|baseline>`.
@@ -302,7 +312,7 @@ table of the actionable rows only - an install whose env already matches gets th
 - **MISSING** - a catalog row `show` reads as `default` (no file holds it). This is the release-introduced case: a
   variable added upstream after this install was made, which no artifact diff can surface because
   it was never a file. Reason column: `not set - introduced after this install`. The catalog carries no version per row, so never print one.
-  A key the workspace answers (its `show` source is the root) is not MISSING: show no row for it. `ALFRED_CODE_DOCS_VERSIONING` is the ONE exception to 'offer the catalog default': its value is DETECTED, not
+  A key the workspace answers (its `show` source is `from <rel>`) is not MISSING: show no MISSING row for it. `ALFRED_CODE_DOCS_VERSIONING` is the ONE exception to 'offer the catalog default': its value is DETECTED, not
   constant, so writing the constant over a project whose docs are kept out of git is the exact silent switch
   the rule exists to prevent. PREVIEW it read-only before the table - `node .claude/hooks/docs.js status`
   (with the key absent its `mode:` line falls back to the same rule) - its bare `git (docs are not
@@ -328,6 +338,11 @@ table of the actionable rows only - an install whose env already matches gets th
   instrumentation switch that is neither `0` nor `1`, a whole number outside `min`..`max`, a csv item outside its `values`). Show the value and the expected shape; the fix is the catalog default unless the user types
   another. The shape is the ONLY test - a value that differs from the default is a deliberate pin,
   never a finding.
+- **MODE KEYS** - the five mode keys (`ALFRED_CODE_AUTO_RUN`, `ALFRED_CODE_AUTO_COMPACT`, `ALFRED_CODE_SCORING`,
+  `ALFRED_CODE_SCORING_LEVEL`, `ALFRED_CODE_SCORING_ROUNDS`) are the user's typed modes, no MISSING or INVALID row. A mode key is
+  reported as a mode with its state, never a value to fix, and named with its command (`/alfred-code:mode:auto-run on|off`,
+  `/alfred-code:mode:auto-compact on|off`, `/alfred-code:mode:scoring on|off [level] [rounds]`, typed alone on its line):
+  `variables.js set` refuses a mode key, and one refused key drops the whole call.
 
 Consent exactly like the artifact layers - one AskUserQuestion round, a typed answer picking rows by number - then
 restate the outcome in one line:
@@ -421,7 +436,7 @@ This step is model judgment, not a signal: it is non-deterministic and can be co
 which is exactly why every row carries its quotation and nothing here ever auto-applies. A
 decline is final for this run - never re-litigate it. Accepted judgment drops join step 10's
 removal set and accepted judgment adds its install set, both reported there under their
-JUDGMENT label.
+JUDGMENT label. While a child is set aside, a JUDGMENT-DROP row shows `kept for <rels>` too.
 
 **The dormant advisory - fine to keep, fires rarely, by requirement.** Under the judgment table,
 as PLAIN TEXT (no row numbers, no consent - like the walk's `no-evidence:` lines), print the
@@ -447,11 +462,17 @@ artifact is. An accepted
 MISSING `ALFRED_CODE_DOCS_VERSIONING` row is the one exception: never fold it into that
 `variables.js set` - write it by running `node "$TMP/repo/scripts/stamp-docs-root.js" <project root> --seed-versioning`
 (it reads and writes the stamp's scope file, as the installer does), which re-probes at the write instead of trusting the
-table's preview a step stale, and report its printed line (a child whose workspace answers the key gets `docs versioning: <v> from the workspace - nothing seeded` and no write). Every other accepted row still goes
-through `variables.js set` or that merge. Emit + prereq-check it -
+table's preview a step stale, and report its printed line. Every other accepted row still goes
+through `variables.js set` or that merge. A mode key (`ALFRED_CODE_AUTO_RUN`, `ALFRED_CODE_AUTO_COMPACT`,
+`ALFRED_CODE_SCORING`, `ALFRED_CODE_SCORING_LEVEL`, `ALFRED_CODE_SCORING_ROUNDS`) is a mode, never in that `variables.js set`:
+step 8 named its command, and the user types it. Emit + prereq-check it -
 `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/final.json" --graph "$TMP/repo/meta/stack-graph.json" --emit "$TMP/selection.txt" --check`,
 output to `$TMP/select.out` - then:
 
+- **Keep, before the apply.** While `include` printed a `set-aside:` line, REDUNDANT and accepted JUDGMENT-DROP rows
+  show `kept for <rels>`. The keep covers REDUNDANT and accepted JUDGMENT-DROP rows and never a retired row: a migration row goes
+  everywhere. On a yes, each `drop` of such a row gets `workspace-include.md`'s keep call once, and each keep call runs
+  before step 10's apply. A `!!` keep and a user-scope plugin (that file's two cases) leave the drop set: leave that row's `--drop` flag off the installer call.
 - **Apply**: run the delta, then the installer from the snapshot. `node "$TMP/repo/scripts/derive-state.js" --delta --installed "$TMP/installed.json" --selection "$TMP/selection.txt" --picked "$TMP/final.json"`
   prints one `add <line>` / `drop <line>` per accepted change against step 1's read-back, or
   `none` - which with no environment row accepted means there is nothing to apply: say so, run
@@ -497,6 +518,16 @@ output to `$TMP/select.out` - then:
   own run writes it. A validate run that added nothing leaves the stamp exactly as it found it and never
   hand-edits it: the file's own header says the installers write it, and a hand-written one carries a
   fabricated install time that every later stamp compare then trusts (measured: one run did exactly this).
+
+**The projects below - every run, after the apply or its 'nothing to apply'.** A child joined to this project reads
+its set only at its own update, so this reconcile reaches none of them unless it is carried. ONE call:
+
+```bash
+node "$TMP/repo/scripts/workspace.js" plan --root . --rescan --source "$TMP/repo" > "$TMP/plan.txt" ; grep -E '^workspace-plan: ([2-9]|[0-9]{2,}) |^set-aside: ' "$TMP/plan.txt" && cat "$TMP/plan.txt" "$TMP/repo/setup-plugin/references/validate-workspace.md"
+```
+
+Nothing printed: no project is joined below, and none is set aside - go on to step 11. Otherwise follow `validate-workspace.md`, printed
+with the plan: the fit check per child, its asks and the cascade, before step 11.
 
 **The run closes on a suggestion card, never on a question.** After the report, list the
 follow-ups that are the USER's to run - restart for a plugin change, `/capture-awareness`

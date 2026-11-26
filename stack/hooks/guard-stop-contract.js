@@ -118,7 +118,7 @@ if (cursorOff) process.exit(0);
   process.exit = (code) => {
     // A Stop this hook holds is marked, so its own continuation stands down and a sibling's is judged (S1).
     if (code === 2 && payload.hook_event_name === 'Stop') markHeld(payload);
-    if (code === 2) {
+    if (code === 2 || global.BLOCK_VERDICT) {
       try {
         const fs = require('fs');
         const path = require('path');
@@ -137,7 +137,7 @@ if (cursorOff) process.exit(0);
           // blocks read as the main session's), and the call id joins the row to the transcript without a clock.
           agent: payload.agent_id || null,
           tool_use_id: payload.tool_use_id || null,
-          reason: last.split('\n')[0].slice(0, 200),
+          reason: (global.BLOCK_VERDICT ? global.BLOCK_VERDICT.reason : last).split('\n')[0].slice(0, 200),
           // A hook may name the BRANCH that fired and what matched, when it has more than one
           // (`global.BLOCK_DETAIL`, dropped by JSON.stringify when nothing set it). A block whose
           // cause cannot be reconstructed cannot be tuned - this is the field that reconstructs it.
@@ -198,6 +198,15 @@ function ledgerRow(row) {
       ts: new Date().toISOString(), hook: path.basename(__filename), event: payload.hook_event_name || '', tool: payload.tool_name || '', ...row,
     }) + '\n');
   } catch { /* never throws */ }
+}
+
+// The one exit of a PreToolUse block (guards ask, D1): the prelude asks or denies; with no prelude, today's exit 2. Not a Stop
+// hold: those stay exit 2 (Claude Code gives Stop and SubagentStop no ask).
+function blockCall(input, text) {
+  let code = 2;
+  try { const p = require('./hook-prelude.js'); code = p.blockExitCode(input, p.askOrBlock(input, text, { guard: 'guard-stop-contract' })); }
+  catch { process.stderr.write(text); }
+  process.exit(code);
 }
 
 // --- a red build or test run, as the runner reports it ------------------------------------------------
@@ -1987,7 +1996,7 @@ if (payload.hook_event_name === 'SubagentStop') {
     + 'so ending this turn ends your task undone. The wait, wakeup, loop or other agents in the history above '
     + 'belong to the session that dispatched you, not to you. Do the task in your directive now. '
     + "If you truly cannot, reply with 'BLOCKED: <reason>' and stop.\n");
-  process.exit(2);
+  process.exit(2); // guard-ask: Stop hold
 }
 
 // --- Stop: the done-gate probe - a done claim over a turn's source edit, measured ---------------------
@@ -2455,7 +2464,7 @@ if (payload.hook_event_name === 'Stop') {
             + `${unbacked ? 'The Scored: line here has no rounds.log release behind it; only the line scorecard.js next prints after the loop counts. ' : ''}`
             + 'Run the mode-output-scoring loop on that output now and close with the Scored: line `next` prints; '
             + 'where no seat can grade, its Fallback (a SELF grade) applies. Held once for this request.\n');
-          process.exit(2);
+          process.exit(2); // guard-ask: Stop hold
         }
       }
     } catch { /* fail-open: the backstop never breaks a Stop */ }
@@ -2468,7 +2477,7 @@ if (payload.hook_event_name === 'Stop') {
     if (again) {
       blockDetail('agent-cap-continue', again.match(/\d+/)[0]);
       process.stderr.write(`${again}\n`);
-      process.exit(2);
+      process.exit(2); // guard-ask: Stop hold
     }
   }
   // Only a continuation THIS hook caused stands down; one a sibling Stop hook caused is judged once more, and this
@@ -2726,7 +2735,7 @@ if (payload.hook_event_name === 'Stop') {
       'This ask comes once: answered, it covers every credential already in this session, and only\n' +
       'a new exposure asks again. guard-stop-contract:rotate in ALFRED_CODE_HOOKS_OFF turns it off.',
     );
-    process.exit(2);
+    process.exit(2); // guard-ask: Stop hold
   }
   // Under a live AUTO waiver a solve-task run asks nothing, so the ask branch's FLOW STOP FIELDS check never runs and a
   // waived close went out with none of Result / Progress / Leftovers, its headline contradicting its own leftovers (audit
@@ -2742,7 +2751,7 @@ if (payload.hook_event_name === 'Stop') {
       + 'artifact path), `Progress:` (<N> of <M> steps) and `Leftovers:` (what this run started and did not finish, or\n'
       + '`none`) - and a headline that agrees with the leftovers. Nothing else changes. missing: '
       + missingFields(prose).map((n) => `\`${n}:\``).join(', '));
-    process.exit(2);
+    process.exit(2); // guard-ask: Stop hold
   }
   // AUTO-RUN (stack-modes spec section 2, 2026-10-27; auto-mode, the user's ruling of 2026-10-14): the session's AUTO stamp
   // (guard-fresh-session-start.js, a `session:` line naming this session) is the MODE, and the run marker
@@ -2782,7 +2791,7 @@ if (payload.hook_event_name === 'Stop') {
       + `print its close and delete ${autoMarker} - that ends this run; ${(() => { try { return require('./hook-prelude.js').autoLasts(process.env.CLAUDE_PROJECT_DIR || payload.cwd); } catch { return 'auto-run stays on for the session until'; } })()}\n`
       + '/alfred-code:mode:auto-run off. If it waits on work this session started, end the turn with one line saying so; if the next\n'
       + 'step needs the user - an ask with no Recommended option, or an outward act (push, publish, post, send) they have not approved, whether its ask is open or was answered in words - put that ask once now (for a series, one ask covering the rest of it) and end the turn on it; never restate it in prose.');
-    process.exit(2);
+    process.exit(2); // guard-ask: Stop hold
   }
   // Every branch below asks a PERSON something - a decision, a pending step, a fresh session - and
   // with nobody at the terminal (hook-prelude.js unattended) the block only buys another turn. The
@@ -2805,7 +2814,7 @@ if (payload.hook_event_name === 'Stop') {
       + 'where it picks up), or the prompt that carries the work on; then at most two lines, outside the fence, on what the\n'
       + 'fresh session does first and what follows.\n'
       + 'Never point at a block printed earlier. No new work in this chat.');
-    process.exit(2);
+    process.exit(2); // guard-ask: Stop hold
   }
   if (!proseAsk(tail) && !doneClose && !endsOnQuestion) {
     // The turn closed cleanly - the work is DONE, which is the only moment this offer belongs at.
@@ -2869,7 +2878,7 @@ if (payload.hook_event_name === 'Stop') {
       `resume block only - do not start new work in this chat. Add nothing else to this turn: the\n` +
       `report you just wrote stands.`,
     );
-    process.exit(2);
+    process.exit(2); // guard-ask: Stop hold
   }
   // Both remaining branches DEMAND an AskUserQuestion. If one was just answered - or declined with
   // 'clarify', which the harness answers by instructing prose - the decision is already settled and
@@ -2890,7 +2899,7 @@ if (payload.hook_event_name === 'Stop') {
       'you answered a question - end on the answer; the open decision waits for the user\'s next message. Drop the\n' +
       'closing offer and put no new ask in this turn - the decision comes back when their next message picks, approves or\n' +
       'says go on. A clarifying question back is fine; an offer to change something waits for that decision.');
-    process.exit(2);
+    process.exit(2); // guard-ask: Stop hold
   }
   if (answeredReadOnly && endsOnQuestion) {
     ledgerRow({ tool: '', mode: 'probe', kind: 'discussion-close', reason: `probe: a ${openQuestion.kind} question at an open ask, answered read-only and closed on a question - logged, not held` });
@@ -2920,7 +2929,7 @@ if (payload.hook_event_name === 'Stop') {
       'done in this turn, never asked. Only when\n' +
       'nothing at all is owed, say so in one line with no open next action and stop.',
     );
-    process.exit(2);
+    process.exit(2); // guard-ask: Stop hold
   }
   if (askRefusedThisTurn()) {
     ledgerRow({ tool: '', mode: 'probe', kind: 'prose-after-refused-ask', reason: 'probe: two asks this turn refused by a hook, then a prose question - logged, not held' });
@@ -2970,7 +2979,7 @@ if (payload.hook_event_name === 'Stop') {
     'If AskUserQuestion is not available in this session, keep the\n' +
     'plain-text options and stop - the flows\' own no-tool exit.',
   );
-  process.exit(2);
+  process.exit(2); // guard-ask: Stop hold
 }
 
 // The context at which this session last blocked an ask for carrying no fresh-session option.
@@ -3260,7 +3269,11 @@ function reAskDeny() {
     + 'message picks, approves or says go on - or re-send it unchanged if the answer itself needs their pick now.';
   ledgerRow({ agent: null, tool_use_id: payload.tool_use_id || null, reason: redactShapes(why.split('\n')[0]).slice(0, 200), detail: { branch: 'reask', kind: open.kind } });
   breadcrumb(`block reask: ${open.kind}`);
-  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: why } }));
+  // The ask (guards ask, D1): the prelude asks where a person can answer and denies otherwise. The row above is this site's
+  // own, so the verdict it leaves for the exit wrapper is dropped: the wrapper must not write a second row for this block.
+  let wrote = false;
+  try { const p = require('./hook-prelude.js'); p.askOrBlock(payload, why, { guard: 'guard-stop-contract' }); wrote = true; delete global.BLOCK_VERDICT; } catch { /* no prelude: today's deny */ }
+  if (!wrote) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: why } })); // guard-ask fallback: no prelude
   reaskDenied = true;
   process.exit(0);
 }
@@ -3510,7 +3523,8 @@ if (payload.tool_name === 'AskUserQuestion') {
         if (pointsAbove) reasons.push('a fresh-session option pointing at a resume block above that the chat never showed');
         if (dropHandoff) reasons.push('a fresh-session hand-off where a fresh session does not pay back with the cache warm');
         global.BLOCK_DETAIL = { branch: 'ask-voice', voice: voice.map((v) => v.split(' (')[0]), numbers: !!numbers, other: typeIntoOther, unmarked, misMarked, newCycle: !!newCycle, blind: !!blind, noReview: !!noReview, compactFresh, pointsAbove, dropHandoff };
-        process.stderr.write(`Blocked: this AskUserQuestion carries ${reasons.join('; ')}.`
+        denied = true;
+        blockCall(payload, `Blocked: this AskUserQuestion carries ${reasons.join('; ')}.`
           + (voice.length ? ` The house voice (alfred-interaction.md) covers an ask's question, header, labels and descriptions, and the user reads them as written.` : '')
           + (typeIntoOther ? ` A picked option returns only its LABEL - a value the user must type goes in plain prose that ends the turn, and the ask carries what they can PICK (${pickLabels}).` : '')
           + (unmarked ? ` Mark the recommended option '(Recommended)' and list it first - or, for a question with no default, say why in the question ('no option is recommended: <why>').` : '')
@@ -3521,8 +3535,6 @@ if (payload.tool_name === 'AskUserQuestion') {
           + (compactFresh ? ` Here the session compacts past its window's trigger and the work goes on, so no ask offers a new session.${tooFew ? ' A question left with one option is no question: take that option and drop the question.' : ''}` : '')
           + (dropHandoff ? ` ${notPay}${leftAlone ? ` A question left with one option is no question: take that option${leftAlone.options[0] ? ` - '${String(leftAlone.options[0].label || '')}' -` : ''} and drop the question.` : ''}` : '')
           + (mechanical && resend.length ? ` Re-send the ask with these questions - only ${[voice.length ? 'the dashes and quotes' : '', numbers ? 'the fresh option\'s numbers' : '', compactFresh ? 'the fresh-session option dropped' : '', pointsAbove ? 'the resume-block pointer' : '', dropHandoff ? 'the fresh-session hand-off dropped' : ''].filter(Boolean).join(' and ')} changed:\n${JSON.stringify(resend, null, 1)}\n` : '\n'));
-        denied = true;
-        process.exit(2);
       }
       else if (voice.length) notes.push(`The ask just sent carried ${voice.join(' and ')} after its first denial. Keep the house voice `
         + `(alfred-interaction.md) in every later ask: single dashes, single quotes.`);

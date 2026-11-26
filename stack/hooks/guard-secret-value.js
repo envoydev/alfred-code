@@ -1059,7 +1059,7 @@ if (process.argv[2] === '--with-sensitive') {
   const words = rest[0] === '--' ? rest.slice(1) : rest;
   if (!words.length) {
     process.stderr.write('usage: node guard-secret-value.js --with-sensitive -- "<command line>"\n');
-    process.exit(2);
+    process.exit(2); // guard-ask: CLI usage
   }
   const quote = (w) => (process.platform === 'win32' ? (/[\s"&|<>^]/.test(w) ? `"${w.replace(/"/g, '\\"')}"` : w) : (/^[\w@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, `'\\''`)}'`));
   const line = words.length === 1 ? words[0] : words.map(quote).join(' ');
@@ -1399,7 +1399,7 @@ function lineRedactor() {
 // Any other `--` mode is no mode (swap 1 ruling 8: the stream mode left with the rewrite that piped into it).
 if (require.main === module && /^--/.test(process.argv[2] || '')) {
   process.stderr.write('usage: guard-secret-value.js --presence <file> [KEY ...] | --redacted <file> | --redacted-env | --with-sensitive -- "<command>"\n');
-  process.exit(2);
+  process.exit(2); // guard-ask: CLI usage
 }
 
 try {
@@ -1456,7 +1456,7 @@ if (payload.cwd != null && (typeof payload.cwd !== 'string' || !payload.cwd)) de
   process.stderr.write = (chunk, ...rest) => { last = String(chunk); return w(chunk, ...rest); };
   const exit = process.exit.bind(process);
   process.exit = (code) => {
-    if (code === 2 && !unsetRepo) {
+    if ((code === 2 || global.BLOCK_VERDICT) && !unsetRepo) {
       try {
         const fs = require('fs');
         const path = require('path');
@@ -1475,7 +1475,7 @@ if (payload.cwd != null && (typeof payload.cwd !== 'string' || !payload.cwd)) de
           // blocks read as the main session's), and the call id joins the row to the transcript without a clock.
           agent: payload.agent_id || null,
           tool_use_id: payload.tool_use_id || null,
-          reason: last.split('\n')[0].slice(0, 200),
+          reason: (global.BLOCK_VERDICT ? global.BLOCK_VERDICT.reason : last).split('\n')[0].slice(0, 200),
           // A hook may name the BRANCH that fired and what matched, when it has more than one
           // (`global.BLOCK_DETAIL`, dropped by JSON.stringify when nothing set it). A block whose
           // cause cannot be reconstructed cannot be tuned - this is the field that reconstructs it.
@@ -1686,8 +1686,15 @@ if (posted || eventIs(payload, 'PostToolUseFailure')) {
 }
 
 const input = payload.tool_input || {};
-// A refusal ends in no ask: no receipt opens one (swap 1). The one ask left is the host's, on a Read (askOrDeny).
-const refuse = (msg) => { process.stderr.write(msg); process.exit(2); };
+// A refusal asks where a person can answer and denies where nobody can (blockCall); no receipt opens one (swap 1).
+// The one exit of a PreToolUse block (guards ask, D1): the prelude asks or denies; with no prelude, today's exit 2.
+function blockCall(input, text) {
+  let code = 2;
+  try { const p = require('./hook-prelude.js'); code = p.blockExitCode(input, p.askOrBlock(input, text, { guard: 'guard-secret-value' })); }
+  catch { process.stderr.write(text); }
+  process.exit(code);
+}
+const refuse = (msg) => blockCall(payload, msg);
 // The store's values reach a command through --with-sensitive, which alfred-security.md says the denial names; a key
 // file's never do (--with-sensitive reads the data-root store alone).
 const runHint = (file) => (isStoreName(realOf(file)) && baseOf(realOf(file)) !== KEY_FILE
@@ -1976,12 +1983,13 @@ function storeNameTests(text) {
 function askOrDeny(file, key) {
   const what = `holds a credential under \`${key}\``;
   const presence = `node "${__filename}" --presence "${file}" [KEY ...]`;
-  let nobody = onCursor || /^(?:bypassPermissions|dontAsk)$/.test(String(payload.permission_mode || ''));
-  try { nobody = nobody || require('./hook-prelude.js').unattended(payload, process.env); } catch { /* no prelude: the mode alone */ }
+  let nobody = true; // no prelude reads as nobody: deny
+  try { nobody = !require('./hook-prelude.js').canAsk(payload, process.env); } catch { /* no prelude: deny */ }
   if (nobody) refuse(`Blocked: Read of ${file}, which ${what} - nobody can answer an ask here, and the value would enter the transcript permanently. Presence: ${presence}; the user opens the file.\n`);
   ledgerRow('ask', { branch: 'read', file: pathMod.basename(file) });
-  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask',
-    permissionDecisionReason: `Read of ${file}: it ${what}. Allowing it puts the value in this transcript permanently. Presence only: ${presence}` } }));
+  // The helper's own prompt (its label, its recommendation, the presence route for the model on a decline) around this sentence.
+  const verdict = require('./hook-prelude.js').blockVerdict(payload, `Read of ${file}: it ${what}, and allowing it puts the value in this transcript permanently.\nPresence only: ${presence}\n`, { guard: 'guard-secret-value' });
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: verdict.hookSpecificOutput }));
   process.exit(0);
 }
 // ---- Read matcher ----

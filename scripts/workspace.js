@@ -17,6 +17,7 @@
 //   cascade     the update itself, every child top-down from its parent's read-back - a failed parent skips its subtree;
 //               with --hold (the user's 'only this project') nothing runs and every project below is named held
 //   check-loads the exclude check: one logged-out `claude -p` here, naming every ancestor file that loaded twice
+//   include     which joined children this root includes and which it sets aside, and what it keeps for the set-aside ones
 //   ignore-child  a path below this root marked ignored: its joined children keep their values and sent rules, then run their own update
 //   remove-nested  --path <rel>: the stack's own files out of an install in a plain subfolder of this git repository - only what
 //                 that folder's own stamp records; never the root's install, the account, the plugins or git's exclude file
@@ -33,6 +34,8 @@ const stamp = require('./install/stamp.js');
 // (settings.js -> derive-state.js -> hook-prelude.js, and copy.js), whose line 67 runs `layout.applyVariables(<cwd project>)` at load
 // and changes `process.env`, which `role --answer leave` then reads (AC15, AC24 of install-workspace.test.js).
 const nestedMod = () => require('./install/nested.js');
+const includeFx = () => require('./workspace-include/effects.js');
+const { STATE: { setAside: ASIDE_STATE }, ROW_GONE } = require('./workspace-include/constants.js');
 const rt = require('./install/runtime.js');
 const { parseArgs } = require('./install/args.js');
 const { REPORT_LINE_AT_TOP } = require('./install/report-constants.js');
@@ -354,17 +357,19 @@ function planVerb(out)
     catch { /* a snapshot with no plugin.json names no version */ }
     const rows = ws.subtree(top, { env });
     // A listed child that lost its own `.git` is part of this repository now: no project row, only a `nested:` one.
-    const joinedNested = new Set(rows.filter((r) => isSameRepoChild(r, top)).map((r) => r.rel));
+    // A child the root set aside, and every row below it, runs nothing: it is named once, as `set-aside:`, and never as `nested:`.
+    const aside = includeFx().readSkipped(top, rows, { env });
+    const joinedNested = new Set(rows.filter((r) => isSameRepoChild(r, top) && !aside.skipped.has(r.rel)).map((r) => r.rel));
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'workspace-plan-'));
     try
     {
-        out(`workspace-plan: ${rows.filter((r) => r.state === 'ok' && !joinedNested.has(r.rel)).length} projects`);
+        out(`workspace-plan: ${rows.filter((r) => r.state === 'ok' && !joinedNested.has(r.rel) && !aside.skipped.has(r.rel)).length} projects`);
         const entries = [];
         const plans = new Map();
         const parents = new Set(rows.map((r) => r.parentRel).filter((r) => r !== null));
         for (const [i, row] of rows.entries())
         {
-            if (row.state !== 'ok' || joinedNested.has(row.rel)) continue;
+            if (row.state !== 'ok' || joinedNested.has(row.rel) || aside.skipped.has(row.rel)) continue;
             // The top project's own changes and asks are its walk's (the preflight printed them): its read-back is taken
             // only to project its children, so a standalone update spawns nothing here.
             if (row.parentRel === null)
@@ -404,13 +409,14 @@ function planVerb(out)
             if (why) out(`  !! ${why}`);
             for (const l of asksOf(row.root)) { out(`  ${l}`); entry.asks.push(l.trim()); }
         }
-        for (const row of rows.filter((r) => r.state === 'gone')) out(`gone: ${field(row.rel)}`);
+        for (const rel of aside.heads) out(`${ASIDE_STATE}: ${field(rel)}`);
+        for (const row of rows.filter((r) => r.state === ROW_GONE && !aside.skipped.has(r.rel))) out(`gone: ${field(row.rel)}`);
         let rescanned = 0;
         if (has('--rescan'))
         {
             for (const rel of ws.rescan(top, { env })) { out(`rescan: ${rel}`); rescanned += 1; }
         }
-        for (const rel of [...new Set([...(has('--rescan') ? ws.nestedInstalls(top, { env }) : []), ...joinedNested])].sort()) { out(`nested: ${field(rel)}`); rescanned += 1; }
+        for (const rel of aside.without([...new Set([...(has('--rescan') ? ws.nestedInstalls(top, { env }) : []), ...joinedNested])].sort())) { out(`nested: ${field(rel)}`); rescanned += 1; }
         if (entries.length >= 2 || rescanned) for (const l of renderPlanTable(entries)) out(l);
     }
     finally { fs.rmSync(tmp, { recursive: true, force: true }); }
@@ -547,19 +553,24 @@ function cascade(out)
     if (has('--hold') || answers['.'] === HOLD)
     {
         // A gone row is no project to update later, only its line: it is named apart and left out of the count.
-        const below = ws.subtree(top, { env }).filter((r) => r.depth > 0);
-        for (const r of below) out(`cascade: ${field(r.rel)}\t${r.state === 'gone' ? 'gone-kept' : 'held'}`);
-        out(`cascade: done 0 updated, 0 failed, 0 skipped, ${below.filter((r) => r.state !== 'gone').length} held`);
+        const all = ws.subtree(top, { env });
+        const { skipped } = includeFx().readSkipped(top, all, { env });
+        const below = all.filter((r) => r.depth > 0);
+        const heldState = (r) => (skipped.has(r.rel) ? ASIDE_STATE : r.state === ROW_GONE ? 'gone-kept' : 'held');
+        for (const r of below) out(`cascade: ${field(r.rel)}\t${heldState(r)}`);
+        const setAside = below.filter((r) => skipped.has(r.rel)).length;
+        out(`cascade: done 0 updated, 0 failed, 0 skipped, ${below.filter((r) => r.state !== ROW_GONE && !skipped.has(r.rel)).length} held${setAside ? `, ${setAside} set aside` : ''}`);
         return;
     }
     const source = sourceArg();
     const rows = ws.subtree(top, { env });
+    const { skipped } = includeFx().readSkipped(top, rows, { env });
     const byRel = new Map(rows.map((r) => [r.rel, r]));
     const hasChildren = new Set(rows.map((r) => r.parentRel).filter((r) => r !== null));
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'workspace-cascade-'));
     const plans = new Map();
     const blocked = new Set();
-    const count = { updated: 0, failed: 0, skipped: 0, nested: 0 };
+    const count = { updated: 0, failed: 0, skipped: 0, nested: 0, [ASIDE_STATE]: 0 };
     const row = (rel, state) => { out(`cascade: ${field(rel)}\t${state}`); if (state in count) count[state] += 1; };
     try
     {
@@ -574,13 +585,14 @@ function cascade(out)
         for (const [i, r] of rows.entries())
         {
             if (r.depth === 0) continue;
+            if (skipped.has(r.rel)) { row(r.rel, ASIDE_STATE); continue; }
             if (blocked.has(r.parentRel)) { blocked.add(r.rel); row(r.rel, 'skipped'); continue; }
             const parent = byRel.get(r.parentRel);
-            if (r.state === 'gone')
+            if (r.state === ROW_GONE)
             {
                 const line = r.parentRel === '.' ? r.rel : r.rel.slice(r.parentRel.length + 1);
                 ws.writeWorkspace(parent.root, (m) => ws.removeChild(m, line), { runRoot: top, log: out });
-                row(r.rel, 'gone');
+                row(r.rel, ROW_GONE);
                 continue;
             }
             if (isSameRepoChild(r, top))
@@ -637,7 +649,7 @@ function cascade(out)
     }
     finally { fs.rmSync(tmp, { recursive: true, force: true }); }
     // A nested row is no failure and no skipped one: it follows `skipped`, so a reader of the line up to there keeps matching.
-    out(`cascade: done ${count.updated} updated, ${count.failed} failed, ${count.skipped} skipped${count.nested ? `, ${count.nested} nested` : ''}`);
+    out(`cascade: done ${count.updated} updated, ${count.failed} failed, ${count.skipped} skipped${count.nested ? `, ${count.nested} nested` : ''}${count[ASIDE_STATE] ? `, ${count[ASIDE_STATE]} set aside` : ''}`);
 }
 
 // W3 Task 7: a path below this root marked ignored. Each joined child at or below it keeps the values and rules it reads
@@ -654,15 +666,19 @@ function ignoreChild(out)
         .filter((r) => { const first = ws.chain(r.root, { env, maxDepth: 1 }).members[0]; return first && ws.realKey(first.root) === ws.realKey(root); });
     const source = joinedRows.length ? sourceArg() : null;
     const childEnv = { CLAUDE_CONFIG_DIR: env.CLAUDE_CONFIG_DIR };
+    const carries = [];
     for (const r of joinedRows)
     {
         const say = (l) => out(l.replace(/^workspace: /, `workspace: ${r.rel}: `));
         const kept = ws.keepOnLeave(r.root, { env: childEnv, log: say });
         if (kept.why) throw new Exit(1, `!! workspace: ${r.rel} could not keep its values (${kept.why}) - nothing marked`);
+        carries.push([r, kept.carry, say]);
         ws.keepRules(r.root, { env: childEnv, log: say });
     }
     const w = ws.writeWorkspace(root, (m) => ws.addIgnoredChild(m, rel, ws.diskFolds(root)), { env, log: out });
     if (!w.ok) throw new Exit(w.why === 'locked' ? 3 : 1, `!! workspace: this project's workspace file could not be written (${w.why})`);
+    // The mark holds: the loader reads no member for these children now, so what they inherited from a member's mode file is carried into their own.
+    for (const [r, carry, say] of carries) ws.carryModes(r.root, carry, { log: say });
     let failed = false;
     for (const r of joinedRows)
     {
@@ -726,7 +742,16 @@ function removeNestedVerb(out)
     if (code) throw new Exit(code, '');
 }
 
-const VERBS = { parent: parentVerb, register, unregister, join, role: roleVerb, ignore, children, status, 'account-instructions': accountInstructions, plan: planVerb, answer, cascade, 'check-loads': checkLoadsVerb, 'ignore-child': ignoreChild, 'remove-nested': removeNestedVerb };
+// The feature's own folder holds the rules and the reads and writes (project-structure); this only hands it the command line.
+function includeVerb(out)
+{
+    const { FLAG } = require('./workspace-include/constants.js');
+    const given = Object.values(FLAG).filter(has);
+    const result = require('./workspace-include/effects.js').runInclude({ root: rootArg(), values: Object.fromEntries(given.map((flag) => [flag, arg(flag)])) }, { env, out });
+    if (result.code) throw new Exit(result.code, result.line);
+}
+
+const VERBS = { parent: parentVerb, register, unregister, join, role: roleVerb, ignore, children, status, 'account-instructions': accountInstructions, plan: planVerb, answer, cascade, 'check-loads': checkLoadsVerb, 'ignore-child': ignoreChild, include: includeVerb, 'remove-nested': removeNestedVerb };
 
 // Each line is written as it is made: a cascade that outruns its caller's budget leaves the rows it finished.
 function main()

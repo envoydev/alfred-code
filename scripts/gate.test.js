@@ -7,6 +7,7 @@ const path = require('node:path');
 const { spawnSync, execFileSync } = require('node:child_process');
 const leg = require('./gate-leg.js');
 const gate = require('./gate.js');
+const testsArg = require('./gate/tests-arg.js');
 
 const SHA_A = 'a'.repeat(40);
 const SHA_B = 'b'.repeat(40);
@@ -23,6 +24,7 @@ test('gate: the Windows leg works under C:\\Claude-MacOs\\alfred-code\\gate and 
     assert.ok(!/alfred-gate/.test(JSON.stringify(p)), 'the old C:\\alfred-gate folder is gone');
     assert.strictEqual(p.hostDir, path.join(share.hostPath, 'Claude-MacOs', 'alfred-code', `gate-${p.winId}`));
     assert.strictEqual(p.guestDir, `\\\\Mac\\Home\\Claude-MacOs\\alfred-code\\gate-${p.winId}`);
+    assert.strictEqual(p.leg, `${p.work}\\leg`, 'the leg runs from a copy in the work dir, never from the share');
     assert.strictEqual(gate.winPaths(id, share).winId, p.winId, 'one run, one id');
     assert.notStrictEqual(gate.winPaths('20261120-101501-abcdef12', share).winId, p.winId, 'two runs of one commit stay apart');
 });
@@ -369,4 +371,108 @@ test('gate: --tests runs only the named test files, never skips on a stamp and n
     assert.strictEqual(gate.skipsOnStamp({ force: false, tests: null }), true);
     assert.strictEqual(gate.skipsOnStamp({ force: false, tests: ['scripts/a.test.js'] }), false);
     assert.strictEqual(gate.skipsOnStamp({ force: true, tests: null }), false);
+});
+
+// 2026-11-24: Node 26 in the VM sat in the signed-in user's nvm for Windows, off SYSTEM's PATH, so `prlctl exec <vm> node`
+// found none and the win leg 'printed no result'. The gate now lists the VM's node.exe files and picks CI's major.
+const winNode = require('./gate/win-node.js');
+
+test('pickNode takes the newest node.exe of the asked major from the VM probe', () =>
+{
+    const out = [
+        'C:\\Users\\mac\\AppData\\Local\\Author Software\\nvm\\installs\\v22.14.0\\node.exe|v22.23.3',
+        'C:\\Users\\mac\\AppData\\Local\\Author Software\\nvm\\installs\\v26.13.1\\node.exe|v26.13.1',
+        'C:\\Program Files\\nodejs\\node.exe|v26.2.0',
+        'garbage line',
+        '',
+    ].join('\r\n');
+    assert.strictEqual(winNode.pickNode(out, 26), 'C:\\Users\\mac\\AppData\\Local\\Author Software\\nvm\\installs\\v26.13.1\\node.exe');
+    assert.strictEqual(winNode.pickNode(out, 22), 'C:\\Users\\mac\\AppData\\Local\\Author Software\\nvm\\installs\\v22.14.0\\node.exe');
+    assert.strictEqual(winNode.pickNode(out, 24), null);
+    assert.strictEqual(winNode.pickNode('', 26), null);
+    assert.strictEqual(winNode.pickNode(out, undefined), 'C:\\Users\\mac\\AppData\\Local\\Author Software\\nvm\\installs\\v26.13.1\\node.exe', 'no major asked: the newest');
+});
+
+test('the VM probe looks on SYSTEM\'s PATH, in Program Files and in every signed-in user\'s nvm for Windows', () =>
+{
+    const script = winNode.nodeProbeScript();
+    for (const part of ['Get-Command node', 'Program Files\\nodejs\\node.exe', 'HKEY_USERS', 'NVM_HOME', 'installs\\v*\\node.exe', '--version'])
+        assert.ok(script.includes(part), part);
+});
+
+test('the VM probe also reads every profile folder\'s nvm home, so a VM nobody is signed in to still finds Node', () =>
+{
+    const script = winNode.nodeProbeScript();
+    for (const part of ['ProfileList', 'ProfileImagePath', 'AppData\\Local\\Author Software\\nvm', 'AppData\\Roaming\\nvm'])
+        assert.ok(script.includes(part), part);
+});
+
+test('the leg puts its own node folder first on a Windows PATH, so npm.cmd beside it resolves', () =>
+{
+    const dir = 'C:\\Users\\mac\\AppData\\Local\\Author Software\\nvm\\installs\\v26.13.1';
+    const env = leg.runnerEnv({ Path: 'C:\\Windows' }, { platform: 'win32', exists: () => false, nodeDir: dir });
+    assert.strictEqual(env.Path, `${dir};C:\\Windows`);
+    assert.strictEqual(leg.runnerEnv({ Path: `${dir};C:\\Windows` }, { platform: 'win32', exists: () => false, nodeDir: dir }).Path, `${dir};C:\\Windows`, 'already first: unchanged');
+    assert.strictEqual(leg.runnerEnv({ PATH: '/bin' }, { platform: 'linux', nodeDir: '/opt/node/bin' }).PATH, '/bin', 'POSIX legs keep their PATH');
+});
+
+// 2026-11-24: Node 26 run from the share failed reading \\?\UNC\Mac\package.json - nothing runs from the share.
+test('the win leg stage script sweeps old runs, copies the share\'s files into the leg folder and fails when the copy is missing', () =>
+{
+    const stage = require('./gate/win-stage.js').stageScript({ sweep: 'C:\\G\\*', guestDir: '\\\\Mac\\Home\\x', leg: 'C:\\G\\id\\leg' });
+    const at = (s) => stage.indexOf(s);
+    assert.ok(at("Remove-Item -Recurse -Force -ErrorAction SilentlyContinue 'C:\\G\\*'") === 0, 'the sweep runs first');
+    assert.ok(at("Copy-Item -Recurse -Force '\\\\Mac\\Home\\x\\*' 'C:\\G\\id\\leg'") > 0, stage);
+    assert.ok(at("if (-not (Test-Path 'C:\\G\\id\\leg\\gate-leg.js')) { exit 1 }") > at('Copy-Item'), stage);
+});
+
+test('--tests names only committed test files: a bare name, a missing file or a non-test file is refused before a run', () =>
+{
+    const committed = new Set(['scripts/shell-guards.test.js', 'scripts/gate.js']);
+    assert.deepStrictEqual(testsArg.unknownTestFiles(['scripts/shell-guards.test.js'], committed), []);
+    assert.deepStrictEqual(testsArg.unknownTestFiles(['shell-guards'], committed), ['shell-guards'], 'a bare name ran the whole suite');
+    assert.deepStrictEqual(testsArg.unknownTestFiles(['scripts/gone.test.js'], committed), ['scripts/gone.test.js']);
+    assert.deepStrictEqual(testsArg.unknownTestFiles(['scripts/gate.js'], committed), ['scripts/gate.js'], 'not a test file');
+});
+
+test('the VM stop retries the in-guest shutdown when one exec fails, and never forces it', () =>
+{
+    const calls = [];
+    let state = 'running';
+    let shutdowns = 0;
+    const run = (args) =>
+    {
+        calls.push(args.join(' '));
+        if (args.includes('echo ready')) return 'ready';
+        if (args.includes('shutdown'))
+        {
+            shutdowns += 1;
+            if (shutdowns === 1) throw Object.assign(new Error('exec failed'), { stderr: 'PRL_ERR_VM_EXEC_PROGRAM_NOT_FOUND' });
+            state = 'stopped';
+        }
+        return '';
+    };
+    let clock = 0;
+    const problem = gate.restoreVm('vm', 'stop', { timeoutMs: 600000, run, info: () => ({ State: state }), sleep: (ms) => { clock += ms; }, now: () => clock });
+    assert.strictEqual(problem, '');
+    assert.strictEqual(shutdowns, 2, 'a failed exec is retried, not reported as the end');
+    assert.ok(calls.every((c) => !/\/f\b|--kill|^stop /.test(c)), calls.join('\n'));
+});
+
+test('the VM stop names the last exec error when the VM never stops', () =>
+{
+    let clock = 0;
+    const run = (args) => { if (args.includes('shutdown')) throw Object.assign(new Error('x'), { stderr: 'exec timed out' }); return 'ready'; };
+    const problem = gate.restoreVm('vm', 'stop', { timeoutMs: 60000, run, info: () => ({ State: 'running' }), sleep: (ms) => { clock += ms; }, now: () => clock });
+    assert.match(problem, /is running, not stopped/);
+    assert.match(problem, /exec timed out/);
+});
+
+test('the win leg runs no more test workers than the VM has CPUs less one, as node --test does on a runner', () =>
+{
+    const { guestWorkers } = require('./gate/workers.js');
+    assert.strictEqual(guestWorkers(11, 6), 5, 'win alone on a 12-core Mac: 11 workers on 6 vCPUs ran 6 hook-budget tests red');
+    assert.strictEqual(guestWorkers(3, 6), 3, 'three legs: the host share is already lower');
+    assert.strictEqual(guestWorkers(11, 1), 1, 'never under one');
+    assert.strictEqual(guestWorkers(11, undefined), 11, 'an unreadable CPU count keeps the host share');
 });

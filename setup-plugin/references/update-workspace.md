@@ -1,6 +1,6 @@
 # /alfred-code:update - the workspace: the children's asks and the cascade
 
-Read by step 2's call only when `workspace.js plan` names a second project, a `gone:` child, a `rescan:` row or a `nested:` row. This
+Read by step 2's call only when `workspace.js plan` names a second project, a `set-aside:` row, a `gone:` child, a `rescan:` row or a `nested:` row. This
 project's own update runs exactly as the walk says; this file adds the projects joined below it. Each child keeps its
 own picks and ignores, and its own scope.
 
@@ -13,6 +13,7 @@ own picks and ignores, and its own scope.
   the cascade skips it and everything below it.
 - Indented under a row, that project's own asks, as its own update would print them:
   `docs-move: offer`, `instructions-file: ... update=ask*`, `instructions-both: ask`, `workspace: role-ask <case> <rel>`.
+- `set-aside: <rel>` - a joined child the user set aside, printed in place of its `project:` row: it is no child for the fit check, the carry ask or the cascade: it is not in the count and runs nothing here, and a plan with only `set-aside:` rows below asks and runs nothing. The close names each: '`/alfred-code:update` in `<rel>` brings it up to date'.
 - `gone: <rel>` - a listed child folder that no longer holds an install; the cascade removes its line.
 - `rescan: <rel>` - an installed project below with no parent line, no role recorded and its workspace switch not 0
   (every update's `plan` rescans). Each is joined below, after step 2's answers and before the installer call, and
@@ -117,12 +118,14 @@ child folder - the catalog keys of `meta/recommendations.json` (`web-angular`, n
 the fit ask below is the child's choice. Then, per child, the second call:
 
 ```bash
-node "$TMP/repo/scripts/stack-select.js" --redundant --installed "$TMP/parent.json" --found "$TMP/found-<n>.json" --recs "$TMP/repo/meta/recommendations.json" --graph "$TMP/repo/meta/stack-graph.json" --stacks "<the child's stacks, csv>"
+node "$TMP/repo/scripts/stack-select.js" --redundant --ignored-in <rel> --installed "$TMP/parent.json" --found "$TMP/found-<n>.json" --recs "$TMP/repo/meta/recommendations.json" --graph "$TMP/repo/meta/stack-graph.json" --stacks "<the child's stacks, csv>"
 ```
 
 `--installed` takes the parent's `--plan-out` file as it is - the file validate's own `installed.json` is. The
 `redundant: <category> <name> - owned by <stacks>, not detected` lines are the items the child inherits that fit none of
-its stacks. A child with none gets no ask: narrate `<rel> keeps everything it inherits`.
+its stacks. Show each child's lines as a table before the asks, one row per line with the state word `REDUNDANT`: the
+layer-table gate holds an ask until a `--redundant` call's result is in your text with that word. A child with none gets
+no ask and one line, `<rel>: no REDUNDANT row to offer - it keeps what it inherits, beside what it already ignores`.
 
 **The fit ask - ONE per joined child that has at least one `redundant:` line.** All of them ride in one
 AskUserQuestion call, up to four questions, one per child; more children take a second call, before the cascade. With
@@ -155,8 +158,8 @@ node "$TMP/repo/scripts/workspace.js" ignore --root <rel> --add "<category> <nam
 ```
 
 It prints `workspace: ignore <category> <name> added|kept`; a `!!` line is pasted and that item is not ignored.
-'Keep everything inherited' writes nothing. Whenever nobody answers this ask - `unattended: on`, no ask tool, or a mode
-that takes the Recommended options (auto-run) - take 'Keep everything inherited', never 'Ignore the <k> suggested': an
+'Keep everything inherited' writes nothing. Whenever nobody answers this ask - `unattended: on` or no ask tool - take
+'Keep everything inherited', never 'Ignore the <k> suggested': an
 unanswered run never drops what a project may own, and an item the child had installed before the join reads as
 inherited. Say
 in the close which ignores were applied (`update-close.md`, WORKSPACE). The cascade runs when the plan names a child
@@ -184,11 +187,12 @@ When that first call did not run (no `rescan:` row), make it once, with one `sca
 apply `stack-detection.md` to its folder, then the second call with one more flag, `--only`:
 
 ```bash
-node "$TMP/repo/scripts/stack-select.js" --redundant --only "$TMP/added.txt" --installed "$TMP/parent.json" --found "$TMP/found-<n>.json" --recs "$TMP/repo/meta/recommendations.json" --graph "$TMP/repo/meta/stack-graph.json" --stacks "<the child's stacks, csv>"
+node "$TMP/repo/scripts/stack-select.js" --redundant --only "$TMP/added.txt" --ignored-in <rel> --installed "$TMP/parent.json" --found "$TMP/found-<n>.json" --recs "$TMP/repo/meta/recommendations.json" --graph "$TMP/repo/meta/stack-graph.json" --stacks "<the child's stacks, csv>"
 ```
 
 `--only` prints only a `redundant:` line naming an item of the file; a missing file exits 2 with one line on stderr and
-no list, and an empty one prints nothing. A child with no line gets no ask and no narration. A failed installer run
+no list, and an empty one prints nothing. Its lines are shown as the table above. A child with no line gets no ask and
+one line, `<rel>: no REDUNDANT row among the new items`, which the layer-table gate reads as the call's result. A failed installer run
 skips this check as it skips the one above.
 
 **The ask - ONE per such child that has at least one line.** It rides the same AskUserQuestion call(s) as the join
@@ -203,7 +207,7 @@ With `<k>` of 1, leave out 'Pick'.
 - 'Pick' - up to 4 multi-select questions list the <k>; the ones picked are ignored
 ```
 
-Whenever nobody answers this ask - `unattended: on`, no ask tool, or auto-run - take 'Keep everything inherited', as the
+Whenever nobody answers this ask - `unattended: on` or no ask tool - take 'Keep everything inherited', as the
 join ask does. Say in the close which ignores were applied (`update-close.md`, WORKSPACE).
 
 ## Installs nested in this repository - on `nested:` rows
@@ -228,8 +232,8 @@ node "$TMP/repo/scripts/workspace.js" remove-nested --root . --path <rel>
 Report its lines: `remove-nested: <rel> - <n> stack file(s) removed`, one `remove-nested: <rel> kept <path> - <why>` per file that
 stays, and `remove-nested: done <rel>`. It takes only the files that folder's own stamp records, never this
 repository's install, the account, a plugin or git's exclude file; a `!!` line is reported and that folder is left as it
-is. Whenever nobody answers this ask - `unattended: on`, no ask tool, or a mode that takes the Recommended options
-(auto-run) - take 'Keep it', never 'Remove the nested install': an unanswered run never removes what a project may own.
+is. Whenever nobody answers this ask - `unattended: on` or no ask tool - take
+'Keep it', never 'Remove the nested install': an unanswered run never removes what a project may own.
 
 ## The cascade - after this project's own installer run
 

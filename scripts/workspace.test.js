@@ -159,6 +159,7 @@ test('the mutators set, add and remove on a record; setParent and setRole exclud
     ws.addIgnore(record, 'docs', 'root');
     assert.deepStrictEqual(wfLib.viewOf(record), {
         parent: '../..', parentNone: false, role: null, above: null, children: ['web'], ignoredChildren: [],
+        includedChildren: [], includeAsked: [], keptFor: {},
         ignores: [{ category: 'skill', name: 'x' }, { category: 'docs', name: 'root' }],
     });
     ws.setRole(record, 'root');

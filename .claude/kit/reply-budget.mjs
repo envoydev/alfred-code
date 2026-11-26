@@ -1,11 +1,11 @@
 // Copied into each repo as .claude/kit/reply-budget.mjs by claude-kit's sync - edit it in claude-kit, never here.
 //
-// The communication hook's reply check, kept pure: from the communication rule's text it takes the reminder line, and
-// from the end of a transcript the size of Claude's last reply. The hook reads both files and passes their text in.
+// The agent-reminders hook's logic, kept pure: from each rule's text it takes the reminder line, and from the end of a
+// transcript the size of Claude's last reply. The hook reads the files and passes their text in.
 import {
     BULLET_PATTERN, CLOSE_LINE_PATTERN, CODE_BLOCK_PATTERN, CONTINUATION_PATTERN, CUT_MARK, ENTRY_TYPE, HEADING_START,
     INLINE_CODE_PATTERN, INLINE_CODE_STAND_IN, ITEM_END_STAND_IN, LIFT_PATTERN, MAX_SHOWN_LENGTH, MIN_SENTENCE_WORDS, NEWLINE,
-    NOT_TYPED_OPENINGS, QUEUED_COMMAND, REMINDER_HEAD, REMINDER_OPENING, REPLY_MAX_LEAD_SENTENCES, REPLY_MAX_PROSE_CHARS,
+    NOT_TYPED_OPENINGS, QUEUED_COMMAND, REMINDER_OPENING, REMINDER_SOURCES, REPLY_MAX_LEAD_SENTENCES, REPLY_MAX_PROSE_CHARS,
     SENTENCE_BREAK, STATUS_ITEM_END, TABLE_ROW_START, TEXT_PART, TURN_RUNNING_PARTS, TYPED_ORIGIN, WORD_GAP,
 } from './constants.mjs';
 
@@ -117,9 +117,16 @@ export function replyCheckOf(transcriptText)
     return { requestFound: true, note: `Last reply: ${proseChars} characters of prose, lead sentences: ${leadSentences} - over the limit. Make this one fit.` };
 }
 
-export function reminderContextOf(ruleText, note)
+// The lines to send: for each rule of REMINDER_SOURCES, in order, its head and its reminder - and the note, on the rule
+// that takes it. `ruleTexts` maps a rule's file to its text; a rule with no text or no reminder line adds no line, and
+// with no line at all the result is null.
+export function reminderContextOf(ruleTexts, note)
 {
-    const reminder = reminderOf(ruleText);
-    if (reminder === null) return null;
-    return [REMINDER_HEAD, reminder, ...(note === null ? [] : [note])].join(' ');
+    const lines = REMINDER_SOURCES.flatMap(({ file, head, takesReplyNote }) =>
+    {
+        const reminder = reminderOf(ruleTexts[file] ?? '');
+        if (reminder === null) return [];
+        return [[head, reminder, ...(takesReplyNote && note !== null ? [note] : [])].join(' ')];
+    });
+    return lines.length === 0 ? null : lines.join(NEWLINE);
 }

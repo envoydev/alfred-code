@@ -1,5 +1,5 @@
 'use strict';
-// The mode block and the installer (mode commands v2 stage 3): the four mode keys in the checkout's own settings.local.json
+// The mode block and the installer (mode commands v2 stage 3): the five mode keys (auto-run, auto-compact, scoring, its level and its rounds) in the checkout's own settings.local.json
 // are the user's typed modes. The settings pass sets them aside and puts them back as typed (setAside), one writeModes call
 // after it refreshes Claude Code's own two keys from them (refresh), and uninstall takes the block out (remove).
 const fs = require('node:fs');
@@ -17,21 +17,23 @@ const OLD_NAME = Object.fromEntries(Object.entries(layout.OLD_KEYS).filter(([now
 
 // Takes the mode keys out of a settings.local.json's env before the env passes; the returned putBack restores them in their
 // place, as typed, and drops any mode key a pass added there. Any other file: nothing to set aside. `reseed(key, from,
-// value)` may correct a value the stack itself seeded (its ledger row, B1's reseed list); putBack then returns true.
+// value)` may correct a value the stack itself seeded (its ledger row, B1's reseed list); putBack then returns true, as it
+// does when a 3.10 name was renamed or dropped beside its new one - else the settings pass would not write the file.
 function setAside(data, label, reseed = (key, from, value) => value)
 {
     if (label !== 'settings.local.json') return () => false;
     const order = plain(data.env) ? Object.keys(data.env) : [];
     const held = {};
-    let reseeded = false;
+    let changedAside = false;
     for (const [i, key] of order.entries())
     {
         const now = MODE_SET.has(key) ? key : OLD_NAME[key];
         if (!now) continue;
+        changedAside ||= key !== now;
         if (key === now || (!Object.hasOwn(held, now) && !Object.hasOwn(data.env, now)))
         {
             held[now] = reseed(now, key, data.env[key]);
-            reseeded ||= held[now] !== data.env[key];
+            changedAside ||= held[now] !== data.env[key];
             order[i] = now;
         }
         delete data.env[key];
@@ -39,13 +41,13 @@ function setAside(data, label, reseed = (key, from, value) => value)
     return (after, ledgerRows) =>
     {
         for (const key of layout.MODE_KEYS) if (ledgerRows) delete ledgerRows[key];
-        if (!plain(after.env)) { if (Object.keys(held).length) after.env = { ...held }; return reseeded; }
-        if (!Object.keys(held).length) { for (const key of layout.MODE_KEYS) delete after.env[key]; return reseeded; }
+        if (!plain(after.env)) { if (Object.keys(held).length) after.env = { ...held }; return changedAside; }
+        if (!Object.keys(held).length) { for (const key of layout.MODE_KEYS) delete after.env[key]; return changedAside; }
         const back = {};
         for (const key of order) if (Object.hasOwn(held, key)) back[key] = held[key]; else if (Object.hasOwn(after.env, key)) back[key] = after.env[key];
         for (const [key, value] of Object.entries(after.env)) if (!Object.hasOwn(back, key) && !MODE_SET.has(key)) back[key] = value;
         after.env = back;
-        return reseeded;
+        return changedAside;
     };
 }
 
@@ -59,9 +61,10 @@ function refresh({ projectRoot, configDir, dataRoot, autoCompact, held = false, 
 {
     if (!ownsModeFile(projectRoot)) return null;
     const file = layout.modeFile(projectRoot);
-    const values = layout.variablesOf(projectRoot, { env: { CLAUDE_CONFIG_DIR: configDir }, dataRoot }).values;
+    const { values, modeFrom } = layout.variablesOf(projectRoot, { env: { CLAUDE_CONFIG_DIR: configDir }, dataRoot });
+    // A value a workspace member's mode file holds is read live by the loader: copied here it would freeze, and a later `off` at the root would not reach this project.
     const update = autoCompact === 'on' ? { [COMPACT]: '1' } : autoCompact === 'off' ? { [COMPACT]: null }
-        : !held && !Object.hasOwn(modeEnv(file), COMPACT) && values[COMPACT] === '1' ? { [COMPACT]: '1' } : {};
+        : !held && !Object.hasOwn(modeEnv(file), COMPACT) && !modeFrom.has(COMPACT) && values[COMPACT] === '1' ? { [COMPACT]: '1' } : {};
     const r = writeModes(projectRoot, update, { ...values, CLAUDE_CONFIG_DIR: configDir });
     if (r.why) log(`  !! modes: not written - ${WHY[r.why]}`);
     else if (r.changed)
@@ -72,7 +75,7 @@ function refresh({ projectRoot, configDir, dataRoot, autoCompact, held = false, 
     return r;
 }
 
-// Uninstall: the four keys leave the mode file, Claude Code's two keys only when the compact key was there; an emptied file goes.
+// Uninstall: the five keys leave the mode file, Claude Code's two keys only when the compact key was there; an emptied file goes.
 function remove({ projectRoot, log })
 {
     if (!ownsModeFile(projectRoot)) return null;

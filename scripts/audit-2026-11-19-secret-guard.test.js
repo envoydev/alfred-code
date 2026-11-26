@@ -9,6 +9,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { legacyBlock } = require('./hook-test-env');
 
 const HOOK = path.join(__dirname, '..', 'stack', 'hooks', 'guard-secret-value.js');
 const TMP = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'secret-b6-')));
@@ -35,6 +36,8 @@ const call = (dir, payload, pre = null) => spawnSync(process.execPath, [...(pre 
   input: JSON.stringify({ session_id: 'b6', cwd: dir, ...payload }), encoding: 'utf8', cwd: dir,
   env: { ...process.env, CLAUDE_PROJECT_DIR: dir, HOME: path.join(dir, 'home'), USERPROFILE: path.join(dir, 'home') },
 });
+// A block as this suite read it - exit 2, the reason on stderr (legacyBlock); the ask and the deny are pinned in guard-secret-value.test.js.
+const blocked = (dir, payload) => legacyBlock(call(dir, payload));
 const rows = (dir) => { try { return fs.readFileSync(path.join(dir, '.alfred', 'statistics', 'hook-blocks', 'b6.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); } catch { return []; } };
 const posted = (command, stdout) => ({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command }, tool_response: { stdout, stderr: '', interrupted: false, isImage: false } });
 
@@ -63,20 +66,20 @@ test('B6-S1: a YAML block of 130,000 lines is read on the Read route and by the 
 
 test('B6-F2: a denial naming the store names --with-sensitive; a key file\'s does not', () => {
   const dir = project();
-  const store = call(dir, { hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: path.join(dir, '.alfred', '.secrets') } });
+  const store = blocked(dir, { hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: path.join(dir, '.alfred', '.secrets') } });
   assert.strictEqual(store.status, 2);
   assert.match(store.stderr, /--with-sensitive -- "<command line>"/);
-  const core = call(dir, { hook_event_name: 'PreToolUse', tool_name: 'PowerShell', tool_input: { command: 'Get-Content .alfred/.secrets' } });
+  const core = blocked(dir, { hook_event_name: 'PreToolUse', tool_name: 'PowerShell', tool_input: { command: 'Get-Content .alfred/.secrets' } });
   assert.strictEqual(core.status, 2);
   assert.match(core.stderr, /--with-sensitive -- "<command line>"/, 'the core deny on the store too');
-  const keyFile = call(dir, { hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: path.join(dir, '.mcps-secrets') } });
+  const keyFile = blocked(dir, { hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: path.join(dir, '.mcps-secrets') } });
   assert.strictEqual(keyFile.status, 2);
   assert.doesNotMatch(keyFile.stderr, /--with-sensitive/, '--with-sensitive never reads a key file');
 });
 
 test('B6-G1: the Grep denials say a narrower pattern is refused again and name the value-free view, which the shell passes', () => {
   const dir = project();
-  const grep = (input) => call(dir, { hook_event_name: 'PreToolUse', tool_name: 'Grep', tool_input: { output_mode: 'content', pattern: 'TracesSampleRate', ...input } });
+  const grep = (input) => blocked(dir, { hook_event_name: 'PreToolUse', tool_name: 'Grep', tool_input: { output_mode: 'content', pattern: 'TracesSampleRate', ...input } });
   const walk = grep({ path: path.join(dir, 'cfg') });
   assert.strictEqual(walk.status, 2, 'the verdict is unchanged');
   assert.match(walk.stderr, /refused again, and a `!` glob is not read/);

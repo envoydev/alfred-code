@@ -117,6 +117,20 @@ function blockRow(reason, table) {
   if (unsetRepo) return;
   try { appendRow({ reason: reason.slice(0, 200), detail: { branch: table } }); } catch { /* telemetry is never allowed to break the gate */ }
 }
+// The one exit of a PreToolUse block (guards ask, D1): the prelude asks where a person can answer and denies otherwise; with no
+// prelude, today's exit 2. The row is the caller's, written before the call. A deny keeps the text's own `MARKER: ` lead, which the
+// readers below count in a tool result (the valve of three); a prompt names the guard itself, so its text drops the lead.
+function blockCall(input, text) {
+  let code = 2;
+  try {
+    const p = prelude || require(PRELUDE);
+    const lead = `${MARKER}: `;
+    const said = text.startsWith(lead) && p.canAsk(input) ? text.slice(lead.length) : text;
+    code = p.blockExitCode(input, p.askOrBlock(input, said, { guard: 'guard-layer-table' }));
+  }
+  catch { process.stderr.write(text); }
+  process.exit(code);
+}
 // One probe row per kind and id: a later gate run reads the same transcript again and writes none.
 function probeRow(kind, id, extra = {}) {
   if (unsetRepo) return;
@@ -385,8 +399,7 @@ function judgeStep(rs, cmd) {
   const denials = (kind) => uses.slice(answeredAt + 1).filter((b) => b.id in results && results[b.id].includes(`${MARKER}: ${kind}`)).length;
   const deny = (text, branch) => {
     blockRow(text.split('\n')[0], branch);
-    process.stderr.write(text);
-    process.exit(2);
+    blockCall(payload, text);
   };
   const next = TABLE_RE.exec(cmd);
   const nextLayer = next && next[1].toLowerCase();
@@ -509,6 +522,7 @@ function unpasted(rows) {
   const silent = !texts.trim();
   if (output) return {
     branch: `void ${table.name}`,
+    tableId,
     shown: output,
     // Claude Code shows the reason under 'hook returned blocking error', so it opens with a plain line for the user.
     lead: `Alfred: the model's message left out the ${table.name}, so it is printed below - your answer was not used, and the same question comes back next.`,
@@ -640,6 +654,13 @@ function ownAskOnDisk() {
     try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ASK_ROW_STEP_MS); } catch { return false; }
   }
 }
+// The printed-table marker (printTable's, `wasPrinted` reads it) set for a table the hold's ask prints beside it: the table
+// is then on screen when the user answers, so the PostToolUse void leaves a Yes alone and a re-send after a No passes.
+function markPrinted(session, id) {
+  try { fs.closeSync(fs.openSync(printedPath(session, id), 'wx')); } catch { return false; }
+  try { if (prelude) prelude.sweepStale(os.tmpdir(), 'alfred-layer-printed-'); } catch { /* housekeeping only */ }
+  return true;
+}
 function holdUnpasted() {
   let off = false;
   try { off = (prelude || require(PRELUDE)).partOff('guard-layer-table', 'void', process.env); } catch { /* no prelude: the hold runs */ }
@@ -652,10 +673,23 @@ function holdUnpasted() {
   const line = `${MARKER}: the ${name} ran but its output is not in your message - this ask was held before the user saw it; ` + (found.shown
     ? `${PRINTED}; send this same ask again, unchanged - do not re-run or paste the table.`
     : 'send ONE message: the step banner, the output byte-for-byte in a fenced block, then this same ask - your thinking is never on screen. Do not re-run the table - its output is already in your context.');
-  process.stdout.write(JSON.stringify({ ...(found.shown ? { systemMessage: `Alfred - the ${name}:\n${found.shown}` } : {}),
-    hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: line } }));
+  // The ask (guards ask, D1) keeps the table's systemMessage beside it: one JSON object, the verdict inside. It asks only
+  // where it prints the table: that print is the marker the void and the re-send read. A hold with no table to print, or one
+  // whose marker cannot be written, stays a deny - nothing on screen would make a Yes count, and the void would throw it away.
+  let verdict = null;
+  let asked = false;
+  try {
+    const p = prelude || require(PRELUDE);
+    asked = Boolean(found.shown && found.tableId && p.canAsk(payload) && markPrinted(payload.session_id, found.tableId));
+    verdict = asked
+      ? p.blockVerdict(payload, `the ${name} ran but its output is not in the message above - ${PRINTED}. Send this same ask again, unchanged - do not re-run or paste the table.`, { guard: 'guard-layer-table' })
+      : p.blockVerdict(payload, line, { guard: 'guard-layer-table', env: { ...process.env, ALFRED_CODE_GUARD_ASK: '0' } });
+  } catch { /* no prelude: today's deny */ }
+  const output = verdict ? verdict.hookSpecificOutput : { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: line }; // guard-ask fallback: no prelude
+  process.stdout.write(JSON.stringify({ ...(found.shown ? { systemMessage: `Alfred - the ${name}:\n${found.shown}` } : {}), hookSpecificOutput: output }));
   blockRow(line, found.branch);
-  process.exit(0);
+  if (verdict) global.BLOCK_VERDICT = { decision: verdict.decision, reason: verdict.hookSpecificOutput.permissionDecisionReason };
+  process.exit(verdict ? (prelude || require(PRELUDE)).blockExitCode(payload, verdict.decision) : 0);
 }
 try { holdUnpasted(); } catch { /* fail-open: the PostToolUse void is the net */ }
 try {
@@ -671,8 +705,7 @@ try {
       `with the walk's other flags (walk.md, per layer beat 2), never redirected, then send ONE message: the step banner, ` +
       `its output byte-for-byte inside a fenced code block, then this same ask.\n`;
     blockRow(denial.split('\n')[0], `${missing} table`);
-    process.stderr.write(denial);
-    process.exit(2);
+    blockCall(payload, denial);
   }
   if (asksStep1(payload.tool_input)) {
     const s = span(rows, 'the install inventory never ran');
@@ -683,8 +716,7 @@ try {
         `step-1 read-back), then send ONE message: the step banner, its output byte-for-byte inside a fenced code block, ` +
         `the update-preview line, then this same ask.\n`;
       blockRow(denial.split('\n')[0], 'install inventory');
-      process.stderr.write(denial);
-      process.exit(2);
+      blockCall(payload, denial);
     }
   }
 } catch { /* fail-open */ }

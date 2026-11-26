@@ -20,11 +20,13 @@ const os = require('node:os');
 const path = require('node:path');
 const dataRootMod = require('../../stack/mcp/data-root.js');
 const workspaceFile = require('../../stack/hooks/workspace-file.js');
+const { inheritKept } = require('../workspace-include/keep.js');
 const brand = require('./brand.js');
 const { readJson, parseJson, formatOf, stringifyLike } = require('./json-file.js');
 const { sleepMs, takeLock } = require('./file-lock.js');
 const runtime = require('./runtime.js');
 const stamp = require('./stamp.js');
+const { chainModes, modeCarryOf, carryModes } = require('./workspace-modes.js');
 
 const { CATEGORIES, PARENT_RE, JSON_NAME, LEGACY_NAME, LOCK_NAME, isChildPath, isIgnoreName, emptyRecord, readRecord, viewOf, renderRecord } = workspaceFile;
 
@@ -640,6 +642,8 @@ function pruneChained(projectRoot, { env = process.env, log = () => {}, seeds = 
     const file = variables.fileOf(projectRoot, { env });
     const values = variables.read(file).values;
     const chained = chainValues(projectRoot, { env });
+    // A mode key a member's mode file wins is one person's untracked choice: a line the child's user wrote for it is never pruned, so a later `off` at the root cannot change it.
+    const modeWon = chainModes(projectRoot, { env });
     const stampFile = stamp.stampFiles({ projectRoot }).read;
     const rows = ((stampFile && stamp.readLedger(stampFile)) || { env: {} }).env?.['.variables'] || {};
     const dropped = [];
@@ -655,9 +659,10 @@ function pruneChained(projectRoot, { env = process.env, log = () => {}, seeds = 
         const rest = { ...values };
         delete rest[key];
         const first = [['this file\'s 3.10 name', rest], ...held].map(([name, e]) => [name, layout.valueIn(e, key)]).find(([, v]) => v !== undefined);
+        // A stack seed leaves first: it is no one's choice, so a mode key a member's mode file wins is then inherited.
         if (layout.CHAIN_PRUNE_NEVER.has(key)) own.push(key);
         else if (seeds && !layout.MEMBER_NEVER.has(key) && isSeed(key, value, rows)) dropped.push(key);
-        else if (chained[key] !== value) own.push(key);
+        else if (modeWon.has(key) || chained[key] !== value) own.push(key);
         else if (first && first[1] !== value) { own.push(key); stays.push(`; ${key} equals the workspace's and stays: ${first[0]} holds another value`); }
         else dropped.push(key);
     }
@@ -693,8 +698,11 @@ function pruneVersioningSeed(projectRoot, { env = process.env, advice = null, an
     const { KEY } = require('./versioning/constants.js');
     const { seedLeaves, normaliseValue } = require('./versioning/rank.js');
     const file = variables.fileOf(projectRoot, { env });
-    const value = variables.read(file).values[KEY];
-    if (value === undefined) return { dropped: false, kept: null };
+    const inFile = variables.read(file).values[KEY];
+    if (inFile === undefined) return { dropped: false, kept: null };
+    // The ranking (versioning/effects.js) reads the value as the key holds it - `Local` is `local`, a garbage one is none - so both callers hand seedLeaves one input.
+    const value = normaliseValue(inFile);
+    if (value === undefined) return { dropped: false, kept: inFile };
     const chain = normaliseValue(chainValues(projectRoot, { env })[KEY]);
     const stampFile = stamp.stampFiles({ projectRoot }).read;
     const rows = ((stampFile && stamp.readLedger(stampFile)) || { env: {} }).env?.['.variables'] || {};
@@ -720,13 +728,14 @@ function pruneVersioningSeed(projectRoot, { env = process.env, advice = null, an
     return { dropped: true, kept: null };
 }
 
-// D6b: the lines a linked child's run says about an inherited or pulled docs versioning, as strings. `before` / `after` are
+// D6b: the lines a linked child's run says about an inherited or pulled docs versioning, as strings. `dataRoot` is the run's own
+// (the installer hands it in; none: the reader's). `before` / `after` are
 // the data root's `.gitignore` texts around the ignore step; `said` is the stamp's told-tracked record, and a line said now
 // adds its key to it (an array handed in is appended to), so the next run stays silent. Git is asked whether it tracks the file.
-function versioningNotices(projectRoot, { scope, before, after, value, source, seed, ownLine, ledgerRow, answered, chain: chained, said = [], exec = runtime.execCommand } = {})
+function versioningNotices(projectRoot, { scope, dataRoot = dataRootMod.dataRootOf({ projectDir: projectRoot }).root, before, after, value, source, seed, ownLine, ledgerRow, answered, chain: chained, said = [], exec = runtime.execCommand } = {})
 {
     const { noticeRows } = require('./versioning/notices.js');
-    const file = `${dataRootMod.dataRootOf({ projectDir: projectRoot }).root}/.gitignore`;
+    const file = `${dataRoot}/.gitignore`;
     let tracked = false;
     try { tracked = String(exec('git', ['ls-files', '--', file], { cwd: projectRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })).trim() !== ''; }
     catch { tracked = false; }
@@ -742,11 +751,12 @@ function laggingLine(child, rel, childEnv)
     const { effectiveVersioning } = require('./versioning/effects.js');
     const { lagLine } = require('./versioning/notices.js');
     const copy = require('./copy.js');
+    const dataRoot = dataRootMod.dataRootOf({ projectDir: child }).root;
     let text;
-    try { text = fs.readFileSync(path.join(child, ...dataRootMod.dataRootOf({ projectDir: child }).root.split('/'), '.gitignore'), 'utf8'); }
+    try { text = fs.readFileSync(path.join(child, ...dataRoot.split('/'), '.gitignore'), 'utf8'); }
     catch { return null; }
     const scope = stamp.readStampScope(stamp.stampFiles({ projectRoot: child }).read || '');
-    const { value } = effectiveVersioning({ projectRoot: child, scope, docsPath: copy.resolveDocsRoot(child, scope), dataRoot: dataRootMod.dataRootOf({ projectDir: child }).root, env: childEnv });
+    const { value } = effectiveVersioning({ projectRoot: child, scope, docsPath: copy.resolveDocsRoot(child, scope), dataRoot, env: childEnv });
     return lagLine({ rel, text, value });
 }
 
@@ -758,6 +768,7 @@ function keepOnLeave(projectRoot, { env = process.env, log = () => {}, ignored =
 {
     const variables = require('./variables.js');
     const layout = require('../../stack/hooks/layout.js');
+    const { KEY: VERSIONING_KEY } = require('./versioning/constants.js');
     const root = realOf(projectRoot);
     const view = readWorkspace(root, { env }).view;
     const members = chain(root, { env }).members;
@@ -770,26 +781,33 @@ function keepOnLeave(projectRoot, { env = process.env, log = () => {}, ignored =
         else if (view.parent && defaults.length) log(`workspace: ${view.parent} is gone - ${defaults.length} values read the stack's defaults here now (${defaults.join(', ')}); the next update seeds them`);
         return { written: [], defaults };
     }
-    const { values, from } = layout.variablesOf(root, { env });
+    const { values, from, modeFrom } = layout.variablesOf(root, { env });
     const byRel = new Map(members.map((m) => [m.rel, m]));
     const updates = {};
     const seeds = {};
+    const modeUpdates = {};
     for (const key of layout.VARIABLE_KEYS)
     {
         const member = byRel.get(from[key]);
         if (!member || values[key] === undefined) continue;
+        // A key a member's MODE FILE gave is one person's untracked choice: it never goes into the tracked `.variables`.
+        if (modeFrom.has(key)) { modeUpdates[key] = values[key]; continue; }
+        // A stale stack seed in a member outside any git repository hands nothing on (holdsStaleSeed), here too.
+        if (key === VERSIONING_KEY && holdsStaleSeed(member, values[key])) continue;
         updates[key] = values[key];
         const memberStamp = stamp.stampFiles({ projectRoot: member.root }).read;
         const rows = ((memberStamp && stamp.readLedger(memberStamp)) || { env: {} }).env?.['.variables'] || {};
         if (rows[key] === stamp.valueHash(values[key])) seeds[key] = rows[key];
     }
     const written = Object.keys(updates);
-    if (!written.length) return { written, defaults: [] };
+    // The mode keys are written by `carryModes` once the caller's unlink holds, never here: a leave that fails keeps the child following its root.
+    const carry = modeCarryOf(root, { env, values, from, modeUpdates });
+    if (!written.length) return { written, carry, defaults: [] };
     const done = variables.write(file, updates);
-    if (done.why) { log(`!! workspace: ${path.relative(root, file)} could not be written (${done.why}) - nothing was left; the values would change`); return { written: [], defaults: [], why: done.why }; }
+    if (done.why) { log(`!! workspace: ${path.relative(root, file)} could not be written (${done.why}) - nothing was left; the values would change`); return { written: [], carry, defaults: [], why: done.why }; }
     if (Object.keys(seeds).length) editVariablesLedger(root, (r) => ({ ...r, ...seeds }));
     log(`workspace: ${written.length} values this project read from the workspace written into ${path.relative(root, file).split(path.sep).join('/')} (${written.join(', ')}) - each reads the same after it leaves`);
-    return { written, defaults: [] };
+    return { written, carry, defaults: [] };
 }
 
 // W3 [F12]: before a project leaves, each rule the loader sends it from a member is copied into its own store (never over
@@ -852,9 +870,10 @@ function applyRole(projectRoot, answer, { env = process.env, exec = runtime.exec
     if (role.kind === 'unknown') return fail(1, '!! workspace: a workspace record this project reads is not valid JSON - nothing was changed; fix it by hand, then answer again');
     const leave = (to) =>
     {
-        keepOnLeave(root, { env, log });
+        const kept = keepOnLeave(root, { env, log });
         const r = leaveParent({ projectRoot: root, env, dataRoot, log });
         if (r.why) return fail(r.why === 'locked' ? 3 : 1, `!! ${r.line}`);
+        carryModes(root, kept.carry, { log });
         copyIn(root, log);   // only once the leave holds: a failed one keeps the child linked to its root
         return write((m) => setAbove(setRole(m, to), nearRel())) || { ok: true, code: 0, lines: [...lines, `role: ${to}`] };
     };
@@ -1419,7 +1438,7 @@ function addToStore({ root, kind, name, copy, route = 'plugin', from = root, min
 // row is ever on disk without its ledger row. Returns { refreshed, current, skipped } as relative posix paths.
 // Workspace stage 3: a moved member below `top` re-links what it links plus the top's own items of each linked kind, less
 // what it or a member between ignores, under its own lock. A child with no `links:` line is not moved yet: its update does it.
-function relink(child, top, rel, ignores, log)
+function relink(child, top, rel, ignores, log, { aside = false } = {})
 {
     const links = require('./links.js');
     const file = path.join(child, '.claude', brand.BRAND.stamp);
@@ -1432,7 +1451,8 @@ function relink(child, top, rel, ignores, log)
     const lib = stamp.readLibrary(topFile) || {};
     const rows = Object.keys((stamp.readLedger(topFile) || {}).files || {}).map((r) => r.split('/'));
     const want = [...prior.map((e) => ({ kind: e.path.split('/')[0], name: e.path.split('/')[1].replace(/\.md$/, '') }))];
-    for (const kind of links.KINDS.filter((k) => links.homeOf(child, k).store))
+    // A set-aside child gains no link: its want is its prior links, re-pointed or removed by the sync below.
+    for (const kind of aside ? [] : links.KINDS.filter((k) => links.homeOf(child, k).store))
         for (const name of [...Object.keys(lib[kind] || {}), ...rows.filter((r) => r[0] === kind).map((r) => r[1].replace(/\.md$/, ''))])
             if (!held.has(`${kind.slice(0, -1)} ${name}`) && !off.has(`${kind.slice(0, -1)} ${name}`)) want.push({ kind, name });
     const at = locate(child);
@@ -1445,7 +1465,7 @@ function relink(child, top, rel, ignores, log)
     finally { try { fs.unlinkSync(at.lock); } catch { /* already gone */ } }
 }
 
-function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnignored = () => {}, maxDepth = 5, retryMs = 500, release = '', compare } = {})
+function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnignored = () => {}, maxDepth = 5, retryMs = 500, release = '', compare, aside = new Set() } = {})
 {
     const { syncMembers, MEMBER_PATH } = require('./settings.js');
     const top = realOf(projectRoot);
@@ -1471,6 +1491,8 @@ function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnig
     const older = due && below.sort().map((dir) => [dir, stamp.readVersion(path.join(dir, '.claude', brand.BRAND.stamp))]).find(([, v]) => v && compare(v, compare(PLURAL_SINCE, release) > 0 ? release : PLURAL_SINCE) < 0);
     if (older) log(`  workspace.json keeps its singular keys: ${relPosix(top, older[0])} is at ${older[1]}`);
     else if (due) writeWorkspace(top, (record) => record, { runRoot: top, plural: true, log });
+    // A set-aside child (the caller's rels) only has its links re-pointed or removed.
+    const asideFolded = new Set([...aside].map((rel) => workspaceFile.low(rel)));
     const out = { refreshed: [], current: [], skipped: [] };
     // A child's switch and its ancestors are read with the account alone: this run's launch values are not the child's.
     // A launch `0` still freezes the child's switch, as it would its own run.
@@ -1486,7 +1508,7 @@ function refreshBelow({ projectRoot, env = process.env, log = () => {}, warnUnig
         if (!on) { skip(''); continue; }
         const ownRead = readWorkspace(child);
         if (ownRead.state === 'garbage') { out.skipped.push(rel); sayGarbage(ownRead.file, top, (l) => log(`  ${l}`)); continue; }
-        relink(child, top, rel, ownRead.view.ignores || [], log);
+        relink(child, top, rel, ownRead.view.ignores || [], log, { aside: asideFolded.has(workspaceFile.low(rel)) });
         const claudeDir = path.join(child, '.claude');
         const file = path.join(claudeDir, 'settings.local.json');
         const stampFile = path.join(claudeDir, brand.BRAND.stamp);
@@ -1584,7 +1606,7 @@ function settingsEnv(root)
 // project's ignores and own lines, and the parent's lines - read from `--parent-plan`, or from the parent's own
 // `update --installed-only --print-plan` (never inside a plan run, which reads nothing it would not print).
 // `parentLines` stays null whenever the parent's set cannot be trusted, so nothing inherited is added or dropped.
-function prepare({ projectRoot, env = process.env, args, sourceDir, rt = runtime, log = () => {}, note = () => {}, tmpDir = os.tmpdir(), dataRoot: ownDataRoot })
+function prepare({ projectRoot, env = process.env, args, sourceDir, rt = runtime, log = () => {}, note = () => {}, tmpDir = os.tmpdir(), dataRoot: ownDataRoot, manifest = { renamed: {}, retired: {} } })
 {
     const read = stamp.stampFiles({ projectRoot }).read;
     const base = { on: true, parent: null, members: [], ignores: [], parentLines: null, ownPrior: read ? stamp.readOwnPicks(read) : null };
@@ -1638,7 +1660,10 @@ function prepare({ projectRoot, env = process.env, args, sourceDir, rt = runtime
         finally { fs.rmSync(dir, { recursive: true, force: true }); }
     }
     if (!got.plan) return failed(got.why);
-    at.parentLines = planLines(got.plan);
+    // What the parent kept for this child joins what it inherits; the child's own ignores subtract it like any inherited line.
+    const inherited = inheritKept(planLines(got.plan), workspaceFile.keptLinesFor(parent.view, relPosix(parent.root, realOf(projectRoot))), manifest.renamed, manifest.retired);
+    for (const line of inherited.notes) log(`  ${line}`);
+    at.parentLines = inherited.lines;
     return at;
 }
 
@@ -1687,9 +1712,13 @@ function workspaceStep(ctx)
     ctx.ownPicks = w.ownPrior;
     if (!w.on) { mcpHint(ctx); return { created: false }; }
     const ancestors = stampedAncestors(ctx.projectRoot, { env: ctx.env });
-    const want = excludeGlobs(chainExcludes(ancestors, ctx.projectRoot, w.ignores), process.platform);
+    // What this root hides of its children's here: the globs of the rules it keeps for a set-aside child. The skill keys are synced at the end of the run (child-hide.js syncSkillKeys).
+    const hidden = require('./child-hide.js').wantedRules(ctx);
+    for (const { name, rel } of hidden.stays) ctx.log(`  workspace: rule ${name} stays loading here - ${rel} keeps it and shares this repository's settings`);
+    const want = uniqSorted([...excludeGlobs(chainExcludes(ancestors, ctx.projectRoot, w.ignores), process.platform), ...hidden.ruleGlobs]);
     const prior = ((ctx.ledger && ctx.ledger.settings) || {})['settings.local.json'] || {};
     const { syncMembers, MEMBER_PATH } = require('./settings.js');
+    const { carriedRows } = require('./settings-keys.js');
     // A standalone project - nothing stamped above, nothing recorded - leaves settings.local.json alone.
     const recorded = (arrayPath) => Object.keys(prior).some((row) => { const m = MEMBER_PATH.exec(row); return m && m[1] === arrayPath; });
     // An unusable local file (installHooksAndRules' localBad) gets no row; carryMemberRows keeps what the ledger named.
@@ -1697,13 +1726,15 @@ function workspaceStep(ctx)
         ? syncMembers({ file: path.join(ctx.claudeDir, 'settings.local.json'), arrayPath, want: uniqSorted(list), prior, log: ctx.log, note: ctx.note, report: ctx.report })
         : { rows: {}, created: false });
     const r = sync('claudeMdExcludes', want);
+    // The `skillOverrides` rows of the last run still in the file ride in this stamp; the run's last step (child-hide.js syncSkillKeys) brings the keys themselves up to date.
+    const k = { rows: ctx.localBad ? {} : carriedRows(path.join(ctx.claudeDir, 'settings.local.json'), prior) };
     // `ignore mcp <name>` for a server in an ancestor's .mcp.json, which reaches this project natively (probe P2): the
     // entry that hides it here. Every stamped folder above counts, linked or not, as for the excludes.
     const d = sync('disabledMcpjsonServers', mcpJsonIgnores(ancestors, w.ignores, ctx.projectRoot));
     const access = ancestorAccess(ctx, w);
     const a = sync('permissions.additionalDirectories', access.dirs);
     const n = sync('permissions.deny', access.deny);
-    if (!ctx.localBad) ctx.workspaceRows = { ...r.rows, ...d.rows, ...a.rows, ...n.rows };
+    if (!ctx.localBad) ctx.workspaceRows = { ...r.rows, ...d.rows, ...a.rows, ...n.rows, ...k.rows };
     mcpHint(ctx);
     if (w.members.length)
     {
@@ -2108,6 +2139,7 @@ function releaseChildren({ projectRoot, env = process.env, dataRoot, log = () =>
         copyIn(child, (l) => log(`workspace: ${rel}: ${l.trim()}`));
         if (!only) r = unparent();
         if (!r.ok) { note(`workspace: ${rel} could not be released (${r.why}) - ${again}`); continue; }
+        carryModes(child, kept.carry, { log: say });
         const childStamp = stamp.stampFiles({ projectRoot: child }).read;
         // Its D2 copies stay as the user's own registrations: the rows and the parent hashes they were made from go.
         if (childStamp) for (const key of ['own-picks', 'own-env', 'workspace-mcp']) stamp.markLine(childStamp, key, null);
@@ -2314,11 +2346,11 @@ function checkLoads({ projectRoot, env = process.env, configDir, claudeBin = 'cl
 module.exports = {
     ruleNotes, keepRules,
     editDenyRule, ancestorAccess,
-    CATEGORIES, emptyRecord, workspaceOn,
+    CATEGORIES, emptyRecord, workspaceOn, realOf,
     setParent, setRole, setAbove, addChild, addIgnoredChild, diskFolds, stampedUnder, removeChild, addIgnore, removeIgnore,
     workspacePath, readWorkspace, inWorkspace, writeWorkspace, garbageLine, sayGarbage, convertOwn, takeConversions, olderProjectLines, JSON_SINCE, PLURAL_SINCE,
-    nameOfRel, relName, parentLabel, realKey, findParent, sameRepo, isCheckout, ignoredBy, markRefusal, joinVerdict, WHY, roleOf, roleText, roleAsk, register, applyRole, pruneChained, pruneVersioningSeed, versioningNotices, layerHolding, keepOnLeave, chain, subtree, rescan, nestedInstalls,
-    planLines, effectiveLists, delta, ownPicksAfter, chainValues, envPlan, stampedAncestors, ancestorExcludes, chainExcludes, wideRange, WIDE, mcpJsonIgnores, excludeGlobs, refreshBelow, memberPicks, locate, addToStore, copyIn,
+    nameOfRel, relName, parentLabel, realKey, findParent, sameRepo, isCheckout, ignoredBy, markRefusal, joinVerdict, WHY, roleOf, roleText, roleAsk, register, applyRole, pruneChained, pruneVersioningSeed, versioningNotices, layerHolding, keepOnLeave, carryModes, chain, subtree, rescan, nestedInstalls,
+    planLines, effectiveLists, delta, ownPicksAfter, chainValues, chainModes, envPlan, stampedAncestors, ancestorExcludes, chainExcludes, wideRange, WIDE, mcpJsonIgnores, excludeGlobs, refreshBelow, memberPicks, locate, addToStore, copyIn,
     readPlan, planDoubt, prepare, recordWord, listLines, workspaceStep, parentRegistrations, mcpHint, hintLine, hintLines,
     retireMcpCopies, keptCopiesLine, APPROVE_ONCE,
     INSTRUCTION_KEY, accountPaths, claudeMdAbove, accountStamps, instructionsBothState, instructionsBothLine, applyAccountInstructions, removeAccountInstructions, lastHolder,

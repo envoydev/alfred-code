@@ -539,8 +539,13 @@ const SESSION_STAMP_MAX_MS = 7 * 24 * 60 * 60 * 1000;
 // The standing auto-run (spec 3.5): the mode file's own ALFRED_CODE_AUTO_RUN=1, honoured where git vouches the file is this
 // machine's alone; memoised per process and root, and a copy without the helper honours nothing.
 const standingAt = new Map();
-const heldOwn = (root) => { try { return require('./mode-settings.js').autoRunHeld(root) === 'own'; } catch { return false; } };
-const autoRunStanding = (root) => { if (!standingAt.has(root)) standingAt.set(root, heldOwn(root)); return standingAt.get(root); };
+// The own file's 1, or a workspace member's (mode inheritance D2: a joined child that holds no value of its own).
+const heldHere = (root) =>
+{
+    try { const modes = require('./mode-settings.js'); return modes.autoRunHeld(root) === 'own' || (modes.autoRunInherited(root) || {}).held === 'own'; }
+    catch { return false; }
+};
+const autoRunStanding = (root) => { if (!standingAt.has(root)) standingAt.set(root, heldHere(root)); return standingAt.get(root); };
 // How long auto-run lasts, for the banner, the run contract and the Stop hold: the standing variable carries into new
 // sessions, a /mode-auto-run <request> stamp lasts its session (stage 3's final review, finding 7).
 const autoLasts = (root) => (root && autoRunStanding(root) ? 'auto-run stays on, new sessions included, until' : 'auto-run stays on for the session until');
@@ -603,22 +608,11 @@ function autoStampLive(input, env)
     return Boolean(stamp && stamp.live && /^AUTO\b/.test(stamp.first));
 }
 
-// --- RECEIPTS (audit 2026-10-30 HK-03 / HK-16, the plan's rulings) ---------------------------------------------------
-// A receipt under <data root>/state/approvals/ is a file the model can write, so its content alone is no consent. Two
-// readers every receipt guard shares:
-// - readReceiptFile: the lines (no blank, `#` or `session:` line) and whether the file is live for THIS call - under 8h,
-//   not older than the transcript (a birthtime equal to the ctime is a filesystem's fallback, unknown) and, where the call
-//   names its session, carrying a `session: <id>` line naming it (HK-16; the secret guard's rule since audit 2026-10-08).
-// - receiptAnswered: for the three SECURITY receipts (DISCARD, CROSS-WRITE, GUARD-OFF; SECRET-READ left in swap 1) the transcript must
-//   also hold an AskUserQuestion answered after the guard's last denial whose answer carries the guard's allow label - the
-//   result of an AskUserQuestion call in this transcript, never an `answers`-shaped result of another tool (FA-4) - and
-//   given while auto-run was off - judged at the answer's place: a typed line that turns auto-run on (modeFlags: the
-//   mode command, or `/mode-auto-run <request>`) puts every later answer under auto-run until a typed off command, so
-//   deleting the stamp or typing the off command afterwards opens nothing. The stamp and the `auto-answer` ledger row never decide it. A denial raised in a
-//   seat (`agent_id`) is anchored at its time in the seat's own transcript, and the answer must land after it.
+// --- TRANSCRIPT READS (audit 2026-10-30 HK-03, FA-4) ----------------------------------------------------------------
+// The auto-run stamp's proof reads the transcript's typed rows and the AskUserQuestion answers below. A receipt file is no
+// consent in this file any more: a chat yes opens no guard (guards ask instead, 2026-11-25), and the proof receipts
+// (COMMIT-GATE, PUSH-GATE, APPROVAL) are read by their own guards.
 // A payload with no transcript (a CLI run, a test fixture) keeps the time rule alone: every real session carries one.
-const RECEIPT_MAX_MS = 8 * 60 * 60 * 1000;
-const RECEIPT_SESSION_RE = /^session:[ \t]*(\S+)[ \t]*$/;
 const SCAN_CHUNK = 4 * 1024 * 1024;
 const ROW_PARSE_MAX = 4 * 1024 * 1024;
 // Every line of `file` that holds one of `needles`, in file order: onLine(lineBuffer, byteOffset). A needle is searched in
@@ -667,7 +661,6 @@ function linesWith(file, needles, onLine, from = 0)
     finally { if (fd !== undefined) try { fs.closeSync(fd); } catch { /* closed */ } }
 }
 const rowOf = (line) => { if (line.length > ROW_PARSE_MAX) return null; try { return JSON.parse(line.toString('utf8')); } catch { return null; } };
-const contentText = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((p) => (p && typeof p.text === 'string' ? p.text : typeof p === 'string' ? p : '')).join('\n') : '');
 // The text of a turn the user TYPED: a user row, never a meta row (a skill body, an expansion), a compaction summary or a
 // sidechain row (both the model's words - the final review of 2026-10-30 FA-2: `AUTO - "Pending Tasks"` was proven by a
 // summary), a tool result (an ask's answer is the harness's row) or a harness prompt (a task notice, a command's output, a
@@ -699,12 +692,6 @@ function answerLabelsOf(row)
 }
 // Whether a person gave an answer row's answer (D25): its own `permissionDecision.source` (2.1.323) opens `user`, never `hook`.
 const byUser = (row) => { const s = row && row.permissionDecision && row.permissionDecision.source; return typeof s === 'string' && s.startsWith('user'); };
-// A hook's denial naming `marker` (exit 2 or a deny: an error tool result), or false.
-function deniedIn(row, marker)
-{
-    const c = row && row.type === 'user' && row.message && row.message.content;
-    return Array.isArray(c) && c.some((b) => b && b.type === 'tool_result' && b.is_error === true && contentText(b.content).includes(marker));
-}
 const ANSWER_NEEDLE = '"answers":';
 const AUTO_NEEDLE = 'auto-run';
 // An AskUserQuestion call in an assistant row, as Claude Code serializes it (compact JSON, the needles above alike).
@@ -720,230 +707,18 @@ function typedAutoEvent(line, session)
     return autoEventOf(typedRowText(row));
 }
 // An answer is the user's only as the result of an AskUserQuestion call (the final review of 2026-10-30 FA-4: an
-// `answers`-shaped result under another tool's id opened a receipt). The ids of the AskUserQuestion calls an assistant row
+// `answers`-shaped result under another tool's id counted as one). The ids of the AskUserQuestion calls an assistant row
 // makes, and the ids a user row's tool results answer.
 const askCallIds = (row) => { const c = row && row.type === 'assistant' && row.message && row.message.content;
     return Array.isArray(c) ? c.filter((b) => b && b.type === 'tool_use' && b.name === 'AskUserQuestion' && typeof b.id === 'string').map((b) => b.id) : []; };
 const resultIds = (row) => { const c = row && row.type === 'user' && row.message && row.message.content;
     return Array.isArray(c) ? c.filter((b) => b && b.type === 'tool_result' && typeof b.tool_use_id === 'string').map((b) => b.tool_use_id) : []; };
-function readReceiptFile(file, input)
-{
-    try
-    {
-        const payload = input && typeof input === 'object' ? input : {};
-        const st = fs.statSync(file);
-        if (!st.isFile()) return null;
-        const all = fs.readFileSync(file, 'utf8').split(/\r?\n/).map((l) => l.trim());
-        const sessions = all.map((l) => RECEIPT_SESSION_RE.exec(l)).filter(Boolean).map((m) => m[1]);
-        const lines = all.filter((l) => l && !l.startsWith('#') && !/^session:/.test(l));
-        let born = 0;
-        try
-        {
-            const t = fs.statSync(String(payload.transcript_path || ''));
-            born = t.birthtimeMs && t.birthtimeMs !== t.ctimeMs ? t.birthtimeMs : 0;
-        }
-        catch { born = 0; }
-        const sid = typeof payload.session_id === 'string' ? payload.session_id : '';
-        const why = Date.now() - st.mtimeMs > RECEIPT_MAX_MS ? 'it is stale - older than 8h'
-            : born && st.mtimeMs < born ? 'it is stale - written before this session began'
-                : sid && !sessions.includes(sid) ? (sessions.length ? 'its session: line names another session' : 'it has no session: line naming this session') : '';
-        return { file, lines, sessions, live: !why, why, mtimeMs: st.mtimeMs };
-    }
-    catch { return null; }
-}
-// Whether the user answered this guard's last denial with its allow label, auto-run off (see above). `labels` holds the
-// allow label(s), each a string or a RegExp tested on the normalized answer; `marker` is text every denial of the guard
-// carries (its receipt's file name).
-function receiptAnswered(input, spec)
-{
-    const payload = input && typeof input === 'object' ? input : {};
-    const tp = typeof payload.transcript_path === 'string' ? payload.transcript_path : '';
-    let isFile = false;
-    try { isFile = tp !== '' && fs.statSync(tp).isFile(); } catch { isFile = false; }
-    if (!isFile) return { ok: true, why: '' };
-    const marker = String(spec && spec.marker || '');
-    const wants = ((spec && spec.labels) || []).map((l) => (l instanceof RegExp ? l : normLabel(l)));
-    const carries = (labels) => labels.some((l) => wants.some((w) => (w instanceof RegExp ? w.test(l) : w === l)));
-    let seatAt = 0;
-    if (payload.agent_id)
-    {
-        const seatFile = typeof payload.agent_transcript_path === 'string' && payload.agent_transcript_path ? payload.agent_transcript_path
-            : path.join(path.dirname(tp), path.basename(tp, '.jsonl'), 'subagents', `agent-${String(payload.agent_id).replace(/[^\w-]/g, '')}.jsonl`);
-        linesWith(seatFile, [marker], (line) =>
-        {
-            if (!line.includes('"is_error":true')) return;
-            const row = rowOf(line);
-            if (deniedIn(row, marker)) seatAt = tsOfRow(row) || Infinity;
-        });
-    }
-    let auto = false;
-    let lastDenial = -1;
-    const answers = [];
-    const asks = new Set();
-    linesWith(tp, [marker, ANSWER_NEEDLE, AUTO_NEEDLE, ASK_NEEDLE], (line, at) =>
-    {
-        const ev = typedAutoEvent(line, '');
-        if (ev) auto = ev === 'on';
-        if (line.includes(ASK_NEEDLE)) for (const id of askCallIds(rowOf(line))) asks.add(id);
-        if (line.includes(marker) && line.includes('"is_error":true') && deniedIn(rowOf(line), marker)) lastDenial = at;
-        if (line.includes(ANSWER_NEEDLE) && line.includes('"toolUseResult"'))
-        {
-            const row = rowOf(line);
-            const labels = answerLabelsOf(row);
-            if (labels) answers.push({ at, ts: tsOfRow(row), labels, auto: auto || !byUser(row), ids: resultIds(row) });
-        }
-    });
-    const hits = answers.filter((a) => a.ids.some((id) => asks.has(id)) && (seatAt ? a.ts > seatAt : a.at > lastDenial) && carries(a.labels));
-    if (hits.some((a) => !a.auto)) return { ok: true, why: '' };
-    return { ok: false, why: hits.length ? 'the allow answer was not the user\'s own: auto-run was on, or a hook gave it'
-        : `no ask answered with the allow label after ${seatAt ? 'this seat\'s' : 'this guard\'s'} last denial in this session` };
-}
-// A security receipt: readReceiptFile, live only when receiptAnswered also holds. null when absent.
-function securityReceipt(file, input, spec)
-{
-    const r = readReceiptFile(file, input);
-    if (!r || !r.live) return r;
-    const a = receiptAnswered(input, spec);
-    return a.ok ? r : { ...r, live: false, why: a.why, autoRun: /auto-run/.test(a.why) };
-}
-// The lines a denial tells the model to write, its `session:` line first (HK-16), indented for the denial's text.
-function receiptLinesText(input, lines)
-{
-    const payload = input && typeof input === 'object' ? input : {};
-    const sid = typeof payload.session_id === 'string' && /^[\w.-]{1,128}$/.test(payload.session_id) ? payload.session_id : '';
-    return [sid ? `session: ${sid}` : 'session: <this session id - $CLAUDE_CODE_SESSION_ID>', ...lines].map((l) => `  ${l}\n`).join('');
-}
-// The sentence a denial adds when a receipt is there but shut, or ''.
-function receiptShutText(r, rel)
-{
-    if (!r || r.live) return '';
-    return `The receipt at ${rel} is not honoured: ${r.why}.` + (r.autoRun
-        ? ' Under auto-run this gate is a hard stop: it opens only on the user\'s own answer, given with auto-run off (`/alfred-code:mode:auto-run off`).'
-        : ' Rewrite it only on a fresh answer.') + '\n';
-}
-
-// THE USER'S OWN WORDS AND ANSWERS, read where a guard decides (usage audit 2026-11-03 U20 / U21, the user's rulings). One
-// pass over this session's transcript: each turn the user TYPED (typedRowText - never a tool result, a meta row, a
-// compaction summary, a sidechain or a harness prompt), with the text the harness lays inside such a row cut out (a
-// reminder or an IDE note it appends, a typed command's own name and message line, a `!` command's output), and each
-// AskUserQuestion answer that is the result of an AskUserQuestion call in the same file (FA-4), with whether auto-run was
-// on when it was given (the typed mode rows, receiptAnswered's read). Only the transcript decides, so no file the model
-// writes can (HK-03). No transcript: null. Kept per file size and mtime within one process.
-const USER_NEEDLE = '"type":"user"';
-const HARNESS_SPANS_RE = /<(system-reminder|command-name|command-message|bash-stdout|bash-stderr|local-command-stdout|local-command-stderr|local-command-caveat|ide_[a-z_]+)\b[^>]*>[\s\S]*?<\/\1>/g;
-const turnsRead = new Map();
-function userTurns(input)
-{
-    const payload = input && typeof input === 'object' ? input : {};
-    const tp = typeof payload.transcript_path === 'string' ? payload.transcript_path : '';
-    let st = null;
-    try { st = tp ? fs.statSync(tp) : null; } catch { st = null; }
-    if (!st || !st.isFile()) return null;
-    const sid = typeof payload.session_id === 'string' ? payload.session_id : '';
-    const key = `${tp}\0${sid}\0${st.size}\0${st.mtimeMs}`;
-    if (turnsRead.has(key)) return turnsRead.get(key);
-    const typed = [];
-    const asks = new Map();
-    const answers = [];
-    let auto = false;
-    linesWith(tp, [USER_NEEDLE, ASK_NEEDLE], (line, at) =>
-    {
-        if (line.includes(ASK_NEEDLE))
-        {
-            const row = rowOf(line);
-            const c = row && row.type === 'assistant' && row.message && row.message.content;
-            if (Array.isArray(c)) for (const b of c) if (b && b.type === 'tool_use' && b.name === 'AskUserQuestion' && typeof b.id === 'string')
-                asks.set(b.id, b.input && Array.isArray(b.input.questions) ? b.input.questions : []);
-            return;
-        }
-        if (isTypedCandidate(line))
-        {
-            const row = rowOf(line);
-            const text = typedRowText(row);
-            if (!text) return;
-            const ev = autoEventOf(text);
-            if (ev) auto = ev === 'on';
-            if (sid && row.sessionId && row.sessionId !== sid) return;
-            typed.push({ at, text: text.replace(HARNESS_SPANS_RE, ' ') });
-            return;
-        }
-        if (!line.includes(ANSWER_NEEDLE) || !line.includes('"toolUseResult"')) return;
-        const row = rowOf(line);
-        const result = row && row.toolUseResult;
-        if (!result || typeof result !== 'object' || !result.answers || typeof result.answers !== 'object' || askTimedOut(result)) return;
-        answers.push({ at, ids: resultIds(row), answers: result.answers, auto: auto || !byUser(row) });
-    });
-    const answered = answers.filter((a) => a.ids.some((id) => asks.has(id))).map((a) => ({ ...a, questions: a.ids.flatMap((id) => asks.get(id) || []) }));
-    const out = { typed, answered };
-    turnsRead.set(key, out);
-    return out;
-}
-// The texts of the turns the user typed in this session, oldest first; [] with no transcript.
-function typedTurnTexts(input)
-{
-    const t = userTurns(input);
-    return t ? t.typed.map((r) => r.text) : [];
-}
-// Each question of an AskUserQuestion answered after the user's newest typed turn, oldest first: { question, header,
-// answer, chosen: [{ label, description }] (the options picked - a free-text answer is its own label), auto }. A
-// timed-out ask is no answer. [] with no transcript.
-function asksAnsweredSinceTyped(input)
-{
-    const t = userTurns(input);
-    if (!t) return [];
-    const since = t.typed.length ? t.typed[t.typed.length - 1].at : -1;
-    const out = [];
-    for (const a of t.answered)
-    {
-        if (a.at <= since) continue;
-        for (const [question, given] of Object.entries(a.answers))
-        {
-            const q = a.questions.find((x) => x && typeof x.question === 'string' && normLabel(x.question) === normLabel(question)) || {};
-            const parts = new Set([String(given), ...String(given).split(/,\s*/)].map(normLabel).filter(Boolean));
-            const options = Array.isArray(q.options) ? q.options.filter((o) => o && typeof o.label === 'string') : [];
-            const chosen = options.filter((o) => parts.has(normLabel(o.label))).map((o) => ({ label: o.label, description: typeof o.description === 'string' ? o.description : '' }));
-            out.push({ question: String(question), header: typeof q.header === 'string' ? q.header : '', answer: String(given),
-                chosen: chosen.length ? chosen : [{ label: String(given), description: '' }], auto: a.auto });
-        }
-    }
-    return out;
-}
-// The ABSOLUTE paths a typed text names (U20): a POSIX `/a/b`, a `~/` path (expanded with `home`), and on win32 a drive
-// path (`C:\a`, `C:/a`), a UNC path and a Git Bash mount path (`native` translates it first - shell-writes.js
-// nativePath). Quoted (a space kept) or bare; brackets, sentence punctuation and a `:<line>[:<col>]` suffix dropped;
-// never a URL's path (`https://h/p`), a relative path or a bare root. [{ abs, slash }] - `slash` when written with a
-// trailing separator, so a folder.
-function typedPaths(text, { platform = process.platform, home = homeDir(), native = (s) => s } = {})
-{
-    const P = platform === 'win32' ? path.win32 : path.posix;
-    const ABS = platform === 'win32' ? /^(?:[A-Za-z]:[\\/]|\\\\[^\\/\s]|\/[^/\s])/ : /^\/[^/\s]/;
-    const out = new Map();
-    const take = (word) =>
-    {
-        let s = String(word).trim().replace(/^[([{<]+/, '').replace(/[)\]}>.,;:!?]+$/, '').replace(/:\d+(?::\d+)?$/, '');
-        if (s === '~' || /^~[\\/]/.test(s)) { if (!home) return false; s = P.join(home, s.slice(1)); }
-        else if (!ABS.test(s)) return false;
-        const slash = /[\\/]$/.test(s);
-        let abs;
-        try { abs = P.resolve(String(native(s))); } catch { return false; }
-        if (abs === P.parse(abs).root) return false;
-        const seen = out.get(abs);
-        out.set(abs, { abs, slash: Boolean(slash || (seen && seen.slash)) });
-        return true;
-    };
-    let rest = String(text || '');
-    rest = rest.replace(/(["'`])([^"'`\n]+?)\1/g, (m, q, inner) => (take(inner) ? ' ' : m));
-    for (const w of rest.split(/[\s"'`=,;|*]+/)) take(w);
-    return [...out.values()];
-}
-
 // The AUTO stamp's proof (HK-03). A stamp the start hook wrote names its session and records the transcript's size when
 // it was written (`transcript-size:`); it counts when a typed row turning auto-run on sits near that offset - the prompt
 // row lands just before the hook on some builds and just after it on others, and the model's Skill route writes it up to
 // lastTypedPrompt's 4MB tail after the row - read by position - AND no typed row turns auto-run off after the newest such
 // row (the final review of 2026-10-30 FA-1: a stamp the model rewrote over an old on-row, after the user typed the
-// off-flag, got the model's own SHOW ask answered and opened the secret receipt). The off read is receiptAnswered's
-// typed-line read from that row to the end, and an off-row of any session in this file counts.
+// off-flag, got the model's own SHOW ask answered and opened the secret receipt). The off read is a typed-line read from that row to the end, and an off-row of any session in this file counts.
 // Its quoted words are the typed line's or, on the Skill route, the model's args, so they are never matched. A stamp with
 // no `session:` line is task-solve's hand-written waiver: its quoted words (the text after `AUTO -` when unquoted;
 // whitespace collapsed, double quotes single, the first 400 characters, at least 8 - a shorter quote matches any turn)
@@ -951,7 +726,7 @@ function typedPaths(text, { platform = process.platform, home = homeDir(), nativ
 // AskUserQuestion with auto-run off - never a Skill call alone (the 2026-10-14 ruling 'narrow to a typed user turn'). No
 // transcript: the time rule alone, as before. A proof is kept per stamp and transcript size within one process.
 // 200MB measured: the positioned read 5ms, the off read from an on-row at the start about 95ms (paid only while a
-// session-named stamp is live), the hand-written scan 125ms, receiptAnswered 135ms.
+// session-named stamp is live), the hand-written scan 125ms.
 const AUTO_NEAR = 64 * 1024;
 const AUTO_WINDOW = 5 * 1024 * 1024;
 const AUTO_WORDS_MIN = 8;
@@ -1080,7 +855,7 @@ const commandSkill = (command) => bareSkill(String(command).replace(/^\//, ''));
 function modeFlags(text)
 {
     const flags = { commands: [], family: false, run: [], request: '', autoRun: null, scoring: null, compact: null, mode: null, extra: false, flagOnly: false,
-        old: [], level: null };
+        old: [], level: null, rounds: null };
     if (typeof text !== 'string') return flags;
     const tagged = /<command-name>\s*\/?([^<\s]+)\s*<\/command-name>/.exec(text);
     const line = tagged ? `/${tagged[1]} ${(/<command-args>([\s\S]*?)(?:<\/command-args>|$)/.exec(text) || [])[1] || ''}` : text;
@@ -1089,11 +864,12 @@ function modeFlags(text)
     const mode = MODE_COMMAND_RE.exec(tokens[0][0]);
     if (mode)
     {
-        // scoring alone takes one more token of digits after on or off - the level, its range judged by the caller
-        const level = tokens.length === 3 && /^scoring$/i.test(mode[1]) && /^\d+$/.test(tokens[2][0]) ? tokens[2][0] : null;
-        const word = tokens.length === 2 || level ? tokens[1][0].toLowerCase() : '';
+        // scoring alone takes one or two more tokens of digits after on or off - the level, then the rounds; the caller judges each range
+        const slots = /^scoring$/i.test(mode[1]) && tokens.length >= 3 && tokens.length <= 4 && tokens.slice(2).every((t) => /^\d+$/.test(t[0])) ? tokens.slice(2).map((t) => t[0]) : [];
+        const [level = null, rounds = null] = slots;
+        const word = tokens.length === 2 || slots.length ? tokens[1][0].toLowerCase() : '';
         Object.assign(flags, { commands: [tokens[0][0]], family: true, flagOnly: true, mode: mode[1].toLowerCase(), extra: tokens.length > 1 && word !== 'on' && word !== 'off' });
-        if (!flags.extra && word) Object.assign(flags, { [MODE_FIELD[flags.mode]]: word, level });
+        if (!flags.extra && word) Object.assign(flags, { [MODE_FIELD[flags.mode]]: word, level, rounds });
         return flags;
     }
     let i = 0;
@@ -1499,6 +1275,22 @@ function withoutShortLived(text, now = Date.now())
     });
 }
 
+// Print mode: CLAUDE_CODE_ENTRYPOINT is the CLI's own answer (review A, M8) - 2.1.283 sets it to sdk-cli in print mode,
+// rewriting an inherited cli, and keeps an SDK launch's own value: one read, no torn row, and right for a resumed
+// session before its first new row. Set to anything, it decides; unset, the transcript's last `entrypoint` does.
+function printMode(input, env = process.env)
+{
+    try
+    {
+        const source = env || process.env;
+        const entry = String(source.CLAUDE_CODE_ENTRYPOINT || '').trim();
+        if (entry) return entry === 'sdk-cli';
+        const file = input && typeof input === 'object' && typeof input.transcript_path === 'string' ? input.transcript_path : '';
+        return file !== '' && transcriptField(file, 'entrypoint') === 'sdk-cli';
+    }
+    catch { return false; }
+}
+
 function unattended(input, env)
 {
     try
@@ -1508,13 +1300,7 @@ function unattended(input, env)
         // Auto-run alone is no absence (card item 11, 3d4c416d: three Stops judged 'nobody at the terminal' 28 s to 74 s
         // after the user typed): a live stamp reads as away only once the user's newest typed prompt is AWAY_AFTER_MS old.
         if (autoStampLive(input, source)) return userAway(input);
-        // The CLI's own answer first (review A, M8): 2.1.283 sets CLAUDE_CODE_ENTRYPOINT to sdk-cli in print mode,
-        // rewriting an inherited cli, and keeps an SDK launch's own value - one read, no torn row, and right for a
-        // resumed session before its first new row. Set to anything, it decides; unset, the transcript does.
-        const entry = String(source.CLAUDE_CODE_ENTRYPOINT || '').trim();
-        if (entry) return entry === 'sdk-cli';
-        const file = input && typeof input === 'object' && typeof input.transcript_path === 'string' ? input.transcript_path : '';
-        return file !== '' && transcriptField(file, 'entrypoint') === 'sdk-cli';
+        return printMode(input, source);
     }
     catch { return false; }
 }
@@ -1531,6 +1317,135 @@ function cursorHost(input)
     }
     catch { return false; }
 }
+
+// Guards ask instead of block (2026-11-25). A guard that stops a PreToolUse call hands its reason to askOrBlock: where a
+// person can answer, Claude Code's own permission prompt shows the guard's first sentence (Yes runs the call, No refuses it
+// and the model gets the full reason); where nobody can, the call is denied with the full reason, as before.
+const ASKED_PREFIX = 'A guard asked the user about this call: ';
+const ASK_RECOMMENDATION = "Recommended: No, unless you meant this call - Claude then gets the guard's fix.";
+const ASK_CONTEXT_MIDDLE = '. If the result shows the call ran, the user approved it - do not redo it. If the user declined: ';
+const ASK_SENTENCE_MAX = 400;
+const BLOCK_LEAD_RE = /^(?:Blocked|Held once): /;
+const SENTENCE_END_RE = /^[\s\S]*?[.!?](?=\s|$)/;
+const NO_ANSWER_MODES = new Set(['dontAsk', 'bypassPermissions']);
+const SUBAGENT_HANDBACK = 'SubagentHandback';
+const guardLabel = (guard) =>
+{
+    try { return guard ? `alfred-code ${guard}` : 'alfred-code'; }
+    catch { return 'alfred-code'; }
+};
+
+// Whether a person can answer a prompt for this call. False for anything but a plain-object payload, the handback tool, a
+// Cursor payload, a mode that never prompts, ALFRED_CODE_UNATTENDED=1, print mode and the rollback switch
+// ALFRED_CODE_GUARD_ASK=0. It never reads the auto-run stamp: an idle user under auto-run is asked. A throw reads as false.
+function canAsk(input, env = process.env)
+{
+    try
+    {
+        if (!input || typeof input !== 'object' || Array.isArray(input)) return false;
+        if (input.tool_name === SUBAGENT_HANDBACK) return false;
+        if (cursorHost(input)) return false;
+        if (NO_ANSWER_MODES.has(input.permission_mode)) return false;
+        const source = env || process.env;
+        if (String(source.ALFRED_CODE_UNATTENDED || '').trim() === '1') return false;
+        if (printMode(input, source)) return false;
+        return String(envOf(source, 'GUARD_ASK') ?? '').trim() !== '0';
+    }
+    catch { return false; }
+}
+
+// The guard name an options argument carries; a missing or hostile argument gives ''.
+function guardOf(opts)
+{
+    try { return (opts && opts.guard) || ''; }
+    catch { return ''; }
+}
+
+// The reason as text; a reason whose conversion throws reads as the fallback line.
+function reasonText(reason, guard)
+{
+    try { return String(reason); }
+    catch { return `${guardLabel(guard)}: a guard blocked this call.`; }
+}
+
+// The first sentence of a reason for the prompt: a leading 'Blocked: ' or 'Held once: ' dropped, line breaks joined into
+// spaces, cut after the first . ! or ? that a space or the end follows, capped at 400 characters (cut at a word, then '...').
+function firstSentence(text)
+{
+    const joined = text.trim().replace(BLOCK_LEAD_RE, '').replace(/\s*[\r\n]+\s*/g, ' ').trim();
+    const cut = (SENTENCE_END_RE.exec(joined) || [joined])[0].trim();
+    if (cut.length <= ASK_SENTENCE_MAX) return cut;
+    const room = cut.slice(0, ASK_SENTENCE_MAX - 3);
+    const atWord = room.lastIndexOf(' ');
+    return `${(atWord > 0 ? room.slice(0, atWord) : room).trimEnd()}...`;
+}
+
+const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+
+// The verdict a block writes - pure, never throws. `ask` carries the user's text and, as additionalContext, the model's;
+// `deny` carries today's full reason and no additionalContext. `opts.updatedInput` (a plain object) rides an ask only:
+// Claude Code runs an approved ask with it, so a Yes keeps the input change the guard writes on an allowed call.
+function blockVerdict(input, reason, opts)
+{
+    let text;
+    let guard = '';
+    try
+    {
+        const { env = process.env, guard: named = '', updatedInput } = opts || {};
+        guard = named;
+        text = String(reason);
+        const output = { hookEventName: 'PreToolUse' };
+        if (!canAsk(input, env))
+            return { decision: 'deny', hookSpecificOutput: { ...output, permissionDecision: 'deny', permissionDecisionReason: text } };
+        const sentence = firstSentence(text) || 'a guard blocked this call.';
+        const spoken = sentence.replace(/[.!?]+$/, '');
+        return { decision: 'ask', hookSpecificOutput: { ...output, permissionDecision: 'ask',
+            permissionDecisionReason: `${guardLabel(guard)}: ${sentence}\n${ASK_RECOMMENDATION}`,
+            additionalContext: `${ASKED_PREFIX}${spoken}${ASK_CONTEXT_MIDDLE}${text}`,
+            ...(isPlainObject(updatedInput) ? { updatedInput } : {}) } };
+    }
+    catch
+    {
+        return { decision: 'deny', hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny',
+            permissionDecisionReason: typeof text === 'string' ? text : `${guardLabel(guard)}: a guard blocked this call.` } };
+    }
+}
+
+// Writes the verdict as the hook's one JSON object and returns the decision. A Cursor deny also writes the reason to stderr
+// (blockExitCode then gives 2). Sets global.BLOCK_VERDICT for the block row. It never exits - the site does. A throw
+// anywhere in it writes a fixed deny (never no output, which Claude Code reads as a hook error that lets the call run).
+function askOrBlock(input, reason, opts)
+{
+    let wrote = false;
+    try
+    {
+        const named = guardOf(opts);
+        const verdict = blockVerdict(input, reason, opts);
+        const denied = verdict.decision === 'deny';
+        const said = denied ? verdict.hookSpecificOutput.permissionDecisionReason : reasonText(reason, named);
+        global.BLOCK_VERDICT = { decision: verdict.decision, reason: said };
+        wrote = true;
+        try { process.stdout.write(JSON.stringify({ hookSpecificOutput: verdict.hookSpecificOutput })); } catch { /* a closed pipe */ }
+        if (denied && cursorHost(input))
+            try { process.stderr.write(`${said}\n`); } catch { /* a closed pipe */ }
+        return verdict.decision;
+    }
+    catch
+    {
+        if (wrote) return 'deny';
+        const said = reasonText(reason, guardOf(opts));
+        try { global.BLOCK_VERDICT = { decision: 'deny', reason: said }; } catch { /* a hostile global */ }
+        try
+        {
+            process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: said } }));
+        }
+        catch { /* a closed pipe */ }
+        return 'deny';
+    }
+}
+
+// The exit code a block site returns: 2 only for a deny on a Cursor payload, which reads exit 2 as the block.
+const blockExitCode = (input, decision) => (decision === 'deny' && cursorHost(input) ? 2 : 0);
 
 // GATE 6's call. A hook runs it ONCE, right after it has parsed its own payload (`if (prelude.cursorStandDown(
 // payload, __filename)) process.exit(0)`): true only for a Cursor payload and a NON-protective hook, never for
@@ -1805,12 +1720,23 @@ const scoringNotedFile = scoringPath('SCORING-NOTED-');
 // Usable first: either hook standing down or its `scoring` part switched off, or no loadable copy of the skill, makes the
 // scoring unusable - no line, no hold, stacks included. A user-invocable-only copy still grades a typed stack, so it is
 // usable but never on by itself. Then ALFRED_CODE_SCORING (on when unset, B1), which the mode file sets through the loader.
+// Mode inheritance D3: where the scoring switch's value came from - the workspace member whose mode file holds it, else the env.
+function scoringSource(root, env)
+{
+    try
+    {
+        const entry = require('./mode-settings.js').inheritedMode(root, 'ALFRED_CODE_SCORING', env);
+        return entry ? `inherited from ${entry.from}` : 'env';
+    }
+    catch { return 'env'; }
+}
 function scoringState(root, sessionId, env = process.env)
 {
     const state = { usable: false, on: false, level: 80, rounds: 3, outputs: [...SCORING_AUTOMATIC], ignored: [], source: 'env', copy: null };
     try
     {
         Object.assign(state, { level: scoringLevel(env), rounds: scoringRounds(env), ...scoringOutputs(env) });
+        state.source = scoringSource(root, env);
         if (standDown('communication-reminder', env, []) || partOff('communication-reminder', 'scoring', env)
             || standDown('guard-stop-contract', env, []) || partOff('guard-stop-contract', 'scoring', env)) return state;
         const copy = SCORING_SKILLS.map((n) => skillCopyState(root, n, env)).find((c) => c !== 'absent') || 'absent';
@@ -2189,5 +2115,5 @@ function heldByReview(reviews, abs, content)
 // the stop contract's ask deny (the answer hook's Stop block shared it until 2026-10-20; they disagreed before audit 2026-10-08).
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
-module.exports = { HOUSE_DASH, transcriptField, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, useSession, writeTwinSnapshot, twinSnapshot, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, autoStampVerified, readReceiptFile, receiptAnswered, securityReceipt, receiptLinesText, receiptShutText, RECEIPT_MAX_MS, typedTurnTexts, asksAnsweredSinceTyped, typedPaths, FLOW_FAMILY_RE, MODE_LIKE_RE, modeFlags, typedAutoEvent, OTHER_LIVE_MS, otherSessionLive, autoRunRefusal, autoRunFor, COMPACT_SAID, compactCause, runMarkerFile, runMarkerSkill, writeRunMarker, harnessPrompt, IDLE_NOTICE_RE, IDLE_GAP_MS, SESSION_ID_RE, idleFloor, isIdleNotice, localOnlyRow, idleByTiming, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, tempRoots, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, leavesProject, capLog, STALE_MS, SWEEP_EVERY_MS, bareSkill, reviewKind, REVIEW_SKILL, QUALITY_TOPICS, qualityPart, REVIEW_SEAT, codeReviewCall, reviewTargets, reviewCovers, briefTargets, REVIEW_PROOF, reviewProof, REVIEW_SNAPSHOT, snapshotReview, readReviewSnapshots, heldByReview, proseOf, skillCopyState, oursLoadable, SCORING_SKILLS, SCORING_AUTOMATIC, SCORING_PHRASES, scoringLevel, scoringRounds, scoringOutputs, safeSession, scoringHeldFile, scoringNotedFile, scoringState, STACK_RE, stackNamed, PLAN_READERS, producerMarks, sweepScoringFolders };
-Object.assign(module.exports, { autoRunStanding, autoLasts, byUser, pluginWalkOf, pluginWalkNow, promptEndsFlow, flowEndStep, userAway, AWAY_AFTER_MS });   // beside the one-line list, which a new name would push past 160
+module.exports = { HOUSE_DASH, transcriptField, blockingStdio, hookDisabled, partOff, PART_SWITCHES, HOOK_RENAMED, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, useSession, writeTwinSnapshot, twinSnapshot, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, autoStampVerified, FLOW_FAMILY_RE, MODE_LIKE_RE, modeFlags, typedAutoEvent, OTHER_LIVE_MS, otherSessionLive, autoRunRefusal, autoRunFor, COMPACT_SAID, compactCause, runMarkerFile, runMarkerSkill, writeRunMarker, harnessPrompt, IDLE_NOTICE_RE, IDLE_GAP_MS, SESSION_ID_RE, idleFloor, isIdleNotice, localOnlyRow, idleByTiming, unreadable, UNREADABLE_SHARE, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopMarkerFile, scanBudget, SCAN_LIMITS, gitSafe, GIT_SAFE_CONFIG, tempRoots, ASK_TIMEOUT_RE, askTimedOut, askTimeoutMarker, sweepStale, sweepStamp, leavesProject, capLog, STALE_MS, SWEEP_EVERY_MS, bareSkill, reviewKind, REVIEW_SKILL, QUALITY_TOPICS, qualityPart, REVIEW_SEAT, codeReviewCall, reviewTargets, reviewCovers, briefTargets, REVIEW_PROOF, reviewProof, REVIEW_SNAPSHOT, snapshotReview, readReviewSnapshots, heldByReview, proseOf, skillCopyState, oursLoadable, SCORING_SKILLS, SCORING_AUTOMATIC, SCORING_PHRASES, scoringLevel, scoringRounds, scoringOutputs, safeSession, scoringHeldFile, scoringNotedFile, scoringState, STACK_RE, stackNamed, PLAN_READERS, producerMarks, sweepScoringFolders };
+Object.assign(module.exports, { printMode, canAsk, blockVerdict, askOrBlock, blockExitCode, ASKED_PREFIX, autoRunStanding, autoLasts, byUser, pluginWalkOf, pluginWalkNow, promptEndsFlow, flowEndStep, userAway, AWAY_AFTER_MS });   // beside the one-line list, which a new name would push past 160

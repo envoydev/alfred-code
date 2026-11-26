@@ -61,7 +61,7 @@
       "default": "1",
       "renamed_from": "ALFRED_CODE_SCORER",
       "ask": false,
-      "what": "mode-output-scoring: `1` (the seed) grades each automatic output ALFRED_CODE_SCORING_OUTPUTS names (a designer's plan file, a diagnoser's root-cause verdict, an inline plan) with a fresh `output-scoring` seat before it is released, and holds it until it meets the level or the user accepts it; `0` is off. Seeded on since 2026-11-03 (scored plan files won 14 of 15 pairs, inline plans lost 3 of 3 - docs/habits-scorer-evidence.md); an update moves the stack's old `0` seed to `1` (migrations.json `scorer-seeded-on`), and a `0` you set stays. `/alfred-code:mode:scoring on|off [level]`, typed on its own line, overrides it from the checkout's own settings.local.json until its off, new sessions included, and a typed `/<producer> /mode-output-scoring <request>` stack grades that one request even while it is off.",
+      "what": "mode-output-scoring: `1` (the seed) grades each automatic output ALFRED_CODE_SCORING_OUTPUTS names (a designer's plan file, a diagnoser's root-cause verdict, an inline plan) with a fresh `output-scoring` seat before it is released, and holds it until it meets the level or the user accepts it; `0` is off. Seeded on since 2026-11-03 (scored plan files won 14 of 15 pairs, inline plans lost 3 of 3 - docs/habits-scorer-evidence.md); an update moves the stack's old `0` seed to `1` (migrations.json `scorer-seeded-on`), and a `0` you set stays. `/alfred-code:mode:scoring on|off [level] [rounds]`, typed on its own line, overrides it from the checkout's own settings.local.json until its off, new sessions included, and a typed `/<producer> /mode-output-scoring <request>` stack grades that one request even while it is off.",
       "validate": {
         "type": "enum",
         "values": [
@@ -102,7 +102,7 @@
       "default": "3",
       "renamed_from": "ALFRED_CODE_SCORER_ROUNDS",
       "ask": false,
-      "what": "mode-output-scoring: the most grading runs one attempt may spend, a whole number from 1 to 10 (anything else reads as 3). Every run counts - a retry of a malformed grade included; an inline plan always gets one, and each extra run the user buys at the continue ask adds one.",
+      "what": "mode-output-scoring: the most grading runs one attempt may spend, a whole number from 1 to 10 (anything else reads as 3). Every run counts - a retry of a malformed grade included; an inline plan always gets one, and each extra run the user buys at the continue ask adds one. `/alfred-code:mode:scoring on 90 3` saves it in the checkout's mode file, which outranks this variable.",
       "validate": {
         "type": "int",
         "min": 1,
@@ -263,7 +263,7 @@
       "key": "ALFRED_CODE_HOOKS_OFF",
       "default": "",
       "ask": false,
-      "what": "a csv of hook names this project switches off, e.g. `communication-reminder,instrument-tool-usage`. It is where the guided walk's hooks LAYER lands: every hook now arrives together inside the core alfred-code plugin, so there is no file to leave out of an install, and the rows an init or configure run does NOT pick are written here (that answer overwrites this value; every other run seeds it only when absent). Matching is exact on the base name, `.js` optional; a prefix never matches. A hook's PART is switched off the same way, as `<hook>:<part>`: `docs-session:block` (the session-start orientation), `docs-session:gate` (the first-change hold), `docs-session:ask` (the end-of-session doc ask), `guard-ungated-commit:push` (the publish half of the commit gate), `guard-stop-contract:rotate` (the credential rotate ask), `guard-stop-contract:done` (the done-gate probe) and `guard-fresh-session-start:builtin-review` (the deny of the model's call to Claude Code's bundled /code-review and /security-review, 2026-10-22), `guard-unapproved-dispatch:cap` (the agent cap, ALFRED_CODE_MAXIMUM_RUN_AGENTS, 2026-10-27), `guard-layer-table:void` (the paste gate's void of an answer given with no table or banner on screen, 2026-10-28), `guard-stop-contract:fresh-ask` (the drop of a fresh-session hand-off that does not pay back with the cache warm, 2026-10-28) - each but the last four was its own `=0` key before the env audit of 2026-10-21, and an update folds a stored `0` in here. `communication-reminder:scoring` (the scoring lines and flags) and `guard-stop-contract:scoring` (the scoring backstop and the sealed scorecard) - either one turns the whole scoring off, stacks included.",
+      "what": "a csv of hook names this project switches off, e.g. `communication-reminder,instrument-tool-usage`. It is where the guided walk's hooks LAYER lands: every hook now arrives together inside the core alfred-code plugin, so there is no file to leave out of an install, and the rows an init or configure run does NOT pick are written here (that answer overwrites this value; every other run seeds it only when absent). Matching is exact on the base name, `.js` optional; a prefix never matches. A hook's PART is switched off the same way, as `<hook>:<part>`: `docs-session:block` (the session-start orientation), `docs-session:gate` (the first-change hold), `docs-session:ask` (the end-of-session doc ask), `guard-ungated-commit:push` (the publish half of the commit gate), `guard-stop-contract:rotate` (the credential rotate ask), `guard-stop-contract:done` (the done-gate probe) and `guard-fresh-session-start:builtin-review` (the deny of the model's call to Claude Code's bundled /code-review and /security-review, 2026-10-22), `guard-unapproved-dispatch:cap` (the agent cap, ALFRED_CODE_MAXIMUM_RUN_AGENTS, 2026-10-27), `guard-layer-table:void` (the paste gate's void of an answer given with no table or banner on screen, 2026-10-28), `guard-stop-contract:fresh-ask` (the drop of a fresh-session hand-off that does not pay back with the cache warm, 2026-10-28) - each but the last four was its own `=0` key before the env audit of 2026-10-21, and an update folds a stored `0` in here. `communication-reminder:scoring` (the scoring lines and flags) and `guard-stop-contract:scoring` (the scoring backstop and the sealed scorecard) - either one turns the whole scoring off, stacks included. `guard-cross-project-write:read` (the read half of the cross-project guard: a Read, Grep, Glob or shell read past the workspace asks first, 2026-11-26) turns only that half off; the write half stays.",
       "validate": {
         "type": "csv"
       }
@@ -274,6 +274,34 @@
       "ask": false,
       "seed": false,
       "what": "Workspace layering, on by default since 3.0.0: a child project inherits its parent folder's Alfred install; `0` freezes the workspace - no parent lookup, role ask, cascade or delta, and nothing it wrote is removed. A file `0` (settings.local.json, `.variables`, settings.json) beats a launch `1`; a member's value is never read for it. Never written into a project; set `0` in the launch environment, a settings `env` or `.variables`.",
+      "validate": {
+        "type": "enum",
+        "values": [
+          "0",
+          "1"
+        ]
+      }
+    },
+    {
+      "key": "ALFRED_CODE_ROOT_SKILLS",
+      "default": "own",
+      "ask": false,
+      "seed": false,
+      "what": "Which skills a workspace top root lists in full. `own` (the default): a skill the root links only for its children - none of the root's own files needs it - is listed by name alone, through a `skillOverrides` `name-only` key the run writes into the root's settings.local.json; the root's agents still preload it. `all`: nothing is trimmed, and the next run removes the trim keys it wrote. A skill the user sets to `on` in settings.local.json is never changed. Never written into a project; set it in the launch environment, a settings `env` or `.variables`.",
+      "validate": {
+        "type": "enum",
+        "values": [
+          "own",
+          "all"
+        ]
+      }
+    },
+    {
+      "key": "ALFRED_CODE_GUARD_ASK",
+      "default": "1",
+      "ask": false,
+      "seed": false,
+      "what": "Whether a guard that stops a tool call asks you first. Only `0` counts; unset or any other value (the walks check for `0` or `1`) is the default - Claude Code's permission prompt shows the guard's reason - Yes runs the call, No refuses it and Claude gets the guard's fix. `0`: every such block is a plain deny with the guard's full reason. Where nobody can answer - `dontAsk`, `bypassPermissions`, print mode, `ALFRED_CODE_UNATTENDED=1`, Cursor - a block is a deny whatever this says. Never written into a project; set `0` in the launch environment, a settings `env` or `.variables`.",
       "validate": {
         "type": "enum",
         "values": [

@@ -3,6 +3,7 @@
 // blocked `source ~/.nvm/nvm.sh` in every dirty checkout as a whole-tree discard (2026-11-24).
 const test = require('node:test');
 require('./hook-test-env').isolateHookSuite({ ownTmp: true });
+const { verdictOf } = require('./hook-test-env');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -61,11 +62,11 @@ test('the rm guard passes a dirty checkout sourcing a script whose case pattern 
   fs.writeFileSync(path.join(repo, 'f.txt'), 'b\n');
   const script = path.join(TMP, 'tool.sh');
   fs.writeFileSync(script, 'case $DIR in\n  *[!/]*/)\n    DIR="${DIR%"${DIR##*[!/]}"}"\n  ;;\nesac\n');
-  const guard = (command) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-catastrophic-rm.js')],
-    { input: JSON.stringify({ session_id: 'case-test', cwd: repo, hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command } }), encoding: 'utf8' }).status;
+  const guard = (command) => verdictOf(spawnSync(process.execPath, [path.join(HOOKS, 'guard-catastrophic-rm.js')],
+    { input: JSON.stringify({ session_id: 'case-test', cwd: repo, hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command } }), encoding: 'utf8' }));
   assert.strictEqual(guard(`source ${script}`), 0);
   assert.strictEqual(guard(`. ${script} && echo done`), 0);
-  assert.strictEqual(guard(`source ${script}; git checkout -- f.txt`), 2, 'a real discard after it still blocks');
+  assert.strictEqual(guard(`source ${script}; git checkout -- f.txt`), 'ask', 'a real discard after it still asks');
 });
 
 test('an esac inside a pattern opened by ( ends no case, so a substitution keeps its arm body', () => {
@@ -105,8 +106,8 @@ test('the rm guard passes the nvm commands of the 2026-11-24 report in a dirty c
     git('add', 'f.txt');
     git('commit', '-qm', 'i');
     fs.writeFileSync(path.join(repo, 'f.txt'), 'b\n');
-    const guard = (command) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-catastrophic-rm.js')],
-        { input: JSON.stringify({ session_id: 'nvm-test', cwd: repo, hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command } }), encoding: 'utf8', env: { ...process.env, HOME: home } }).status;
+    const guard = (command) => verdictOf(spawnSync(process.execPath, [path.join(HOOKS, 'guard-catastrophic-rm.js')],
+        { input: JSON.stringify({ session_id: 'nvm-test', cwd: repo, hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command } }), encoding: 'utf8', env: { ...process.env, HOME: home } }));
     for (const command of [
         'source ~/.nvm/nvm.sh >/dev/null && nvm use >/dev/null && npm run validate && npm test',
         'source ~/.nvm/nvm.sh >/dev/null; nvm use >/dev/null; npm test 2>&1 | grep -E "fail|pass"',
@@ -116,5 +117,5 @@ test('the rm guard passes the nvm commands of the 2026-11-24 report in a dirty c
     for (const command of [
         'source ~/.nvm/nvm.sh >/dev/null && nvm use >/dev/null && git checkout -- .',
         'source ~/.nvm/nvm.sh; nvm use 26; git restore f.txt',
-    ]) assert.strictEqual(guard(command), 2, command);
+    ]) assert.strictEqual(guard(command), 'ask', command);
 });
