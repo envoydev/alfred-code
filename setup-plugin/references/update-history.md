@@ -1462,7 +1462,7 @@ opens a tree for both halves.
 - A subagent gets the same prompt. After a No, it stops and reports which files it needed.
 
 Known limits, said once here:
-- A directory you granted Claude Code in `permissions.additionalDirectories` of your account settings, or of an untracked `settings.local.json`, stays open. The CLI's `--add-dir` is not seen by a hook, so such a directory still asks.
+- A directory you granted Claude Code in `permissions.additionalDirectories` of your account settings file stays open (a project's own settings files open nothing). A grant that holds the project opens that folder's siblings too. The CLI's `--add-dir` is not seen by a hook, so such a directory still asks.
 - `git commit -F` or `git tag -F` of a file past the workspace gives no ask.
 - A script nested two levels deep is not read.
 - A `CLAUDE_CONFIG_DIR` outside your home folder is judged only in part.

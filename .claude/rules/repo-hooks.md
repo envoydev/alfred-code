@@ -1546,7 +1546,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     scratch, an `ALFRED_CODE_ALLOW_WRITE_OUTSIDE` tree (both halves), the project's own and its workspace members' memory (the keys
     of the chain and of each member the records list, at most 64), the memory folder the user's settings name when it is under HOME,
     is not HOME and holds no member (`layout.trustedMemoryDir`, read half only; the write half's `ownMemory` refuses only a folder that holds the project or is HOME or above), a
-    directory the user granted Claude Code (`permissions.additionalDirectories` of the account's `settings.json`, or of the project's `settings.local.json` while git does not track it - `layout.trustedAdditionalDirs`, the trust rule of `trustedMemoryDir`; a tracked project `settings.json` opens nothing, and a directory that holds HOME is not opened), a
+    directory the user granted Claude Code (`permissions.additionalDirectories` of the account settings file only - `layout.trustedAdditionalDirs`; no project file opens a read, an untracked `settings.local.json` included, since the model can write it; a grant that holds HOME or an account dir's `projects/` is not opened, and a path under `projects/` keeps its own ask whatever a grant says; INTENDED: a grant that holds the project opens that folder's siblings too, since the user granted the folder to Claude Code), a
     linked worktree of the project, and the plugin's own root (`CLAUDE_PLUGIN_ROOT`, read-only open; the ruling of 2026-11-26: a
     `--plugin-dir` under HOME would otherwise ask on every secret-guard runner call, against 'never block broadly'; a root that holds
     HOME is not opened). A path is the project's when it or any folder on its way resolves inside the boundary, judged AS WRITTEN
@@ -1573,7 +1573,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     `guard-cross-project-write:read` in `ALFRED_CODE_HOOKS_OFF` (`partOff`) turns this half off alone; every stand-down of the guard
     does too, and a copy with no `cross-read.js` beside it reads nothing (it is in `HOOK_MODULES`). No new variable. No sweep marker:
     every block goes through `blockCall`. KNOWN LIMITS:
-    the CLI's `--add-dir` grants a directory only for that launch and no hook payload carries it, so such a directory still asks (list it in `ALFRED_CODE_ALLOW_WRITE_OUTSIDE` or `additionalDirectories`);
+    the CLI's `--add-dir` grants a directory only for that launch and no hook payload carries it, so such a directory still asks (list it in `ALFRED_CODE_ALLOW_WRITE_OUTSIDE` or in the account settings' `additionalDirectories`);
     `git commit -F` and `git tag -F` of a file past the workspace give no ask (the message file is prose); a script nested two levels
     deep is not read; a `CLAUDE_CONFIG_DIR` outside HOME is judged only in part (its account dir asks on a Grep, its `projects/` does
     not, and a Read there is never in the zone); words past the 512th, paths past the 64th and scripts past the 8th fail open;

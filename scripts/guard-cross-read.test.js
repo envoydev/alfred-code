@@ -554,7 +554,7 @@ test('a session launched in a linked worktree or a subfolder reads its own tool-
   asks(fx, read(fx.foreign, { transcript_path: outside }), {}, 'a transcript outside every account projects/ folder adds no key');
 }));
 
-test('a directory the user granted Claude Code opens for reads, from the account settings or an untracked local file only', withFixture((fx) => {
+test('a directory the user granted Claude Code opens for reads, from the account settings file only', withFixture((fx) => {
   const granted = path.dirname(fx.other);
   const grant = (...dirs) => JSON.stringify({ permissions: { additionalDirectories: dirs } });
   const account = fx.at('.claude', 'settings.json');
@@ -572,7 +572,7 @@ test('a directory the user granted Claude Code opens for reads, from the account
   fs.rmSync(account);
   const local = path.join(fx.proj, '.claude', 'settings.local.json');
   fx.put('work/proj/.claude/settings.local.json', grant(granted));
-  passes(fx, read(fx.other), {}, 'a directory in an untracked settings.local.json');
+  asks(fx, read(fx.other), {}, 'a directory in an untracked settings.local.json: the model can write that file, so it opens nothing');
   assert.strictEqual(git(fx.proj, 'add', '-f', local).status, 0);
   asks(fx, read(fx.other), {}, 'the same file once git tracks it');
   git(fx.proj, 'rm', '-q', '--cached', local);
@@ -603,4 +603,19 @@ test('ls -r is a reverse sort, not a recursive search, outside PowerShell', with
   asks(fx, powershell('ls -r ~'), {}, 'ls -r is Get-ChildItem -Recurse under PowerShell');
   asks(fx, powershell(`dir -Recurse ${path.dirname(fx.other)}`), {}, 'dir -Recurse under PowerShell');
   passes(fx, powershell('ls ~'), {}, 'a plain listing under PowerShell');
+}));
+
+test('a grant of the account folder, or of one holding it, opens no other project\'s folder under projects/', withFixture((fx) => {
+  const grant = (...dirs) => JSON.stringify({ permissions: { additionalDirectories: dirs } });
+  const lib = fx.put('lib/x');
+  fx.put('.claude/settings.json', grant('~/lib'));
+  passes(fx, read(lib), {}, 'a grant of a plain folder opens its files');
+  for (const dir of ['~/.claude', fx.at('.claude'), '~/.claude/projects', '~/.claude/projects/-elsewhere-other-key/memory']) {
+    fx.put('.claude/settings.json', grant(dir));
+    asks(fx, read(fx.foreign), {}, `a grant of ${dir} and another project's memory`);
+    asks(fx, read(fx.foreign, { transcript_path: fx.at('.claude', 'projects', 'x', 's.jsonl') }), {}, `a grant of ${dir} and a transcript`);
+  }
+  fx.put('.claude/settings.json', grant('~/.claude'));
+  passes(fx, read(fx.own), {}, 'this project\'s own memory still opens');
+  passes(fx, read(fx.at('.claude', 'plugins', 'cache', 'x')), {}, 'the rest of the account folder is open as before');
 }));
