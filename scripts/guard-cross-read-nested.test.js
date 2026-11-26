@@ -119,9 +119,12 @@ test('each script has its own word budget of 512: the word at the limit is read,
 
 test('git commit -F<file> with the file attached to the flag reads the file, as -F <file> does', withFixture((fx) => {
   fx.put('work/proj/msg.txt');
-  for (const command of [`git commit -F${fx.other}`, `git commit -a -F${fx.other}`, `git commit -aF${fx.other}`, `git commit --amend -F"${fx.other}"`,
-    `git tag -a v1 -F${fx.other}`, `git commit --file=${fx.other}`, `git commit --file ${fx.other}`, `git commit --file="${fx.other}"`,
-    `/usr/bin/git commit -F${fx.other}`, `timeout 5 git commit -F${fx.other}`]) asks(fx, command, command);
+  // forward slashes, as Git Bash keeps them: bash drops an unquoted backslash, so `-FC:\x\y` names another file
+  const other = fx.other.replace(/\\/g, '/');
+  for (const command of [`git commit -F${other}`, `git commit -a -F${other}`, `git commit -aF${other}`, `git commit --amend -F"${other}"`,
+    `git tag -a v1 -F${other}`, `git commit --file=${other}`, `git commit --file ${other}`, `git commit --file="${other}"`,
+    `/usr/bin/git commit -F${other}`, `timeout 5 git commit -F${other}`,
+    `git commit -F"${fx.other}"`, `git commit --file="${fx.other}"`]) asks(fx, command, command); // quoted, a Windows path keeps its backslashes
   for (const command of ['git commit -Fmsg.txt', `git commit -F${path.join(fx.proj, 'msg.txt')}`, 'git commit -F-', 'git commit -aF-', 'git commit --file=-', 'git commit --file=msg.txt',
     `git commit -m${fx.other}`, `git commit -m "see ${fx.other}"`, `git commit --message=${fx.other}`, `git commit -am${fx.other}`, `git tag -a v1 -m${fx.other}`,
     `git grep -F${fx.other} x`, `git grep -Fn x`, `git commit -mF${fx.other}`, `git log -F${fx.other}`]) passes(fx, command, command);
