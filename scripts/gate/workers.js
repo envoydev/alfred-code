@@ -9,7 +9,7 @@ function guestWorkers(hostShare, guestCpus)
     return Math.max(1, Math.min(hostShare, guestCpus - 1));
 }
 
-// The test workers per leg, near the 3 a runner has. The mac and linux legs run together and split the host's cores;
+// The test workers per leg, the host's cores split between the legs that run together. The mac and linux legs split them;
 // the win leg starts after them and has the cores to itself, as it did when it ran alone (2026-11-26).
 function hostShares(cores, legs)
 {
