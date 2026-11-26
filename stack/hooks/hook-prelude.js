@@ -1327,6 +1327,9 @@ const ASK_CONTEXT_MIDDLE = '. If the result shows the call ran, the user approve
 const ASK_SENTENCE_MAX = 400;
 const BLOCK_LEAD_RE = /^(?:Blocked|Held once): /;
 const SENTENCE_END_RE = /^[\s\S]*?[.!?](?=\s|$)/;
+// A code span (`...`) is read whole first, so a `.` or `..` path word inside one (`cd ..`) is no sentence stop; text with an
+// unpaired backtick takes the plain read above.
+const SPAN_SENTENCE_END_RE = /^(?:`[^`]*`|[^`])*?[.!?](?=\s|$)/;
 const NO_ANSWER_MODES = new Set(['dontAsk', 'bypassPermissions']);
 const SUBAGENT_HANDBACK = 'SubagentHandback';
 const guardLabel = (guard) =>
@@ -1373,7 +1376,7 @@ function reasonText(reason, guard)
 function firstSentence(text)
 {
     const joined = text.trim().replace(BLOCK_LEAD_RE, '').replace(/\s*[\r\n]+\s*/g, ' ').trim();
-    const cut = (SENTENCE_END_RE.exec(joined) || [joined])[0].trim();
+    const cut = (SPAN_SENTENCE_END_RE.exec(joined) || SENTENCE_END_RE.exec(joined) || [joined])[0].trim();
     if (cut.length <= ASK_SENTENCE_MAX) return cut;
     const room = cut.slice(0, ASK_SENTENCE_MAX - 3);
     const atWord = room.lastIndexOf(' ');

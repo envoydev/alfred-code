@@ -174,6 +174,13 @@ test('guard-catastrophic-rm: the prompt of a blocked delete names the target (gu
   const ticked = asked('python3 -c "import shutil; shutil.rmtree(\'/\'); print(\'a `b` c\')"');
   assert.equal(verdictOf(ticked), 'ask');
   assert.match(askText(ticked), /^alfred-code guard-catastrophic-rm: this command recursively deletes `python3 -c "import shutil; shutil\.rmtree\('\/'\); print\('a 'b' c'\)"`\.\nRecommended:/, askText(ticked));
+  // a path word is no sentence stop: a `.` or `..` word (`cd ..`, `. ./env.sh`) must not cut the opening before the delete
+  const dotdot = asked('cd .. && python3 -c "import shutil; shutil.rmtree(os.path.expanduser(\'~\'))"');
+  assert.equal(verdictOf(dotdot), 'ask');
+  assert.match(askText(dotdot), /deletes `cd \.\. && python3 -c "import shutil; shutil\.rmtree\(os\.path\.expanduser\('~'\)\)"`\./, askText(dotdot));
+  const sourced = asked('. ./env.sh; python3 -c "import shutil; shutil.rmtree(os.path.expanduser(\'~\'))"');
+  assert.equal(verdictOf(sourced), 'ask');
+  assert.match(askText(sourced), /deletes `\. \.\/env\.sh; python3 -c "import shutil; shutil\.rmtree\(os\.path\.expanduser\('~'\)\)"`\./, askText(sourced));
   const resolved = asked('H=$HOME; rm -rf "$H"');
   assert.equal(verdictOf(resolved), 'ask');
   assert.ok(askText(resolved).includes(`\`${os.homedir()}\``) || askText(resolved).includes('`$H`'), askText(resolved));

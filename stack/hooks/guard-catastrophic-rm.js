@@ -518,8 +518,9 @@ function wipeTargetOf(parsed, command)
     return commandOpening(command);
 }
 // The opening sits in a code span inside the prompt's first sentence, so a backtick becomes a quote and the text stops
-// before a sentence end that has more text after it (the prompt would end the sentence there).
-const OPENING_SENTENCE_END = /[.!?](?=\s)/;
+// before a sentence end that has more text after it (the prompt would end the sentence there). A `.` ends a sentence only
+// after a character that is no space and no dot: a `.` or `..` path word (`cd ..`, `. ./env.sh`) is no stop.
+const OPENING_SENTENCE_END = /(?:(?<=[^\s.])\.|[!?])(?=\s)/;
 function commandOpening(command)
 {
     const line = String(command || '').trim().replace(/\s+/g, ' ').replace(/`/g, "'");
