@@ -306,7 +306,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   write, the foreground wait, the runner's line cap and a runner line a guard blocks) use the same helper (`blockResult`). What does not change: Stop,
   SubagentStop, PostToolUse and UserPromptSubmit blocks (Claude Code has no ask there) and the CLI usage exits of the secret guard and
   `secrets-run.js`; `scripts/guard-ask-sweep.test.js` fails any PreToolUse deny or exit 2 that carries no marker comment and pins the
-  marker counts per file. Four chat-yes openers left with it (the receipts, the typed paths and the discard pick, each named where its guard is described). Known limits:
+  marker counts per file. The run-dir gate (`setup-plugin/hooks/run-dir-gate.js`, its deny of another session's run dir) is on the same footing: its `emit` (`scripts/run-dir-gate/effects.js`) hands the deny to `askOrBlock`, and the sweep reads that folder too. The rm guard's prompt names the recursive delete first when the command holds one beside a discard or a marketplace removal. Four chat-yes openers left with it (the receipts, the typed paths and the discard pick, each named where its guard is described). Known limits:
   an approved dispatch ask holds no agent-cap slot until its SubagentStart, so in a fan-out wider than the cap one seat can run over it,
   and a nested seat may lose its parent link - fixing it needs a read of the tool result. Not measured live: the prompt in an interactive
   session, a hook `ask` under `bypassPermissions`, and how a subagent's prompt surfaces.
@@ -417,10 +417,10 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   range (`guard-read-*`) and the commit guard when it writes its
   trivial ledger (`<data root>/state/sessions/trivial-*`); a folder inside the project that resolves outside it (a link) is never stamped or swept - `sweepStale`, `sweepScoringFolders` and docs-session's untracked-record sweep all ask `hook-prelude.js leavesProject`.
   A block asks the user at Claude Code's own permission prompt and opens nothing by a chat yes (guards ask instead of block,
-  2026-11-25; the paragraph before 'A MISSING HELPER'). The four chat-yes openers are gone: no `DISCARD-ALLOW`,
+  2026-11-25; the paragraph before 'A MISSING HELPER'). The chat-yes openers are gone: no `DISCARD-ALLOW`,
   `CROSS-WRITE-ALLOW`, `GUARD-OFF-ALLOW` or `STAGED-SCAN-ALLOW` file, no typed path and no discard pick in an answered
-  AskUserQuestion opens a block, and no hook reads them; the user's Yes at the prompt opens that one call, asked each time. A file an older
-  release left under `<data root>/state/approvals/` expires by itself. The receipts that stay are PROOF, not consent -
+  AskUserQuestion opens a block, and no hook reads them; the user's Yes at the prompt opens that one call, asked each time. No hook reads a file an older
+  release left under `<data root>/state/approvals/`, and none deletes it: delete it by hand if you like. The receipts that stay are PROOF, not consent -
   COMMIT-GATE and PUSH-GATE (the commit guard's own `readReceipt`: under 8h, written after the session began) and the dispatch
   guard's APPROVAL stamp - and where their block fires it asks. The stop contract's rotation read takes no receipt since swap 1: an exposure is consented when
   the session's hook-blocks ledger holds the secret guard's `mode: 'ask'` row with that call's `tool_use_id` (`askedExposure`; a forged row skips one rotation ask, nothing more).

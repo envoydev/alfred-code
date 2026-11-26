@@ -1392,8 +1392,8 @@ Where no one can answer, the guard still blocks as before: in `dontAsk` and `byp
 set `ALFRED_CODE_GUARD_ASK=0` in the launch environment, a settings `env` or `.alfred/.variables`.
 
 **The chat-yes openers are gone.** The `DISCARD-ALLOW`, `CROSS-WRITE-ALLOW`, `GUARD-OFF-ALLOW` and `STAGED-SCAN-ALLOW`
-files, a path you typed, and a discard picked in an answered question open no block now. No hook reads those files. One
-an older release left under `.alfred/state/approvals/` expires by itself after 8 hours. The `COMMIT-GATE`, `PUSH-GATE` and
+files, a path you typed, and a discard picked in an answered question open no block now. No hook reads those files, and no hook deletes
+one an older release left under `.alfred/state/approvals/`: delete it by hand if you like. The `COMMIT-GATE`, `PUSH-GATE` and
 `APPROVAL` files stay as proof, and where their block fires it asks.
 
 Nothing to do in an installed project beyond the update. Report that the prompt replaces the block and that

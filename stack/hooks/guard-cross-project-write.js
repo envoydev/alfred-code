@@ -15,10 +15,11 @@
 // THE WORKSPACE IS THE BOUNDARY (the owner, 2026-11-11: 'child can go out of child project to parent, but not out of
 // workspace, agent must ask me about it in current session and does not allow for subagents to go out of workspace').
 // A project joined to a workspace writes anywhere under the workspace's top member - the root, a sibling, a project
-// below - with no ask; a project in no workspace keeps its own root as the boundary. Past the boundary the MAIN session
-// gets the ask below. A SUBAGENT gets a plain refusal with no ask, and nothing the session was allowed
-// opens anything for it - it reports the change and the main session hands it off; a
-// command the guard could not read is refused for it the same way, since it may write past the boundary. A
+// below - with no ask; a project in no workspace keeps its own root as the boundary. Past the boundary the stop goes through
+// the helper (hook-prelude.js askOrBlock): a prompt where a person can answer - a seat's too - and a plain deny where nobody can.
+// Nothing the session was allowed opens anything for a SUBAGENT: a Yes at its prompt opens that one call, and where no prompt
+// can show it reports the change and the main session hands it off; a
+// command the guard could not read is stopped for it the same way, since it may write past the boundary. A
 // member's memory folder stays read-only inside the workspace (R8, below).
 //
 // Reads pass. Writes inside the project root pass. Writes to the session's own scratch (the OS
