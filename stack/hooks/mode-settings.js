@@ -148,11 +148,12 @@ function autoRunInherited(root, env = process.env)
     return verdict;
 }
 // D3: the mode `key` a joined child took from a workspace member's mode file - { value, from, file }, else null. The record
-// of the env a hook start applied, else the one resolve the same start would make (autoRunInherited reads it the same way).
+// of the env a hook start applied for `root` itself, else the one resolve the same start would make: a session started in
+// a sub-folder applied that folder's values, so the label follows them (autoRunInherited alone reads the checkout's).
 function inheritedMode(root, key, env = process.env)
 {
-    const checkout = layout.projectRootOf(root).checkout;
-    return inheritedRecord(checkout, layout.pathKey(checkout), env).modes[key] || null;
+    const at = path.resolve(root);
+    return inheritedRecord(at, layout.pathKey(at), env).modes[key] || null;
 }
 // ' (from <rel>)' after a bare state line, only where the member's value is the state said: a session stamp that turns
 // the mode on over a member's 0 is no inheritance.

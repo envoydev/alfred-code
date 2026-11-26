@@ -197,3 +197,13 @@ test('scoringState reports its source as inherited from the member, and env othe
     assert.strictEqual(scoringSource(pair({ [K('SCORING')]: '1' }).root).source, 'env', 'the root inherits from nobody');
     assert.strictEqual(scoringSource(child, { [K('SCORING')]: '0' }).source, 'env', 'a launch value of the key is an own layer');
 });
+
+test('a session started in a sub-folder of the child names no member for a scoring value it did not take from one', { skip: SKIP_GIT }, () =>
+{
+    const { child } = pair({ [K('SCORING')]: '0' });
+    const src = path.join(child, 'src');
+    fs.mkdirSync(src);
+    const context = reminder(src, 'hello');
+    assert.doesNotMatch(context, /scoring: on \([^)]*inherited from/, context.slice(0, 400));
+    assert.notStrictEqual(scoringSource(src).source === 'inherited from ..' && scoringSource(src).on, true);
+});

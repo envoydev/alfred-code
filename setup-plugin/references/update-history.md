@@ -1427,7 +1427,7 @@ Nothing to do in an installed project beyond the update. Report that a root vali
 
 ## after 3.19.1 - a joined child inherits its workspace's modes
 
-**A joined child now takes a mode its workspace root turned on or off, so a root that once typed `/alfred-code:mode:scoring off` turns scoring off in every joined child, and the child's own `/alfred-code:mode:scoring on` keeps it on there.** A child reads
+**A joined child now takes a mode its workspace root turned on or off, so a root that once typed `/alfred-code:mode:scoring off` turns scoring off in every joined child that holds no scoring value of its own (a join drops the stack's own seed of it), and the child's own `/alfred-code:mode:scoring on` keeps it on there.** A child reads
 each of the five mode keys from its own files first, then from the nearest workspace member's mode file
 (`.claude/settings.local.json`). Its own value always wins, `0` included.
 

@@ -113,7 +113,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   `auto-run on` writes `ALFRED_CODE_AUTO_RUN=1` and `ALFRED_CODE_AUTO_COMPACT=1`, `scoring on|off [level] [rounds]` the
   scoring keys (three) - and the mode stays on, new sessions included, until its off; every hook reads it through
   `layout.applyVariables`, and an auto-run `1` counts only from the checkout's own untracked file
-  (`mode-settings.js autoRunHeld` / `hook-prelude.js autoRunStanding`: a tracked or unvouched one is said, never taken). A joined child with no value of its own reads each mode key from the nearest workspace member's mode file (`layout.inheritedModes`, `mode-settings.js autoRunInherited`), an inherited `1` under the same untracked-and-vouched bar, and every state line names the member (`ON (from <rel>)`, `inherited from <rel>`).
+  (`mode-settings.js autoRunHeld` / `hook-prelude.js autoRunStanding`: a tracked or unvouched one is said, never taken). A joined child with no value of its own reads each mode key from the nearest workspace member that holds it, that member's mode file before its `.variables` (`layout.inheritedModes`, `mode-settings.js autoRunInherited`), an inherited `1` under the same untracked-and-vouched bar, and every state line names the member (`ON (from <rel>)`, `inherited from <rel>`).
   `mode-settings.js` and `json-file.js` are copied hook modules (`HOOK_MODULES`). The per-session switch files
   (`AUTO-COMPACT-<session>`, `SCORING-<session>`) are gone, and an ask's answer counts as the user's only when its own
   row's `permissionDecision.source` opens `user` (`hook-prelude.js byUser`, D25), so under the standing variable no

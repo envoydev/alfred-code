@@ -642,7 +642,7 @@ function pruneChained(projectRoot, { env = process.env, log = () => {}, seeds = 
     const file = variables.fileOf(projectRoot, { env });
     const values = variables.read(file).values;
     const chained = chainValues(projectRoot, { env });
-    // A mode key a member's mode file wins is one person's untracked choice: a child's own line for it is never pruned, so a later `off` at the root cannot change it.
+    // A mode key a member's mode file wins is one person's untracked choice: a line the child's user wrote for it is never pruned, so a later `off` at the root cannot change it.
     const modeWon = chainModes(projectRoot, { env });
     const stampFile = stamp.stampFiles({ projectRoot }).read;
     const rows = ((stampFile && stamp.readLedger(stampFile)) || { env: {} }).env?.['.variables'] || {};
@@ -659,9 +659,10 @@ function pruneChained(projectRoot, { env = process.env, log = () => {}, seeds = 
         const rest = { ...values };
         delete rest[key];
         const first = [['this file\'s 3.10 name', rest], ...held].map(([name, e]) => [name, layout.valueIn(e, key)]).find(([, v]) => v !== undefined);
-        if (layout.CHAIN_PRUNE_NEVER.has(key) || modeWon.has(key)) own.push(key);
+        // A stack seed leaves first: it is no one's choice, so a mode key a member's mode file wins is then inherited.
+        if (layout.CHAIN_PRUNE_NEVER.has(key)) own.push(key);
         else if (seeds && !layout.MEMBER_NEVER.has(key) && isSeed(key, value, rows)) dropped.push(key);
-        else if (chained[key] !== value) own.push(key);
+        else if (modeWon.has(key) || chained[key] !== value) own.push(key);
         else if (first && first[1] !== value) { own.push(key); stays.push(`; ${key} equals the workspace's and stays: ${first[0]} holds another value`); }
         else dropped.push(key);
     }

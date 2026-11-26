@@ -272,7 +272,7 @@ test('a leave logs no auto-run line when git tracks the root\'s mode file', () =
     assert.ok(!lines.some((l) => /auto-run/.test(l)), lines.join('\n'));
 });
 
-test('pruneChained with seeds keeps a seed-valued line for a mode key the root\'s mode file wins', () =>
+test('pruneChained with seeds drops a stack seed for a mode key the root\'s mode file wins, so the child inherits the root\'s value', () =>
 {
     const row = `sha: x\nmanaged-env: .variables:${SCORING}=${stampLib.valueHash('1')}\n`;
     const at = tree({
@@ -282,6 +282,20 @@ test('pruneChained with seeds keeps a seed-valued line for a mode key the root\'
     const child = at('root/child');
     fs.mkdirSync(path.join(child, '.claude'), { recursive: true });
     fs.writeFileSync(path.join(child, '.claude', 'alfred-code.stamp'), row);
+    const got = wsLib.pruneChained(child, { env: ON, log: () => {}, seeds: true });
+    assert.ok(got.dropped.includes(SCORING), JSON.stringify(got));
+    assert.doesNotMatch(varsTextOf(child), new RegExp(SCORING));
+});
+
+test('pruneChained keeps a line the user wrote for a mode key the root\'s mode file wins, seed-valued or not', () =>
+{
+    const at = tree({
+        'root': { stamp: true, git: true, ws: { children: ['child'] }, ...modeEnv({ [SCORING]: '0' }) },
+        'root/child': { git: true, ws: { parent: '..' }, vars: `${SCORING}=1\n` },
+    });
+    const child = at('root/child');
+    fs.mkdirSync(path.join(child, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(child, '.claude', 'alfred-code.stamp'), 'sha: x\n');
     const got = wsLib.pruneChained(child, { env: ON, log: () => {}, seeds: true });
     assert.ok(got.own.includes(SCORING), JSON.stringify(got));
     assert.strictEqual(varsTextOf(child), `${SCORING}=1\n`);
