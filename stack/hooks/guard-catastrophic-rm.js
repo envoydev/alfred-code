@@ -517,10 +517,15 @@ function wipeTargetOf(parsed, command)
     }
     return commandOpening(command);
 }
+// The opening sits in a code span inside the prompt's first sentence, so a backtick becomes a quote and the text stops
+// before a sentence end that has more text after it (the prompt would end the sentence there).
+const OPENING_SENTENCE_END = /[.!?](?=\s)/;
 function commandOpening(command)
 {
-    const line = String(command || '').trim().replace(/\s+/g, ' ');
-    return line.length > TARGET_NAME_MAX ? `${line.slice(0, TARGET_NAME_MAX - 3).trimEnd()}...` : line;
+    const line = String(command || '').trim().replace(/\s+/g, ' ').replace(/`/g, "'");
+    const stop = OPENING_SENTENCE_END.exec(line);
+    const text = stop ? `${line.slice(0, stop.index).trimEnd()}...` : line;
+    return text.length > TARGET_NAME_MAX ? `${text.slice(0, TARGET_NAME_MAX - 3).trimEnd()}...` : text;
 }
 
 // The safe route out of a submodule, for a denial whose target is its repository under `.git/modules/` (final review

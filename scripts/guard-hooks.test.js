@@ -167,6 +167,13 @@ test('guard-catastrophic-rm: the prompt of a blocked delete names the target (gu
   const runtime = asked('python3 -c "import shutil, os; shutil.rmtree(os.path.expanduser(\'~\')); print(\'done and a long tail of text\')"');
   assert.equal(verdictOf(runtime), 'ask');
   assert.match(askText(runtime), /deletes `python3 -c "import shutil, os; shutil\.rmtree\(os\.path\.expanduser\('~'\)\); print\(\.\.\.`\./, askText(runtime));
+  // the opening is shown inside a code span in the prompt's first sentence: a sentence stop in it ends the sentence early and a backtick breaks the span (T7 review Minor 3)
+  const sentence = asked('python3 -c "import shutil; shutil.rmtree(\'/\'); print(\'done. then more\')"');
+  assert.equal(verdictOf(sentence), 'ask');
+  assert.match(askText(sentence), /^alfred-code guard-catastrophic-rm: this command recursively deletes `python3 -c "import shutil; shutil\.rmtree\('\/'\); print\('done\.\.\.`\.\nRecommended:/, askText(sentence));
+  const ticked = asked('python3 -c "import shutil; shutil.rmtree(\'/\'); print(\'a `b` c\')"');
+  assert.equal(verdictOf(ticked), 'ask');
+  assert.match(askText(ticked), /^alfred-code guard-catastrophic-rm: this command recursively deletes `python3 -c "import shutil; shutil\.rmtree\('\/'\); print\('a 'b' c'\)"`\.\nRecommended:/, askText(ticked));
   const resolved = asked('H=$HOME; rm -rf "$H"');
   assert.equal(verdictOf(resolved), 'ask');
   assert.ok(askText(resolved).includes(`\`${os.homedir()}\``) || askText(resolved).includes('`$H`'), askText(resolved));
