@@ -642,9 +642,12 @@ function resolveVariables(projectRoot, env, which = 'all', dataRoot = undefined)
             const file = path.join(member.root, ...member.dataRoot.split('/'), '.variables');
             const read = readDotenv(file);
             notes.push(...fileNotes(read, `.variables of ${member.rel}`, `${member.rel}/${member.dataRoot}/.secrets`));
-            // A member's mode file (the local file Claude Code reads there) is read once, ahead of its .variables, for the mode keys.
+            // A member's mode file (the local file Claude Code reads there) is read once, ahead of its .variables, for the
+            // mode keys - only when the member owns it. One inside a repository above it (or a linked worktree) reads that
+            // other file, which the member holding it hands on instead.
             const modeAt = modeFile(member.root);
-            const memberModes = settingsEnv(modeAt);
+            const ownsModeFile = pathKey(path.dirname(modeAt)) === pathKey(path.join(member.root, '.claude'));
+            const memberModes = ownsModeFile ? settingsEnv(modeAt) : null;
             for (const key of VARIABLE_KEYS)
             {
                 if (values[key] !== undefined || MEMBER_NEVER.has(key) || skip.has(key)) continue;
