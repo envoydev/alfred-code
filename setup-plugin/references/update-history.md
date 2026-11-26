@@ -1476,3 +1476,20 @@ your home folder would otherwise ask on every guard call, since the secret guard
 
 Nothing to do in an installed project beyond the update. Report that a read past the workspace now asks first and that
 `guard-cross-project-write:read` in `ALFRED_CODE_HOOKS_OFF` turns it off.
+
+## after 3.19.2 - a sub-folder session inherits the modes, and `git commit -F` asks
+
+**A session started in a sub-folder of a project, such as `child/src`, now reads that project's settings and the modes
+its workspace passes down, as a session at the project's top folder does.** Before, it looked for the settings in the
+sub-folder, found none, and ran without the project's variables or an inherited scoring mode. A sub-folder with its own
+install is still its own project. On Windows, a sub-folder's own `.claude/settings.local.json` keeps its place as the
+mode file, since Claude Code reads it there, and the project's own `off` still wins over an inherited `on`.
+
+Two guard changes come with it:
+- `git commit -F <file>` and `git tag -F <file>` read that file, so a file past the workspace asks like any read. `-F -`
+  (standard input) and `-m` text ask nothing. A file attached to the flag (`-F<file>`) is not judged.
+- When Claude tries to call a skill that only you may start, the call is refused without a prompt, since Claude Code
+  would not run it even after a Yes.
+
+Nothing to do in an installed project beyond the update. Report that a sub-folder session now reads its project's
+settings.
