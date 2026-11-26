@@ -1375,15 +1375,18 @@ function firstSentence(text)
     return `${(atWord > 0 ? room.slice(0, atWord) : room).trimEnd()}...`;
 }
 
+const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+
 // The verdict a block writes - pure, never throws. `ask` carries the user's text and, as additionalContext, the model's;
-// `deny` carries today's full reason and no additionalContext.
+// `deny` carries today's full reason and no additionalContext. `opts.updatedInput` (a plain object) rides an ask only:
+// Claude Code runs an approved ask with it, so a Yes keeps the input change the guard writes on an allowed call.
 function blockVerdict(input, reason, opts)
 {
     let text;
     let guard = '';
     try
     {
-        const { env = process.env, guard: named = '' } = opts || {};
+        const { env = process.env, guard: named = '', updatedInput } = opts || {};
         guard = named;
         text = String(reason);
         const output = { hookEventName: 'PreToolUse' };
@@ -1393,7 +1396,8 @@ function blockVerdict(input, reason, opts)
         const spoken = sentence.replace(/[.!?]+$/, '');
         return { decision: 'ask', hookSpecificOutput: { ...output, permissionDecision: 'ask',
             permissionDecisionReason: `${guardLabel(guard)}: ${sentence}\n${ASK_RECOMMENDATION}`,
-            additionalContext: `${ASKED_PREFIX}${spoken}${ASK_CONTEXT_MIDDLE}${text}` } };
+            additionalContext: `${ASKED_PREFIX}${spoken}${ASK_CONTEXT_MIDDLE}${text}`,
+            ...(isPlainObject(updatedInput) ? { updatedInput } : {}) } };
     }
     catch
     {

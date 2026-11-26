@@ -784,7 +784,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     so do the caller and definition shapes - 'who calls', 'call sites of', 'definition of', 'implementations of',
     'subclasses of', 'find the class' - which also take a backticked or capitalised name, a lowercase word being prose;
     audit 2026-10-08). An
-    `Explore` / `Plan` brief gets the untrusted-content sentence appended (`updatedInput`, never a deny). The APPROVAL
+    `Explore` / `Plan` brief gets the untrusted-content sentence appended (`updatedInput`, never a deny). An asked dispatch carries the same `updatedInput` the allowed path writes (`changedInput`, one function for both exits; `askOrBlock` takes it as `opts.updatedInput` and writes it on an ask only), so a Yes runs the call with the sentence and the agents.json model. The APPROVAL
     root is `CLAUDE_PROJECT_DIR`, else the payload's `cwd`, as its ledger reads it, and every block row names its branch
     (`symbol-question`, `diagnoser-pin`, `implementer-unapproved` / `-stale-stamp` / `-ask-timed-out` / `-auto-spent`,
     `generic-while-stamped`). Audit 2026-10-20 H5: a live stamp naming THIS session whose `skill:` dispatches generic seats

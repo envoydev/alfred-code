@@ -327,13 +327,20 @@ test('dispatch guard: each allow exit carries the model', () =>
     }
 });
 
-test('dispatch guard: a block carries nothing', () =>
+test('dispatch guard: an ask carries the model, a deny carries nothing', () =>
 {
     const { at, put } = fixture();
     put('ws/.alfred/agents.json', seatsFile({ 'aspnet-implementer': 'opus' }));
-    const r = dispatch(at('ws'), { subagent_type: 'alfred-code:aspnet-implementer', prompt: 'build task 1' });
-    assert.strictEqual(verdictOf(r), 'ask', 'the unapproved implementer is asked about');
-    assert.strictEqual(JSON.parse(r.stdout).hookSpecificOutput.updatedInput, undefined, 'and the ask carries no model rewrite');
+    const call = { subagent_type: 'alfred-code:aspnet-implementer', prompt: 'build task 1' };
+    const asked = dispatch(at('ws'), call);
+    assert.strictEqual(verdictOf(asked), 'ask', 'the unapproved implementer is asked about');
+    assert.deepStrictEqual(JSON.parse(asked.stdout).hookSpecificOutput.updatedInput, { ...call, model: 'opus' }, 'a Yes runs it on the seat model');
+    const denied = spawnSync(process.execPath, [GUARD], {
+        input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Agent', session_id: 's1', cwd: at('ws'), permission_mode: 'dontAsk', tool_input: call }),
+        encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: at('ws'), ALFRED_CODE_MAXIMUM_RUN_AGENTS: '0' },
+    });
+    assert.strictEqual(verdictOf(denied), 'deny');
+    assert.strictEqual(JSON.parse(denied.stdout).hookSpecificOutput.updatedInput, undefined, 'and a deny carries no rewrite');
 });
 
 test('dispatch guard: the off-list and the minimal profile leave the pin', () =>

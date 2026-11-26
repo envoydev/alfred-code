@@ -187,6 +187,34 @@ test('askOrBlock: writes one JSON object, sets the verdict, returns it', () =>
     assert.strictEqual(blockExitCode(bash({ permission_mode: 'dontAsk' }), 'deny'), 0, 'a Claude deny exits 0');
 });
 
+test('askOrBlock and blockVerdict: updatedInput rides an ask only, and nothing else changes without it', () =>
+{
+    const realWrite = process.stdout.write;
+    const write = (payload, opts) =>
+    {
+        const out = [];
+        process.stdout.write = (chunk) => { out.push(String(chunk)); return true; };
+        try { askOrBlock(payload, REASON, opts); }
+        finally { process.stdout.write = realWrite; }
+        return out.join('');
+    };
+    const changed = { subagent_type: 'Explore', prompt: 'brief\n\nsentence', model: 'haiku' };
+    const withInput = { env: {}, guard: GUARD, updatedInput: changed };
+    const asked = JSON.parse(write(bash(), withInput)).hookSpecificOutput;
+    assert.strictEqual(asked.permissionDecision, 'ask');
+    assert.deepStrictEqual(asked.updatedInput, changed);
+    const denied = JSON.parse(write(bash({ permission_mode: 'dontAsk' }), withInput)).hookSpecificOutput;
+    assert.strictEqual(denied.permissionDecision, 'deny');
+    assert.ok(!Object.hasOwn(denied, 'updatedInput'), 'a deny never carries it');
+    assert.ok(!Object.hasOwn(blockVerdict(bash({ permission_mode: 'dontAsk' }), REASON, withInput).hookSpecificOutput, 'updatedInput'));
+    for (const absent of [{ env: {}, guard: GUARD }, { env: {}, guard: GUARD, updatedInput: null }, { env: {}, guard: GUARD, updatedInput: 'text' }, { env: {}, guard: GUARD, updatedInput: [1] }])
+    {
+        const plain = write(bash(), absent);
+        assert.strictEqual(plain, JSON.stringify({ hookSpecificOutput: blockVerdict(bash(), REASON, { env: {}, guard: GUARD }).hookSpecificOutput }), JSON.stringify(absent));
+        assert.ok(!plain.includes('updatedInput'));
+    }
+});
+
 test('verdictOf: the shapes', () =>
 {
     const ask = JSON.stringify({ hookSpecificOutput: blockVerdict(bash(), REASON, { env: {}, guard: GUARD }).hookSpecificOutput });
