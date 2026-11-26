@@ -133,13 +133,15 @@ function inheritedRecord(root, key, env)
 }
 function autoRunInherited(root, env = process.env)
 {
-    const key = layout.pathKey(root);
+    const checkout = layout.projectRootOf(root).checkout;   // a sub-folder reads the checkout it sits in
+    const key = layout.pathKey(checkout);
     if (inheritedAt.has(key)) return inheritedAt.get(key);
-    const entry = inheritedRecord(root, key, env).modes[AUTO_RUN];
+    const entry = inheritedRecord(checkout, key, env).modes[AUTO_RUN];
     let verdict = null;
     if (entry)
     {
-        const trust = entry.value === '1' ? localTrust(entry.file, (f) => indexMisses(f) ?? localGitStatus(f)) : HELD.off;
+        // The record holds the value as text (the number 1 reads '1'); the own file's bar is the string '1' in the raw file.
+        const trust = autoRunHeld(null, entry.file) || HELD.off;
         verdict = { held: trust === 'unknown' ? HELD.unknown : trust, from: entry.from };
     }
     inheritedAt.set(key, verdict);

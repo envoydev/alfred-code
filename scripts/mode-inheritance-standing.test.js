@@ -72,6 +72,27 @@ test('a root 1 in a linked .claude folder is unvouched', { skip: SKIP_LINK }, ()
     assert.deepStrictEqual(inheritedFor(at), { held: 'unvouched', from: '..' });
 });
 
+test('a root value that is the number 1 is held 0: the own file\'s bar is the string 1', { skip: SKIP_GIT }, () =>
+{
+    const at = rootAndChild(RUN(1));
+    assert.strictEqual(M.autoRunHeld(at('root')), '', 'the same number in an own file is no standing auto-run');
+    assert.deepStrictEqual(inheritedFor(at), { held: '0', from: '..' });
+});
+
+test('a sub-folder of a joined child reads its checkout\'s inherited auto-run', { skip: SKIP_GIT }, () =>
+{
+    const at = rootAndChild(RUN('1'));
+    const sub = path.join(at('root/child'), 'src', 'deep');
+    fs.mkdirSync(sub, { recursive: true });
+    assert.deepStrictEqual(M.autoRunInherited(sub, freshEnv()), { held: 'own', from: '..' }, 'an env never applied');
+    const again = rootAndChild(RUN('1'));
+    const env = freshEnv();
+    layout.applyVariables(again('root/child'), env);
+    const subAgain = path.join(again('root/child'), 'src');
+    fs.mkdirSync(subAgain, { recursive: true });
+    assert.deepStrictEqual(M.autoRunInherited(subAgain, env), { held: 'own', from: '..' }, 'an env applied for the checkout');
+});
+
 test('a root 0 is held 0', () => assert.deepStrictEqual(inheritedFor(rootAndChild(RUN('0'))), { held: '0', from: '..' }));
 
 test('a child\'s own 0 or own 1 is no inheritance', { skip: SKIP_GIT }, () =>
@@ -100,11 +121,12 @@ test('a middle member\'s 0 before the root\'s 1 is held 0, never own', { skip: S
 
 test('an env the loader never ran on resolves from the launch env and is left unchanged', { skip: SKIP_GIT }, () =>
 {
-    const at = rootAndChild(RUN('1'));
+    const at = rootAndChild({ local: { [K('AUTO_RUN')]: '1', [K('SCORING')]: '1' } });
     const env = freshEnv();
     assert.deepStrictEqual(layout.inheritedModes(env), { root: null, modes: {} });
     assert.deepStrictEqual(M.autoRunInherited(at('root/child'), env), { held: 'own', from: '..' });
-    assert.deepStrictEqual(env, freshEnv(), 'the caller\'s env got no winner written');
+    assert.deepStrictEqual(env, freshEnv(), 'the caller\'s env got no winner written (the loader would set the scoring key)');
+    assert.deepStrictEqual(layout.inheritedModes(env), { root: null, modes: {} }, 'and no record either');
 });
 
 test('an env the loader ran for another root is resolved again for this one, on the launch values', { skip: SKIP_GIT }, () =>
@@ -165,6 +187,15 @@ test('autoRunStanding stays false for a tracked, a 0, a child\'s own 0 and the s
     for (const child of cases) assert.strictEqual(inPrelude(child, `out.v = p.autoRunStanding(${JSON.stringify(child)})`).v, false, child);
     const off = rootAndChild(RUN('1'), { local: { [K('WORKSPACE')]: '0' } })('root/child');
     assert.strictEqual(inPrelude(off, `out.v = p.autoRunStanding(${JSON.stringify(off)})`).v, false, 'the workspace switch 0 in the child');
+});
+
+test('autoRunStanding of a sub-folder of the child is true too', { skip: SKIP_GIT }, () =>
+{
+    const at = rootAndChild(RUN('1'));
+    const sub = path.join(at('root/child'), 'src');
+    fs.mkdirSync(sub, { recursive: true });
+    const plain = tree({ 'plain': {} })('plain');
+    assert.strictEqual(inPrelude(plain, `out.v = p.autoRunStanding(${JSON.stringify(sub)})`).v, true);
 });
 
 test('a hook whose payload names another checkout than the prelude applied for reads that checkout\'s record', { skip: SKIP_GIT }, () =>
