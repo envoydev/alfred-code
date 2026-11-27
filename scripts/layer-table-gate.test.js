@@ -401,7 +401,7 @@ test('a result given as content blocks is read the same way', () => {
 
 // validate's own audit battery (--redundant/--missing/--evidence-gaps/--judgment) redirects to a
 // file and prints no `total: N <layer>` footer, so its proof is the rendered table's own state
-// word instead.
+// word instead - and, its result being always empty, an empty result never excuses it (the B2 tests below).
 const audit = (flag) => call('t1', 'Bash', { command: `node "$TMP/repo/scripts/stack-select.js" --${flag} --installed i.json --recs r.json > "$TMP/${flag}.out"` });
 
 test('validate audit flags gate their own ask too - denied with no state word pasted', () => {
@@ -420,35 +420,66 @@ test('the judgment audit passes on its own JUDGMENT-DROP/ADD words, not REDUNDAN
   assert.strictEqual(runPost([audit('judgment'), result('t1', ''), say('```\n 1 | skill x | JUDGMENT-DROP | reason\n```')]).stdout, '');
 });
 
-// B2 (session audit R2, R3): an audit that printed nothing has no table to paste, an ask that names its own rows
-// shows them, and the paste check ends at an earlier ask about something else.
+// B2 (session audit R2, R3): an audit that printed nothing to its result has no table to paste, an ask that names its own
+// rows shows them, and the paste check ends at an earlier ask about something else. A REDIRECTED audit (validate's
+// `> "$TMP/x.out"` battery) always reads back empty, so its empty result proves nothing and it keeps the state-word proof.
 const oneAsk = (question) => ({ questions: [{ question, header: 'Apply', multiSelect: false, options: [{ label: 'Yes (Recommended)', description: 'x' }, { label: 'No', description: 'y' }] }] });
 const PLACEHOLDER = '(Bash completed with no output)';
 const appliedAnswer = (q) => ({ questions: oneAsk(q).questions, answers: { [q]: 'Yes (Recommended)' }, annotations: {} });
+const auditPrinted = (flag) => call('t1', 'Bash', { command: `node "$TMP/repo/scripts/stack-select.js" --${flag} --ignored-in x --installed i.json --recs r.json 2>/dev/null` });
+const redirected = (command) => call('t1', 'Bash', { command });
+const validateAsk = 'Rules: 2 MISSING, 0 REDUNDANT - apply the reconcile?';
 
-test('B2 R2: an empty --redundant output needs no table, so the AGENTS.md apply ask is not voided', () => {
+test('B2 R2: an empty, unredirected --redundant output needs no table, so the AGENTS.md apply ask is not voided', () => {
   const q = 'Apply the AGENTS.md changes?';
   for (const empty of ['', PLACEHOLDER, `  ${PLACEHOLDER}\n`]) {
-    const r = runPost([typed('/alfred-code:validate'), audit('redundant'), result('t1', empty)], appliedAnswer(q), {}, oneAsk(q));
+    const r = runPost([typed('/alfred-code:validate'), auditPrinted('redundant'), result('t1', empty)], appliedAnswer(q), {}, oneAsk(q));
     assert.strictEqual(r.stdout, '', `empty output ${JSON.stringify(empty)}`);
   }
-  assert.strictEqual(run([typed('/alfred-code:validate'), audit('redundant'), result('t1', PLACEHOLDER)], oneAsk(q)).status, 0);
+  assert.strictEqual(run([typed('/alfred-code:validate'), auditPrinted('redundant'), result('t1', PLACEHOLDER)], oneAsk(q)).status, 0);
 });
 
-test('B2 R2: an audit that printed rows is still held to its state word', () => {
+test('B2 R2: an unredirected audit that printed rows is still held to its state word', () => {
   const q = 'Apply the AGENTS.md changes?';
-  const r = runPost([typed('/alfred-code:validate'), audit('redundant'), result('t1', 'redundant: agent wpf-implementer - owned by wpf, not detected')], appliedAnswer(q), {}, oneAsk(q));
+  const r = runPost([typed('/alfred-code:validate'), auditPrinted('redundant'), result('t1', 'redundant: agent wpf-implementer - owned by wpf, not detected')], appliedAnswer(q), {}, oneAsk(q));
   assert.ok(voided(r), r.stdout);
   assert.match(r.out.reason, /redundant audit ran/);
 });
 
-test('B2 R3: an ask that names the rows in its question counts as pasted', () => {
-  const q = 'Rules: 2 MISSING, 0 REDUNDANT - apply the reconcile?';
-  const rows = [typed('/alfred-code:validate'), audit('missing'), result('t1', 'missing: rule alfred-x - needed by baseline')];
-  assert.strictEqual(runPost(rows, appliedAnswer(q), {}, oneAsk(q)).stdout, '');
-  assert.strictEqual(run(rows, oneAsk(q)).status, 0);
-  const other = 'Rules: apply the reconcile?';
-  assert.ok(voided(runPost(rows, appliedAnswer(other), {}, oneAsk(other))), 'a question with no state word is still unpasted');
+test('B2: a redirected audit reads back empty whatever it holds, so its count-only ask with no table pasted is void', () => {
+  const rows = (command, empty) => [typed('/alfred-code:validate'), redirected(command), result('t1', empty)];
+  const cmds = [
+    'node "$TMP/repo/scripts/stack-select.js" --redundant --installed i.json > "$TMP/redundant.out"',
+    'node "$TMP/repo/scripts/stack-select.js" --missing --installed i.json >> "$TMP/missing.out" 2>&1',
+    'node "$TMP/repo/scripts/stack-select.js" --missing --installed i.json 2>&1 | tee "$TMP/missing.out"',
+    'node "$TMP/repo/scripts/stack-select.js" --redundant --installed i.json &> "$TMP/r.out"',
+  ];
+  for (const cmd of cmds) {
+    for (const empty of ['', PLACEHOLDER]) {
+      assert.ok(voided(runPost(rows(cmd, empty), appliedAnswer(validateAsk), {}, oneAsk(validateAsk))), `${cmd} / ${JSON.stringify(empty)}`);
+    }
+  }
+  const pasted = [...rows(cmds[0], PLACEHOLDER), say('```\n 1 | rule x | MISSING | needed by baseline\n```')];
+  assert.strictEqual(runPost(pasted, appliedAnswer(validateAsk), {}, oneAsk(validateAsk)).stdout, '', 'the same with the table pasted passes');
+});
+
+test('B2: stderr-only redirects do not make an audit a redirected one', () => {
+  const q = 'Apply the AGENTS.md changes?';
+  for (const tail of ['2>/dev/null', '2>&1', '2> "$TMP/err.txt"', '']) {
+    const r = runPost([typed('/alfred-code:validate'), redirected(`node "$TMP/repo/scripts/stack-select.js" --redundant --installed i.json ${tail}`), result('t1', PLACEHOLDER)], appliedAnswer(q), {}, oneAsk(q));
+    assert.strictEqual(r.stdout, '', `tail ${JSON.stringify(tail)}`);
+  }
+});
+
+test('B2 R3: an audit ask whose question names the rows counts as pasted; a count alone does not', () => {
+  const rows = [typed('/alfred-code:validate'), auditPrinted('missing'), result('t1', 'missing: rule alfred-x - needed by baseline')];
+  for (const named of ['Rules: 2 MISSING (alfred-x, alfred-y) - apply the reconcile?', 'Add MISSING: rules/alfred-x.md?', 'Rules: MISSING rule alfred-x - add it?']) {
+    assert.strictEqual(runPost(rows, appliedAnswer(named), {}, oneAsk(named)).stdout, '', named);
+    assert.strictEqual(run(rows, oneAsk(named)).status, 0);
+  }
+  for (const counted of [validateAsk, 'Add 3 MISSING?', 'Rules: MISSING: 3 - apply?', 'Rules: apply the reconcile?']) {
+    assert.ok(voided(runPost(rows, appliedAnswer(counted), {}, oneAsk(counted))), `a count is no row: ${counted}`);
+  }
 });
 
 test('B2: an earlier ask that is no layer ask ends the walk back, so the table before it is not judged again', () => {
