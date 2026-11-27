@@ -871,7 +871,7 @@ test('auto-mode asks: an ask about the user\'s whereabouts is denied, never auto
     assert.strictEqual(r.status, 'ask', `denied: ${r.stderr}`);
     assert.match(r.stderr, /name the step in the reply and end the turn, or go on with other work/);
     assert.ok(rows(p, 'us1').some((x) => x.detail && x.detail.branch === 'user-step'), 'the block row names its branch');
-    for (const text of ['Are you back?', 'Should I wait for you?', 'Stay paused until you say go?', 'Hi - are you there? Pick the next stage.'])
+    for (const text of ['Are you back?', 'Should I wait for you?', 'Should I stay paused until you say go?', 'Should we stay paused?', 'Stay paused?', 'Where are you right now?', 'Are you back yet?', 'Hi - are you there? Pick the next stage.'])
         assert.strictEqual(ask(p, 'us1', [q(text, ['Keep going (Recommended)', 'Stop'])]).status, 'ask', text);
     // the wait form does not excuse it
     assert.strictEqual(ask(p, 'us1', [q('waits for you: other people\'s data. Where are you?', ['Hold (Recommended)', 'Go'])]).status, 'ask', 'wait form');
@@ -913,6 +913,11 @@ test('auto-mode asks: a pick in the model\'s voice, or a step word in an unmarke
     assert.deepStrictEqual(answered(ask(p, 'us4', [q('How do we go on?', ['Run the tests (Recommended)', 'I type it myself'])])), { 'How do we go on?': 'Run the tests (Recommended)' }, 'an unmarked user-step option');
     // a word that only starts like one: 'I' and 'You' as a first word of other labels
     pass('Youtube embed first (Recommended)');
+    // the phrases are tied to the user: a question that only shares the words, or a 'You' label with no user step, passes
+    pass('Run it locally (Recommended)', 'Where are you running the tests - local or CI?');
+    pass('Yes (Recommended)', 'Should the watcher stay paused during the migration?');
+    pass('You can pick either (Recommended)');
+    pass('You get the short form (Recommended)');
     pass('Index the files (Recommended)');
     // a pick on a multi-select question carries no single mark to judge
     assert.strictEqual(ask(p, 'us4', [q('Which files?', ['I run a.js', 'b.js'], true)]).status, 0, 'multi-select');

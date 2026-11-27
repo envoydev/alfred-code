@@ -3155,8 +3155,12 @@ function waitsForUser(question)
 // are. A question about their own state or whereabouts ('Where are you?'), or a marked pick that is a step only they can do ('I type
 // /task-solve'), is no choice: the model names the step in its reply and ends the turn, or goes on with other work. The check
 // runs before the auto-answer, so a run under auto-run never answers it. A pick in the model's voice opens with a verb ('Run the
-// tests, then I'll push') and passes. Only the marked label is judged: another option may say what the user does.
-const USER_STATE_RE = /\bwhere (?:are|were) you\b|\bare you (?:back|there|away|around)\b|\bshould I wait for you\b|\bstay(?:ing)? paused\b/i;
+// tests, then I'll push') and passes. Only the marked label is judged: another option may say what the user does. The phrases
+// are tied to the user: 'where are you' ends its sentence ('Where are you running the tests?' is about the tests), and 'stay paused'
+// has the run or the user as subject ('Should the watcher stay paused?' is about the watcher).
+const USER_STATE_TAIL = String.raw`(?:\s+(?:yet|(?:right\s+)?now))?\s*(?:[?!.]|$)`;
+const USER_STATE_RE = new RegExp(String.raw`\bwhere (?:are|were) you${USER_STATE_TAIL}|\bare you (?:back|there|away|around)${USER_STATE_TAIL}`
+  + String.raw`|\bshould I wait for you\b|\b(?:should|shall|must) (?:I|we) (?:stay|remain|keep) paused\b|^\s*stay paused\s*[?!.]*\s*$`, 'i');
 const USER_STEP_VERBS = new Set(['type', 'run', 'do', 'push', 'commit', 'paste', 'send', 'click', 'open', 'start', 'restart', 'decide',
   'choose', 'pick', 'approve', 'fix', 'handle', 'enter', 'write', 'copy', 'log', 'sign', 'say', 'tell', 'merge', 'deploy', 'install',
   'edit', 'review', 'test', 'check']);
@@ -3365,20 +3369,21 @@ const autoStampHere = !!(askStamp && askStamp.live && askStamp.session && /^AUTO
 const walkHere = autoStampHere ? pluginWalk(payload) : '';
 const autoRun = autoStampHere && !walkHere;
 if (walkHere) ledgerRow({ tool: 'AskUserQuestion', mode: 'auto', kind: 'auto-walk-asks', reason: `auto-run answers no ask of /alfred-code:${walkHere} - it goes to the user` });
-// A2b runs first: the deny comes before any auto-answer. A throw inside it fails open, except the denial's own exit.
+// A2b runs first: the deny comes before any auto-answer. A throw while judging fails open; the denial's own exit stays outside the try.
 if (payload.tool_name === 'AskUserQuestion') {
-  let userStepDenied = false;
+  let userStepHit = null;
   try {
     for (const q of (payload.tool_input || {}).questions || []) {
       if (!q) continue;
       const pick = q.multiSelect || !Array.isArray(q.options) ? null : q.options.find((o) => o && /\(Recommended\)/i.test(String(o.label || '')));
-      const hit = userStepAsk({ question: q.question, marked: pick ? pick.label : '' });
-      if (!hit) continue;
-      global.BLOCK_DETAIL = { branch: 'user-step' };
-      userStepDenied = true;
-      blockCall(payload, hit.reason);
+      userStepHit = userStepAsk({ question: q.question, marked: pick ? pick.label : '' });
+      if (userStepHit) break;
     }
-  } catch (e) { if (userStepDenied) throw e; }
+  } catch { userStepHit = null; }
+  if (userStepHit) {
+    global.BLOCK_DETAIL = { branch: 'user-step' };
+    blockCall(payload, userStepHit.reason);
+  }
 }
 if (autoRun) {
   const input = payload.tool_input || {};
