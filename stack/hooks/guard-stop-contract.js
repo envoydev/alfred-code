@@ -355,7 +355,7 @@ const FRESH_RE = new RegExp(`${FRESH_CUE}[^.!?\\n]{0,80}${FRESH_PHRASE}|${FRESH_
 // this parity scope can stop here.' - the user typed 'Do recommendation' 2 minutes later, 6ed392a5).
 // ...and the front-loaded offer 'Next I can drive the wizard in the browser, or pull the attachment first.' (audit 2026-10-20
 // C45, fcafd69c L275: a decision left in prose, answered 18 s later with no ask).
-const PROSE_ASK_RE = /\b(say the word|say go|if you say (?:yes|go|ok|so)\b|just say so|or let me [a-z]|want me to (?:[^.?!\n]|\.(?!\s|$)){0,80}\?|shall i (?:[^.?!\n]|\.(?!\s|$)){0,80}\?|should i (?:[^.?!\n]|\.(?!\s|$)){0,80}\?|(?<!\bnot )(?<!\bnever )your call\b|let me know (when|if|whether)|give me the word|tell me (if|when|whether) you want|tell me which\b|confirm (you want|whether|if|that you)\b|or i can [^.\n]{0,60}\binstead\b|paste (this|that|it) and i'?ll|run this to unblock|i'?ll [^.\n]{0,60}(the moment|as soon as|once) you\b|worth your decision|say ['"‘’“”][^'"‘’“”\n]{1,24}['"‘’“”],? (?:when|whenever|once|if|and i)\b|if you(?:'d)? (?:want|like|prefer)\b[^.\n]{0,100}, i (?:can|could)\b|i (?:can|could) [^.\n]{0,100}\b(?:if|whenever) you(?:'d)? (?:want|like|prefer)\b|i can [^.\n]{0,80}\bnext,? or\b|(?<=(?:^|[.!?\n])\s{0,3})next,? i (?:can|could) [^.\n]{0,160}\bor\b|my recommendation is to\b[^\n]{0,240}\botherwise\b)/i;
+const PROSE_ASK_RE = /\b(say the word|say go|if you say (?:yes|go|ok|so)\b|just say so|or let me [a-z]|want me to (?:[^.?!\n]|\.(?!\s|$)){0,80}\?|shall i (?:[^.?!\n]|\.(?!\s|$)){0,80}\?|should i (?:[^.?!\n]|\.(?!\s|$)){0,80}\?|(?<!\bnot )(?<!\bnever )your call\b|let me know (when|if|whether)|give me the word|tell me (if|when|whether) you want|tell me which\b|(?:tell|let) me (?:know )?(?:if|whether) (?:i|we) (?:should|shall)\b|confirm (you want|whether|if|that you)\b|or i can [^.\n]{0,60}\binstead\b|paste (this|that|it) and i'?ll|run this to unblock|i'?ll [^.\n]{0,60}(the moment|as soon as|once) you\b|worth your decision|say ['"‘’“”][^'"‘’“”\n]{1,24}['"‘’“”],? (?:when|whenever|once|if|and i)\b|if you(?:'d)? (?:want|like|prefer)\b[^.\n]{0,100}, i (?:can|could)\b|i (?:can|could) [^.\n]{0,100}\b(?:if|whenever) you(?:'d)? (?:want|like|prefer)\b|i can [^.\n]{0,80}\bnext,? or\b|(?<=(?:^|[.!?\n])\s{0,3})next,? i (?:can|could) [^.\n]{0,160}\bor\b|my recommendation is to\b[^\n]{0,240}\botherwise\b)/i;
 // A RETROSPECTIVE '(your call)' is a note about a decision the user already took, not an offer of
 // one: 'Requirement recorded: 90% line coverage after exclusions (your call).' was blocked as an
 // ask on a close that held no question at all (measured). The discriminator is narrow on purpose -
@@ -398,7 +398,10 @@ const NEGATED_CONFIRM_RE = /\b(?:couldn['’]?t|can['’]?t|cannot|could not|did
 // Steps the user is to do, closing on 'then tell me', 'let me know when ...' or 'tell me when it is done' (session audit
 // 2026-11-27 B13, S05), are instructions, not a prose ask: the close line is read only as the LAST line of a reply that lists
 // steps (a numbered or bulleted line) before it. A decision, an offer or a 'say go' earlier in the reply still asks.
-const INSTRUCTION_CLOSE_RE = /(?:^|[.!?\n])[ \t]*(?:(?:and )?then,? (?:just )?(?:tell me|let me know)\b|(?:just )?(?:tell me|let me know) (?:when|once|as soon as)\b)[^.\n?]{0,60}[.!]?\s*$/i;
+const INSTRUCTION_DONE_TAIL = String.raw`(?:[ \t]+(?:you(?:'re| are| have|'ve)|it(?:'s| is| has)|that(?:'s| is)|they(?:'re| are|'ve| have)|everything(?:'s| is))(?:[ \t]+(?:all|now))?[ \t]+(?:done|finished|ready|set|in))?`;
+// Only the three closings the audit named: 'then tell me', 'let me know when', 'tell me when it is done' - the phrase alone,
+// or 'when/once/after' with a done-shaped tail. Any other tail ('which one you want', 'if I should push', 'when you want me to') asks.
+const INSTRUCTION_CLOSE_RE = new RegExp(String.raw`(?:^|[.!?\n])[ \t]*(?:(?:and )?then,? (?:just )?(?:tell me|let me know)(?:[ \t]+(?:when|once|after)${INSTRUCTION_DONE_TAIL})?|(?:just )?(?:tell me|let me know)[ \t]+(?:when|once|after|as soon as)${INSTRUCTION_DONE_TAIL})[ \t]*[.!]?\s*$`, 'i');
 const INSTRUCTION_STEP_RE = /^[ \t]*(?:\d+[.)]|[-*])[ \t]+\S/m;
 function userInstructions(text) {
   const at = String(text || '').search(INSTRUCTION_CLOSE_RE);
@@ -562,7 +565,7 @@ const NEVER_ENDS_RE = /\b(?:(?<!\/)dev|dev(?!\/)|serve|server|start|watch|previe
 // than its own `timeout`, or than BACKGROUND_STALE_MS with none (`backgroundStale`): a server nobody listed, or a hung
 // command, then holds only until that limit. FINITE_RE, the old gate, is gone.
 const BACKGROUND_STALE_MS = 60 * 60 * 1000;
-const NEVER_ENDS_EXTRA_RE = /\s-w\b|--watch\w*|\bdocker\s+run\b[^;&|\n]*\s(?:-p|--publish)\b|\bvite\b(?!\s+build)|\bng\s+test\b(?![^;&|]*--watch=false)|\blogs?\s+-f\b|port-forward|\bngrok\b|runserver/;
+const NEVER_ENDS_EXTRA_RE = /\s-w\b|--watch\w*|\bdocker\s+run\b[^;&|\n]*\s(?:-p|--publish)\b|\bvite\b(?!\s+build)|(?<!build-)\bstorybook\b(?!\s+build)|\bjupyter\s+(?:notebook|lab)\b|\bkubectl\s+proxy\b|\bssh\b[^;&|\n]*\s-N\b|\bng\s+test\b(?![^;&|]*--watch=false)|\blogs?\s+-f\b|port-forward|\bngrok\b|runserver/;
 // A CI watch ENDS with the run it watches (`gh run watch`, `gh pr checks --watch`): read as a never-ending watcher, a close
 // waiting on an armed one was blocked while it ran for 9 more minutes (audit 2026-10-10 C15, bba03dad).
 // On any forge it is the concept (forge.js `pipeline.watch`: `gh run watch`, `glab ci status --live`, a CLI nobody

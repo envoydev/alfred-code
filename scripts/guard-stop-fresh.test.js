@@ -394,6 +394,9 @@ test('B11: a background run no list names is live work, and a server or watcher 
   assert.equal(closeOver('b11-hand', bgShell('b11l2', LANES), 'Task 3 is done. Awaiting your approval to push.').status, 2, 'a hand-back still holds');
   for (const command of ['npm run dev', 'vite preview', 'tail -f app.log', 'docker compose up', 'tsc --watch'])
     assert.equal(closeOver(`b11-srv-${command.replace(/\W+/g, '-')}`, bgShell('b11s', command), RUNNING_CLOSE).status, 2, `a server or watcher: ${command}`);
+  for (const command of ['npx storybook dev -p 6006', 'storybook', 'jupyter lab', 'jupyter notebook', 'kubectl proxy', 'ssh -N -L 8080:localhost:80 acme-host'])
+    assert.equal(closeOver(`b11-srv2-${command.replace(/\W+/g, '-')}`, bgShell('b11v', command), RUNNING_CLOSE).status, 2, `a server nobody listed: ${command}`);
+  assert.equal(closeOver('b11-sb-build', bgShell('b11b', 'npx storybook build'), RUNNING_CLOSE).status, 0, 'a storybook build ends');
   assert.equal(closeOver('b11-up-d', bgShell('b11u', 'docker compose up -d --wait'), RUNNING_CLOSE).status, 0, 'up with -d exits when the services are up: live work');
 });
 test('B11: a background shell past its timeout, or 60 min with none, counts no more', () => {

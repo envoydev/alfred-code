@@ -1206,4 +1206,9 @@ test("B13: steps for the user that end on 'then tell me' are instructions, not a
   assert.strictEqual(close(steps + 'Tell me if you want me to go on.').status, 2, 'an offer still holds');
   assert.strictEqual(close(steps + 'Say go and I run it. Then tell me.').status, 2, 'an ask before the closing line still holds');
   assert.strictEqual(close('Check the output above, then tell me. From there I drive task 4.').status, 2, 'no steps and not the last line: a bare hand-back still holds');
+  for (const text of ['Two routes:\n\n- Push now\n- Hold\n\nThen tell me which one you want.', '1. Open it.\n\nThen tell me if I should push.', '1. a\n\nTell me when you want me to push it.',
+    '1. a\n\nThen let me know whether to push.', '1. a\n\nLet me know when you want it pushed.'])
+    assert.strictEqual(close(text).status, 2, `a decision put to the user after steps still holds: ${text.split('\n').pop()}`);
+  assert.strictEqual(close(steps + 'Then let me know when it is done.').status, 0, 'the done-shaped tail');
+  assert.strictEqual(close(steps + 'Then tell me when you are all set.').status, 0, 'the done-shaped tail, set');
 });

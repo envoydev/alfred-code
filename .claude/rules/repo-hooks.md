@@ -1114,7 +1114,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     loop's mode and stage-close asks worded as statements included), or a 'done, next step pending' close - unless every pending item the close states is a WAIT ('still running',
     'waiting on', 'awaiting') on work this session launched that is still out and ENDS (an async Agent, one a SendMessage
     resumed, a Monitor, a background shell that is no server or watcher - B11, session audit 2026-11-27: any background command counts, `python3 tools/lanes.py run x > log`
-    included, until it is older than its own `timeout` or `BACKGROUND_STALE_MS` (60 min) with none; re-verify 2 R2-B1's list of work that finishes (`FINITE_RE`) is gone; read from the
+    included, until it is older than its own `timeout` or `BACKGROUND_STALE_MS` (60 min) with none; a `background_tasks` registry shell has no age bound (the registry carries no start time), so a hung one holds until the registry drops it; re-verify 2 R2-B1's list of work that finishes (`FINITE_RE`) is gone; read from the
     transcript's newest 8MB, 2.1.6 H4 - and before it, at Stop, the payload's own `background_tasks` registry when it
     carries one: a running subagent, workflow, teammate, cloud session, MCP task or monitor, or a shell that is no server, is live work,
     and an empty registry outranks the lagging transcript, audit 2026-10-08; when
@@ -1201,7 +1201,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     the first that fires on a close the base test held writes one `mode: probe`, `kind: done-close-exempt` row naming it -
     the rate a change to one is measured on (C03 had no row). `status-question` (usage audit 2026-11-03 U10, 629719b3):
     the newest typed prompt is a status or time question ('How much time is left?', 'Any ETA?') and the Stop registry
-    holds live work this session launched - the answer they asked for. Any typed question (a wh-word opener, or '?' after is/are/do/does/did/have/has - never 'can/could/would/will you', 'please' or 'do it') is exempt too, `typed-question` (B12, 2026-11-27), unless the reply hands a decision over ('up to you', 'your call'); a close of numbered or bulleted steps for the user that ends on 'then tell me' or 'let me know when' is instructions, no prose ask (B13). The
+    holds live work this session launched - the answer they asked for. Any typed question (a wh-word opener, or '?' after is/are/do/does/did/have/has - never 'can/could/would/will you', 'please' or 'do it') is exempt too, `typed-question` (B12, 2026-11-27), unless the reply hands a decision over ('up to you', 'your call'); a close of numbered or bulleted steps for the user that ends on exactly 'then tell me', 'let me know when' or 'tell me when it is done' (a done-shaped tail, never 'which one', 'if I should' or 'when you want') is instructions, no prose ask (B13). The
     audit's second U10 close (68541f68: the user picked the login route, the close told them how) already passes through
     the answered-ask exemption and is pinned in `guard-stop-closes.test.js`.
     THE RETUNE (3.7.1; the user's ruling of 2026-11-03: hold the judge, keep the regex, cover more): a labelled corpus of
