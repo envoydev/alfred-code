@@ -3205,7 +3205,7 @@ const AUTO_DEFER_ACT = String.raw`(?:push(?:es|ed|ing)?|merg(?:e|es|ed|ing)|depl
 // does nothing outward, so its question and the act it names are not read as the act (sessions f2de8d99 and eb8ad61b,
 // 2026-11-25..27: 36 'Hold' picks waited for an away user, one for 7.5 hours; session audit 2026-11-27 B14, S01: a hold
 // with its act inside a deferral waited too). `holdLabel` says it: the label opens with a hold word, and once each clause
-// holding 'later', 'when', 'once', 'after' or 'until' is cut, nothing outward is left. A clause opening with 'then' is
+// holding 'later', 'when', 'once', 'after' or 'until' is cut (from that word onward; see `holdLabel`), nothing outward is left. A clause opening with 'then' is
 // the next act, never a deferral ('Hold, then push', 'Hold - push later, then open the PR'). Its description still waits
 // on a forward act ('then push develop', 'push once CI is green').
 const AUTO_HOLD_WORD = String.raw`(?:hold|skip|defer|don'?t|do\s+not|not\s+now|leave|postpone|park|later|keep\s+holding|stop\s+here)`;
@@ -3299,12 +3299,22 @@ function actsOnQuestion(label)
 {
     return bareConfirm(label) || PRONOUN_ACT_RE.test(String(label || '').replace(MARK_TAIL_RE, ''));
 }
+// A deferral cuts from its word onward ('push after CI passes' -> 'push'), so an act BEFORE it stays the pick's own ('Skip the tests
+// and publish after CI passes' publishes). When the hold word stands alone in its clause ('Hold', 'Hold the push', 'Hold both for
+// now'), a later clause with a deferral is the held act and is cut whole ('Hold, push after CI passes', 'Hold - publish when rooms
+// are empty'). A clause opening with 'then' is the next act and is kept.
+const HOLD_ALONE_RE = /^(?:(?:it|them|both|all)\s*)?(?:(?:for\s+)?now|here)?$/i;
+const cutAtDeferral = (text) => { const at = text.search(AUTO_DEFERRAL_RE); return at < 0 ? text : text.slice(0, at); };
 function holdLabel(label)
 {
     const plain = String(label || '').replace(MARK_TAIL_RE, '');
     if (!AUTO_HOLD_OPEN_RE.test(plain)) return false;
-    const kept = plain.split(AUTO_CLAUSE_SPLIT_RE).filter((clause) => AUTO_NEXT_ACT_RE.test(clause) || !AUTO_DEFERRAL_RE.test(clause)).join(', ');
-    const rest = kept.replace(AUTO_HOLD_OPEN_RE, ' ');
+    const [first, ...later] = plain.split(AUTO_CLAUSE_SPLIT_RE);
+    const heldBy = cutAtDeferral(first.replace(AUTO_HOLD_OPEN_RE, ' '));
+    const holdAlone = HOLD_ALONE_RE.test(heldBy.trim());
+    const kept = later.filter((clause) => !(holdAlone && !AUTO_NEXT_ACT_RE.test(clause) && AUTO_DEFERRAL_RE.test(clause)))
+        .map((clause) => (AUTO_NEXT_ACT_RE.test(clause) ? clause : cutAtDeferral(clause)));
+    const rest = [heldBy, ...kept].join(', ');
     return !AUTO_OUTWARD_RE.test(rest) && !AUTO_FORWARD_ACT_RE.test(rest);
 }
 // A GRADE UNDER ITS PASS LEVEL waits (B10, T12): the `plan-approval` rule says a plan, spec or design under the pass score waits for

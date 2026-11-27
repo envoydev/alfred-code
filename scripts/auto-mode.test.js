@@ -797,6 +797,7 @@ test('auto-mode asks: an outward pick, or a bare confirm of an outward question,
     for (const [question, label] of [['Ready. Next?', 'Push now (Recommended)'], ['Push the branch?', 'Yes (Recommended)'],
         ['Push the branch?', 'Continue (Recommended)'], ['Push the branch?', 'Go ahead (Recommended)'], ['Push the branch?', 'Yes, go ahead (Recommended)'],
         ['Publish the package?', 'Proceed (Recommended)'], ['Merge the PR?', 'Do it (Recommended)'], ['Deploy to staging?', 'Sure (Recommended)'],
+        ['Email the client?', 'Send it (Recommended)'],
         ['Ready. Next?', 'Hold, then push (Recommended)'], ['Ready. Next?', 'Skip the tests and publish (Recommended)']])
         assert.strictEqual(answered(ask(p, 'b14b', [q(question, [label, 'Not now'])])), null, `waits: ${question} ${label}`);
     const described = q('Ready. Next?', ['Add it (Recommended)', 'Not now']);
@@ -814,7 +815,9 @@ test('auto-mode asks: a hold label is answered when its act sits inside a deferr
         assert.deepStrictEqual(answered(ask(p, 'b14c', [q(question, [label, 'Publish now'])])), { [question]: label }, label);
     // a hold that goes on to an act outside its deferral still waits
     for (const label of ['Hold - push later, then open the PR (Recommended)', 'Hold, then push (Recommended)', 'Hold - push when green, then merge (Recommended)',
-        'Skip the push, publish to npm (Recommended)', 'Hold, publish to npm (Recommended)'])
+        'Skip the push, publish to npm (Recommended)', 'Hold, publish to npm (Recommended)',
+        // review round 2: with no separator the act and its deferral share the hold word's clause - the act is still the pick's own
+        'Skip the tests and publish after CI passes (Recommended)', 'Skip the review and push when green (Recommended)', 'Do not wait, merge once green (Recommended)'])
         assert.strictEqual(answered(ask(p, 'b14c', [q(question, [label, 'Publish now'])])), null, `waits: ${label}`);
 });
 
