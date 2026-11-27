@@ -56,16 +56,16 @@ const answered = (result) => { try { const out = JSON.parse(result.stdout).hookS
 const pick = (question, label, description, other = 'Not now') => ({ question, header: 'H', multiSelect: false,
     options: [{ label, description }, { label: other, description: 'd' }] });
 
-// Item 0 (B14): a description that names the outward act as held, deferred or the user's own does not make the ask wait.
+// Item 0 (B14): a description that says the outward act is held ('waits', 'stays held', 'stays your word', 'asks you later', 'for you
+// to send') does not make the ask wait. Nothing else is read as held.
 test('auto-wave: a held outward act in the picked option\'s description is answered', () =>
 {
     const p = project();
     autoStamp(p, 'h1');
     const question = 'Which row next?';
     for (const description of ['draft the request for you to send', 'the commit and the publish still wait for your word', 'publish and push stay held',
-        'the publish waits for your word', 'the push gate asks you later', 'CI stays red until the next push', 'merge waits for you', 'pushes nothing', 'publishes nothing', 'sends nothing',
-        'Read the log; then one publish ask for both changes, with rooms empty', 'I edit the config and test it; publishing from the old network then needs the value switched back',
-        'Nothing goes live now; tell me when rooms are free, then I publish'])
+        'the publish waits for your word', 'the publish stays your word', 'the push gate asks you later', 'the push asks you first', 'merge waits for you',
+        'pushes nothing', 'publishes nothing', 'sends nothing', 'Serial build here; the 17:05 tasks park until their start, the publish waits for your word'])
         assert.deepStrictEqual(answered(ask(p, 'h1', [pick(question, 'Go on (Recommended)', description)])), { [question]: 'Go on (Recommended)' }, description);
 });
 
@@ -75,7 +75,14 @@ test('auto-wave: an outward act in a description that is not held still waits', 
     autoStamp(p, 'h2');
     const question = 'Which row next?';
     for (const description of ['pushes to origin', 'publish now, the push waits for your word', 'Build, test on a lane, publish (your OK asked first), then close',
-        'After the tests pass, I push develop', 'Run the tests, then push develop and merge to main', 'push once CI is green', 'let me push the branch', 'the push waits, then merge it'])
+        'After the tests pass, I push develop', 'Run the tests, then push develop and merge to main', 'push once CI is green', 'let me push the branch', 'the push waits, then merge it',
+        // round 2: a deferral, a 'then needs', a 'tell me' and a token ask leave the act the pick's own
+        'Once CI is green I push develop', 'When the tests pass I push develop and merge to main', 'Run the tests until they pass and then push',
+        'Fix the lint, wait until CI is green and publish 2.1.0', 'Build now; later push the tag', 'pushes nothing until CI is green and then pushes',
+        'pushes and then needs a restart', 'publishes then needs a restart', 'deploys to staging and then needs a smoke test',
+        'Tell me when you are back - meanwhile I push the branch', 'Let me know once you have read it - I publish 2.1.0 now', 'pushes nothing but the tag',
+        'the push asks you for the token', 'CI stays red until the next push', 'pushes nothing, then publishes', 'pushes nothing except the tag',
+        'Read the log; then one publish ask for both changes, with rooms empty', 'publishing from the old network then needs the value switched back'])
         assert.strictEqual(answered(ask(p, 'h2', [pick(question, 'Go on (Recommended)', description)])), null, description);
 });
 

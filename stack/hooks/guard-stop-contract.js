@@ -3381,8 +3381,9 @@ const AUTO_FORWARD_ACT_RE = new RegExp(String.raw`\b(?:then|and\s+then|after\s+t
 // A pick's own scope statement ('nothing is pushed', 'it is not merged') says what it leaves undone; in the question the
 // same words describe a state the pick may act on ('not pushed yet. Do it now?'), so only 'no' / 'never' / 'without'
 // negate an act there (review 2026-11-27).
-// Its tail is the verb first: 'pushes nothing', 'publishes nothing', 'sends nothing'.
-const AUTO_PICK_SCOPE_RE = /\b(?:not|nothing(?:\s+(?:is|gets|was))?)\s+(?:yet\s+|been\s+)?(?:push|merg|deploy|publish|releas|ship)\w*|\b(?:push|merg|deploy|publish|releas|ship|send)\w*\s+nothing\b/gi;
+// Its tail is the verb first - 'pushes nothing', 'publishes nothing', 'sends nothing' - and counts only when the clause ends right
+// after 'nothing': 'pushes nothing but the tag', 'pushes nothing until CI is green and then pushes' still push.
+const AUTO_PICK_SCOPE_RE = /\b(?:not|nothing(?:\s+(?:is|gets|was))?)\s+(?:yet\s+|been\s+)?(?:push|merg|deploy|publish|releas|ship)\w*|\b(?:push|merg|deploy|publish|releas|ship|send)\w*\s+nothing(?=\s*(?:$|[.;)]|\s-\s))/gi;
 const AUTO_SERIES_ACTS = String.raw`(?<!\b(?:no|not|without)\s+)\boutward acts?\b`;
 const AUTO_SERIES_RE = new RegExp(AUTO_SERIES_ACTS, 'i');
 const AUTO_OUTWARD_RE = new RegExp([
@@ -3470,26 +3471,19 @@ function actsOnQuestion(label)
 // are empty'). A clause opening with 'then' is the next act and is kept.
 const HOLD_ALONE_RE = /^(?:(?:it|them|both|all)\s*)?(?:(?:for\s+)?now|here)?$/i;
 const cutAtDeferral = (text) => { const at = text.search(AUTO_DEFERRAL_RE); return at < 0 ? text : text.slice(0, at); };
-// A pick's DESCRIPTION may say the outward act is held (session audit 2026-11-27 B14, replayed over session eb8ad61b: 7 asks whose
-// pick said 'the publish stays your word' waited for an away user). A held clause is cut before the description is read: an act
-// that waits, stays held, stays the user's word or asks them later ('the push gate asks you later'); 'for you to <act>'; a
-// 'publish ask', which is the ask and not the publish; an act that 'then needs' something else first; and a 'tell me when ...'
-// sentence, which hands the go-ahead to the user. What is left is cut at each deferral, clause by clause ('CI stays red until the
-// next push'). An act outside such a clause stays the pick's ('publish now, the push waits for your word' publishes).
+// A pick's DESCRIPTION may say the outward act is held (session audit 2026-11-27 B14, replayed over session eb8ad61b: 5 asks whose
+// pick said 'the publish stays your word' waited for an away user). Only two held shapes are cut, and only inside one clause: an
+// outward act word DIRECTLY followed by 'waits', 'stays held', 'is' or 'stays your word', or 'asks you later' / 'asks you first'
+// ('the push gate asks you later'), and 'for you to <act>'. Nothing else is read as held: a deferral ('once CI is green I push'),
+// a 'then needs', a 'tell me when ...' and 'asks you for the token' leave the act the pick's own (wave T16 round 2).
 const AUTO_ACT_WORD = String.raw`\b${AUTO_DEFER_ACT}\b`;
-const AUTO_ACT_SERIES = String.raw`${AUTO_ACT_WORD}(?:\s*(?:,|and|or)\s*(?:the\s+)?${AUTO_ACT_WORD})*`;
-const AUTO_HELD_TAIL = String.raw`(?:\s+(?:gate|step|half|part))?\s+(?:still\s+)?(?:waits?\b|stays?\s+(?:held|your\s+word|with\s+you|yours?)\b|asks?\s+you\b(?:\s+later\b)?)`;
+const AUTO_ACT_SERIES = String.raw`${AUTO_ACT_WORD}(?:\s+(?:and|or)\s+(?:the\s+)?${AUTO_ACT_WORD})*`;
+const AUTO_HELD_TAIL = String.raw`(?:\s+(?:gate|step|half|part))?\s+(?:still\s+)?(?:waits?\b|stays?\s+held\b|(?:is|stays?)\s+your\s+word\b|asks?\s+you\s+(?:later|first)\b)`;
 const AUTO_HELD_CLAUSE_RE = new RegExp([
   String.raw`${AUTO_ACT_SERIES}${AUTO_HELD_TAIL}`,
   String.raw`\bfor\s+you\s+to\s+${AUTO_ACT_WORD}`,
-  String.raw`${AUTO_ACT_WORD}\s+ask\b`,
-  String.raw`${AUTO_ACT_WORD}[^.;,()\n]{0,40}\bthen\s+needs\b`,
-  String.raw`\b(?:(?:tell|ping)\s+me|let\s+me\s+know)\s+(?:when|once|after|as\s+soon\s+as)\b[^.;\n]*`,
 ].join('|'), 'gi');
-const AUTO_DESCRIPTION_CLAUSE_RE = /(\s+-\s+|[,;:.!?\n])/;
 const withoutHeldClauses = (description) => String(description || '').replace(AUTO_HELD_CLAUSE_RE, ' ');
-const cutDescriptionDeferrals = (description) => withoutHeldClauses(description).split(AUTO_DESCRIPTION_CLAUSE_RE)
-    .map((part, at) => (at % 2 ? part : cutAtDeferral(part))).join('');
 function holdLabel(label)
 {
     const plain = String(label || '').replace(MARK_TAIL_RE, '');
@@ -3542,7 +3536,7 @@ function autoAnswers(questions, why = {}) {
       ? q.options.find((o) => o && typeof o.label === 'string' && o !== marked[0] && !AUTO_FRESH_RE.test(o.label)) : marked[0];
     if (!pick) { why.text = 'no option left after the fresh-session hand-off'; return null; }
     const holds = holdLabel(pick.label) && !AUTO_FORWARD_ACT_RE.test(withoutHeldClauses(pick.description));
-    const own = `${pick.label} ${cutDescriptionDeferrals(pick.description)}`.replace(AUTO_PICK_SCOPE_RE, ' ');
+    const own = `${pick.label} ${withoutHeldClauses(pick.description)}`.replace(AUTO_PICK_SCOPE_RE, ' ');
     if (!holds && outwardAsk(q.question, own, pick.label)) { why.text = 'an outward pick'; return null; }
     if (autoBilled(q.question, pick)) { why.text = 'a billed run'; return null; }
     // an ask the English list cannot read waits for the user: a miss could push or post for them, a wait costs one click
