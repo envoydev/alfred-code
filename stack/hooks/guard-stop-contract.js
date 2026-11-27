@@ -3577,6 +3577,7 @@ if (payload.tool_name === 'AskUserQuestion') {
     blockCall(payload, userStepHit.reason);
   }
 }
+let autoAskWaits = false;   // set where an auto-run ask waits for the user: the notes block below tells the model the answer is theirs
 if (autoRun) {
   const input = payload.tool_input || {};
   const waited = {};
@@ -3610,6 +3611,7 @@ if (autoRun) {
     o && /\(Recommended\)/i.test(String(o.label || '')) && AUTO_FILING_RE.test(`${q.question} ${o.label} ${o.description || ''}`.replace(AUTO_TICKET_KEY_RE, 'ticket'))));
   ledgerRow({ tool: 'AskUserQuestion', mode: 'auto', kind: 'auto-ask-waits', reason: `auto-mode: the ask waits for the user - ${redactShapes(waited.text || 'no reason recorded')}`,
     ...(filing ? { detail: { clause: 'tracker-filing' } } : {}) });
+  autoAskWaits = true;
 }
 // THE ask-fixed ROW IS SETTLED LATER (audit 2026-10-20, the hooks track's minor list): PreToolUse hooks run in parallel, so
 // a sibling gate (guard-layer-table.js) can deny the very call this hook fixed, and the row then counted a fix the user
@@ -3684,6 +3686,8 @@ if (payload.tool_name === 'AskUserQuestion') { try { reAskDeny(); } catch (e) { 
 if (payload.tool_name === 'AskUserQuestion') {
   const notes = [];
   let askFixed = null;
+  // the user's answer to a waited ask is theirs: the model must not log it as an `auto:` pick (second-pass audit C4, N03)
+  if (autoAskWaits) notes.push('This ask waits for the user. Their answer is their own: never report it as an auto-run pick.');
   // Set right before the denial's exit inside the try below. A real process never returns from process.exit, but a
   // runner whose exit throws (shell-guards.js runGuard, the suites' in-process runner, scripts/hook-inprocess.js)
   // would have the fail-open catch swallow it and run the hook on - so the catch lets that throw through.
