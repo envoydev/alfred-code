@@ -61,10 +61,10 @@ are in `SKILL.md`, and step 4's per-plan APPROVED stamp is under 'Agents-mode di
   as attended, so the ask waits for a user who is away (usage audit 2026-11-03: deleted first, a close ask sat 3.8 hours).
 - **Under auto-run an unpushed commit is a `Leftovers:` line, never an ask** - the hook leaves an ask naming a push to
   the user, and in the same AskUserQuestion call it would hold the commit question too (audit 2026-10-14 SKF-03).
-- **Under AUTO nobody is at the terminal** (audit 2026-10-10, sessions c6142301 and 9a4ef375: an overnight run
+- **Under AUTO the run has no person to ask** (audit 2026-10-10, sessions c6142301 and 9a4ef375: an overnight run
   asked for a fresh session nobody could take, and a waived close printed none of its fields). So the fresh-session
   offer and the post-compaction hold are logged, not asked - the hooks read a live AUTO stamp as unattended - and the
-  fresh-session option is never taken, since nobody is there to paste the resume block. Every stop still prints its
+  fresh-session option is never taken, since no person is there to paste the resume block. Every stop still prints its
   `Result:` / `Progress:` / `Leftovers:` lines, and the close its receipts: they are the user's first sight of the run.
 - **The fresh-session numbers are this stop's.** The stop-contract hook injects the carry and the cold floor at each
   stop; a figure injected at an earlier stop is stale (e6a68237 quoted a 74-minute-old 192k while the request carried

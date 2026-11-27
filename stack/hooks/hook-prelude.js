@@ -435,7 +435,7 @@ const PROTECTIVE = new Set(['guard-catastrophic-rm', 'guard-secret-value', 'guar
 // The hooks that answer a Cursor payload in Cursor's own shape, so GATE 6 lets them through (the rule loader, workspace stage 4a).
 const CURSOR_RUNS = new Set(['rules-session']);
 
-// UNATTENDED - nobody is at the terminal, so a Stop block or an offer reaches no person: it only buys
+// UNATTENDED - no person can answer (print mode, or auto-run once the user is away), so a Stop block or an offer reaches no person: it only buys
 // the model another turn (pilot 2, 2026-09-27: 8 of 12 print-mode cells ended on 'docs ok', nine
 // em-dash blocks re-sent finished answers). Not a gate every hook runs - the hooks that ASK call it at
 // the ask; a denial that protects something never does. True on ALFRED_CODE_UNATTENDED=1 (exactly

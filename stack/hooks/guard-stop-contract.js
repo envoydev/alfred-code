@@ -1906,6 +1906,18 @@ const AUTO_CONTINUE_CAP = 50;
 // (`Result:` ... `Leftovers:`). Each label opens its own line, so a progress note's inline 'Done: stage 2' is no close.
 const RUN_CLOSE_PAIRS = Object.freeze([['Done', 'Left for you'], ['Result', 'Leftovers']]);
 const closeLabel = (name) => new RegExp(`(?:^|\\n)\\s*(?:[-*+]\\s*)?\\**${name}\\**\\s*:`, 'i');
+// A TYPED STOP ENDS THE RUN (session audit 2026-11-27, A2d; S03 'Stay paused': the user typed 'stop everything until I ask' and
+// the run held every Stop and answered every ask after it). A prompt aimed at the run itself ends it as a run close does: the
+// whole prompt is a stop word, or it holds a run-directed phrase. A stop word aimed at something else ('stop the dev server',
+// 'add a pause button') is no stop, and a negation before the verb ('do not stop everything') never is.
+const STOP_WORD_RE = /^\s*(?:please\s+)?(?:stop|pause|wait|halt)\s*[.!]*\s*$/i;
+const STOP_NEGATED_RE = /\b(?:don'?t|do not|never|not|no need to|without)\s+(?:\w+\s+)?(?:stop|pause|halt)\b/i;
+const STOP_RUN_RE = /\b(?:stop|pause|halt)\s+everything\b|\b(?:stop|pause|halt|end|cancel)\s+(?:the|this)\s+run\b|\bstop\s+auto[- ]?run\b|\b(?:stop|pause|halt|wait|hold(?:\s+off)?)\b[^.?!\n]{0,24}?\buntil\s+I\s+(?:ask|say|tell|type)\b/i;
+function stopsRun(prompt) {
+  const text = String(prompt || '').replace(/(`{3,}|~{3,})[\s\S]*?(?:\1|$)/g, ' ');
+  if (STOP_NEGATED_RE.test(text)) return false;
+  return STOP_WORD_RE.test(text) || STOP_RUN_RE.test(text);
+}
 // A fenced span is payload (a quoted close template), and a solve-task stop prints its fields at every stop, so a
 // `Progress:` short of its total is a stop mid-run, never the close (review 2026-11-27, findings 1 and 3).
 function closesRun(text) {
@@ -1925,6 +1937,17 @@ function endRunOnClose(input, text) {
   if (fs.existsSync(marker)) return false;
   ledgerRow({ tool: '', mode: 'auto', kind: 'auto-run-closed', detail: { marker },
     reason: 'auto-run: the run printed its close - the hook removed its marker; auto-run stays on until /alfred-code:mode:auto-run off' });
+  return true;
+}
+// Removes this session's run marker when the user's newest typed prompt stops the run (stopsRun); true once the marker is gone.
+// The stamp and the saved auto_run switch stay: only the user's mode command changes them. A typed /task-solve later is the
+// newest typed prompt, so the run it starts is held again.
+function endRunOnTypedStop(input, marker) {
+  if (input.agent_id || !marker || !stopsRun(newestTypedPrompt())) return false;
+  try { fs.rmSync(marker, { force: true }); } catch { /* a marker that will not go keeps the hold and its cap */ }
+  if (fs.existsSync(marker)) return false;
+  ledgerRow({ tool: '', mode: 'auto', kind: 'auto-run-stopped', detail: { marker },
+    reason: 'auto-run: the user typed a stop - the hook removed the run marker; auto-run stays on until /alfred-code:mode:auto-run off' });
   return true;
 }
 function countAutoContinue(session, markerMtimeMs) {
@@ -2780,7 +2803,7 @@ if (payload.hook_event_name === 'Stop') {
     if (!fs.existsSync(marker)) {
       try { fs.writeFileSync(marker, new Date().toISOString()); } catch { /* a lost marker logs the exposure twice at most */ }
       ledgerRow({ tool: '', mode: 'unattended', kind: 'rotate-ask',
-        reason: `skip: a credential entered this session (${exposure.route === 'close' ? 'named for rotation in the close' : 'a shape the model was sent'}) and nobody is at the terminal - logged, not held` });
+        reason: `skip: a credential entered this session (${exposure.route === 'close' ? 'named for rotation in the close' : 'a shape the model was sent'}) and no person can answer here (print mode or auto-run) - logged, not held` });
     }
   } else if (exposure) {
     // Which of the two routes found the credential, in the ledger row - they are tuned separately.
@@ -2819,7 +2842,7 @@ if (payload.hook_event_name === 'Stop') {
   // AUTO-RUN (stack-modes spec section 2, 2026-10-27; auto-mode, the user's ruling of 2026-10-14): the session's AUTO stamp
   // (guard-fresh-session-start.js, a `session:` line naming this session) is the MODE, and the run marker
   // `<data root>/state/sessions/AUTO-RUN-<session>` is the RUN in it - open from a typed family command until the run's
-  // close, which this hook reads to remove it (endRunOnClose). Until then nobody is at the terminal to say 'go on', and a turn that ends between steps idles the run
+  // close, which this hook reads to remove it (endRunOnClose), or a typed stop (endRunOnTypedStop). Until then a turn that ends between steps idles the run
   // until a person comes back, so a Stop under both is sent back to the run. Between runs the mode answers asks and holds
   // nothing. A torn or garbage marker still counts (spec, Error handling). The Stop chain bounds a cycle: once held, the
   // next Stop passes unless a tool call ran in between (hook-prelude.js stopHeldThisCycle, workSince). A hand-written AUTO
@@ -2832,6 +2855,7 @@ if (payload.hook_event_name === 'Stop') {
   let markerStat = null;
   try { markerStat = autoMarker ? fs.statSync(autoMarker) : null; } catch { markerStat = null; }
   if (markerStat && endRunOnClose(payload, prose)) process.exit(0);
+  if (markerStat && endRunOnTypedStop(payload, autoMarker)) process.exit(0);
   if (markerStat) {
     // A run waiting on work it launched itself is not idle: that work's completion notice re-invokes the session, so
     // nobody needs to send it back. Held anyway, every such wait cost one full-context turn that only restated the
@@ -2850,8 +2874,8 @@ if (payload.hook_event_name === 'Stop') {
       process.exit(0);
     }
     blockDetail('auto-continue', autoStamp.first.slice(0, 120));
-    process.stderr.write(`auto-run is on and its run is not closed (${autoMarker} stands). Nobody is at the terminal to\n`
-      + 'say go on: carry on with the run\'s next step now, taking each stop\'s (Recommended) option. If the run is finished,\n'
+    process.stderr.write(`auto-run is on and its run is not closed (${autoMarker} stands). This is a note to the model,\n`
+      + 'not a question to the user: go on with the run\'s next step now, taking each stop\'s (Recommended) option, or close the run. If the run is finished,\n'
       + `print its close with its \`Done:\` and \`Left for you:\` lines (or \`Result:\` and \`Leftovers:\`) - the hook then removes ${autoMarker}, which ends this run; never delete it yourself and never ask the user to; ${(() => { try { return require('./hook-prelude.js').autoLasts(process.env.CLAUDE_PROJECT_DIR || payload.cwd); } catch { return 'auto-run stays on for the session until'; } })()}\n`
       + '/alfred-code:mode:auto-run off. If it waits on work this session started, end the turn with one line saying so; if the next\n'
       + 'step needs the user - an ask with no Recommended option, or an outward act (push, publish, post, send) they have not approved, whether its ask is open or was answered in words - put that ask once now (for a series, one ask covering the rest of it) and end the turn on it; never restate it in prose.');
@@ -2863,7 +2887,7 @@ if (payload.hook_event_name === 'Stop') {
   if (unattended(payload)) {
     if (proseAsk(tail) || doneClose || endsOnQuestion) {
       ledgerRow({ tool: '', mode: 'unattended', kind: proseAsk(tail) ? 'prose-ask' : doneClose ? 'done-close' : 'ends-on-question',
-        reason: 'skip: nobody is at the terminal - logged, not held' });
+        reason: 'skip: auto-run is on, or this is a print-mode run - no person is asked, logged, not held' });
     }
     process.exit(0);
   }
@@ -3128,7 +3152,7 @@ function blockStateFile() {
 // The stale-scope note's remote half (read by freshStateReadThisTurn, so declared before the branch runs).
 const REMOTE_STATE_RE = /\b(?:merged?|merging|pull request|PRs?|remote|upstream|deploy(?:ed|ment)?|pipeline|CI|workflow run)\b/i;
 const REMOTE_READ_RE = /\bgh\s+(?:repo\s+view|api\s+user)\b|\bgit\s+(?:fetch|pull|ls-remote|remote\s+(?:update|show))\b|\bgit\s+(?:log|rev-list|branch|show|merge-base|diff|cherry)\b[^\n;|&]*\s(?:origin|upstream)\/|\bgit\s+branch\b[^\n;|&]*\s(?:-r|-a|--remotes|--all)\b/;
-// AUTO-MODE answers the ask (the user's ruling, 2026-10-14). Under a live AUTO stamp nobody is at the terminal, and the
+// AUTO-MODE answers the ask (the user's ruling, 2026-10-14). Under a live AUTO stamp the run is the user's own go-ahead, and the
 // user's word was 'run everything with the recommended options'. So an ask whose every question marks ONE option
 // '(Recommended)' is answered with it - the documented route: `allow` with the questions echoed and an `answers` map in
 // `updatedInput` (code.claude.com/docs/en/hooks, 'Tools that require user interaction'), which records a real answer the
@@ -3142,6 +3166,36 @@ const REMOTE_READ_RE = /\bgh\s+(?:repo\s+view|api\s+user)\b|\bgit\s+(?:fetch|pul
 // A money word counts outside a path segment ('/purchases/' in a URL) and not as the cost idiom 'too small to pay for
 // seats' - a task-solve approval in auto-mode waited for the user on it (2026-10-16, the user's bug report).
 const AUTO_FRESH_RE = /\bfresh session\b|\bresume (?:it |this |the run )?(?:in|from) a (?:new|fresh)\b/i;
+// A typed stop since the AUTO stamp (A2d): a typed prompt newer than the stamp file that stopsRun matches. The stamp's own
+// start is the run's start, so a stop typed before it belongs to an earlier run, and a typed /task-solve writes a newer
+// stamp that starts the answers again. A row with no timestamp cannot be shown older, so it reads as current. Pure: rows are
+// parsed objects.
+function stoppedSinceStamp(transcriptRows, stampMtimeMs) {
+  return (transcriptRows || []).some((o) => {
+    if (!o || o.type !== 'user' || !o.message || o.isCompactSummary || o.isSidechain || !isTypedTurn(o)) return false;
+    const text = rowText(o);
+    if (harnessPrompt(text)) return false;
+    const at = Date.parse(o.timestamp);
+    if (Number.isFinite(at) && at <= stampMtimeMs) return false;
+    return stopsRun(text);
+  });
+}
+// The reader for it: the typed rows back to the first one older than the stamp. A transcript that cannot be read is no stop.
+function typedStopSinceStamp(stampMtimeMs) {
+  let seen = [];
+  try {
+    const decided = walkBack(() => {
+      seen = [];
+      return (o) => {
+        if (!o || o.type !== 'user' || !o.message || o.isCompactSummary || o.isSidechain || !isTypedTurn(o)) return undefined;
+        seen.push(o);
+        const at = Date.parse(o.timestamp);
+        return Number.isFinite(at) && at <= stampMtimeMs ? stoppedSinceStamp(seen, stampMtimeMs) : undefined;
+      };
+    }, null);
+    return decided === null ? stoppedSinceStamp(seen, stampMtimeMs) : decided;
+  } catch { return false; }
+}
 // AN ASK AFTER A CLASSIFIER DENIAL WAITS (B3, R4 session b9e1a400 rows 211-222): Claude Code's auto-mode classifier refused a Bash call
 // - a user row whose tool_result has is_error true and 'denied by the Claude Code auto mode classifier' in its text, the row carrying
 // toolDenialKind 'automode-blocked' - and the next ask, 'Apply this plan?', was auto-answered 'Apply (Recommended)': the user's check
@@ -3411,7 +3465,10 @@ const askStamp = payload.tool_name === 'AskUserQuestion' && !payload.agent_id ? 
 // /<plugin>:init, update, configure, validate, install or setup the ask goes to the user, the stamp live or not.
 const autoStampHere = !!(askStamp && askStamp.live && askStamp.session && /^AUTO\b/.test(askStamp.first));
 const walkHere = autoStampHere ? pluginWalk(payload) : '';
-const autoRun = autoStampHere && !walkHere;
+// A typed stop since the stamp ends the answers too (A2d): the user is back, and the next ask goes to them.
+const runStopped = autoStampHere && !walkHere && typedStopSinceStamp(askStamp.mtimeMs);
+const autoRun = autoStampHere && !walkHere && !runStopped;
+if (runStopped) ledgerRow({ tool: 'AskUserQuestion', mode: 'auto', kind: 'auto-ask-stopped', reason: 'auto-run answers no ask after the user typed a stop - it goes to the user until the next run starts' });
 if (walkHere) ledgerRow({ tool: 'AskUserQuestion', mode: 'auto', kind: 'auto-walk-asks', reason: `auto-run answers no ask inside a plugin's ${walkHere} walk - it goes to the user` });
 // A2b runs first: the deny comes before any auto-answer. A throw while judging fails open; the denial's own exit stays outside the try.
 if (payload.tool_name === 'AskUserQuestion') {
@@ -3451,7 +3508,7 @@ if (autoRun) {
       permissionDecision: 'allow',
       permissionDecisionReason: 'auto-mode: the Recommended option',
       updatedInput: { ...input, answers },
-      additionalContext: `auto-mode answered this ask with its Recommended option (${picked}) - nobody is at the terminal. `
+      additionalContext: `auto-mode answered this ask with its Recommended option (${picked}) - auto-run is on. `
         + 'Log it in the run\'s close as `auto: <question> -> <choice>` and go on with the run.'
         + (fieldNotes.length ? `\n\n${fieldNotes.join('\n\n')}` : ''),
     } }));

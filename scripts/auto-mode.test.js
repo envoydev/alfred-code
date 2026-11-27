@@ -1219,6 +1219,71 @@ test('auto-mode Stop: a run close with Done: and Left for you: ends the run - th
     assert.ok(fs.existsSync(marker(p, 'rc6')), 'a fenced close template keeps the run open');
 });
 
+// A2d (session audit 2026-11-27, S03 'Stay paused'): the user typed 'stop everything until I ask' and the run held every
+// Stop and answered every ask after it. A typed prompt aimed at the run itself ends it, as a run close does: the marker goes,
+// and no ask is answered until a newer stamp (a typed /task-solve). The saved switch and the stamp are not touched.
+const typedAt = (text, msFromNow = 2000) => ({ type: 'user', entrypoint: 'cli', timestamp: new Date(Date.now() + msFromNow).toISOString(), message: { role: 'user', content: text } });
+const STOPS_THE_RUN = ['stop', 'Pause.', 'wait', 'could you stop everything until I ask run again?', 'pause the run', 'please stop until I ask', 'wait until I ask', 'stop auto run'];
+const NO_STOP = ['stop the dev server', 'add a pause button', 'wait for the build to finish, then continue', "don't stop everything, keep going", 'why did the run stop?', 'the stop button does not work'];
+test("auto-mode Stop: a typed 'stop everything until I ask' ends the run - no hold, the marker goes, the stamp stays (A2d)", () =>
+{
+    const p = project();
+    const stopAfter = (sid, text, rowsAfter = []) => run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: sid, cwd: p.root,
+        transcript_path: transcript([typedAt(text), ...rowsAfter]), last_assistant_message: 'Stage 2 of 4 is done; stage 3 starts next.', background_tasks: [] }, { CLAUDE_PROJECT_DIR: p.root });
+    STOPS_THE_RUN.forEach((text, i) =>
+    {
+        const sid = `st${i}`;
+        autoStamp(p, sid);
+        openRun(p, sid);
+        const r = stopAfter(sid, text);
+        assert.strictEqual(r.status, 0, `'${text}' ends the run: ${r.stderr}`);
+        assert.ok(!fs.existsSync(marker(p, sid)), `'${text}': the marker is ended`);
+        assert.ok(fs.existsSync(p.gate), 'the stamp stands: auto-run stays on');
+        assert.strictEqual(rows(p, sid).filter((x) => x.kind === 'auto-run-stopped').length, 1, `'${text}': one auto-run-stopped row`);
+    });
+    NO_STOP.forEach((text, i) =>
+    {
+        const sid = `ns${i}`;
+        autoStamp(p, sid);
+        openRun(p, sid);
+        assert.strictEqual(stopAfter(sid, text).status, 2, `'${text}' is no stop: the run is held as before`);
+        assert.ok(fs.existsSync(marker(p, sid)), `'${text}': the marker stands`);
+    });
+    // a typed /task-solve after the stop is the newest prompt: the new run is held again
+    autoStamp(p, 'st-again');
+    openRun(p, 'st-again');
+    const restart = stopAfter('st-again', 'stop everything', [typedAt('<command-name>/task-solve</command-name>', 3000)]);
+    assert.strictEqual(restart.status, 2, 'a later typed /task-solve starts the run again');
+    assert.ok(fs.existsSync(marker(p, 'st-again')), 'and its marker stands');
+});
+
+test("auto-mode asks: no ask is answered after a typed 'stop everything until I ask', until a newer stamp (A2d)", () =>
+{
+    const p = project();
+    const one = [q('Run the tests next?', ['Run the tests (Recommended)', 'Skip them'])];
+    const askAfter = (sid, rowsAfter) => ask(p, sid, one, { transcript_path: transcript(rowsAfter) });
+    autoStamp(p, 'sa1');
+    assert.ok(answered(askAfter('sa1', [])), 'control: an ordinary ask is answered');
+    for (const text of STOPS_THE_RUN)
+    {
+        assert.strictEqual(answered(askAfter('sa1', [typedAt(text)])), null, `'${text}': the ask waits`);
+    }
+    assert.ok(rows(p, 'sa1').some((x) => x.kind === 'auto-ask-stopped'), 'the wait is logged as a stopped run');
+    for (const text of NO_STOP) assert.ok(answered(askAfter('sa1', [typedAt(text)])), `'${text}': the ask is still answered`);
+    // a stop typed BEFORE the stamp belongs to an earlier run
+    assert.ok(answered(askAfter('sa1', [typedAt('stop everything until I ask', -90000)])), 'a stop older than the stamp holds nothing');
+    // a stop, then a newer stamp (a typed /task-solve rewrites it): the asks are answered again
+    const stopped = transcript([typedAt('stop everything until I ask')]);
+    assert.strictEqual(answered(ask(p, 'sa1', one, { transcript_path: stopped })), null, 'stopped');
+    const later = new Date(Date.now() + 10000);
+    fs.utimesSync(p.gate, later, later);
+    assert.ok(answered(ask(p, 'sa1', one, { transcript_path: stopped })), 'a newer stamp starts the auto-answer again');
+    // a stop row with no timestamp counts as current, a torn one holds nothing
+    const bare = { type: 'user', entrypoint: 'cli', message: { role: 'user', content: 'pause the run' } };
+    autoStamp(p, 'sa2');
+    assert.strictEqual(answered(askAfter('sa2', [bare])), null, 'a stop row with no time reads as current');
+});
+
 // review 2026-11-27, finding 2: the close's own Stop still reaches the rotation ask before the run ends.
 test('auto-mode Stop: a run close naming a credential still gets the rotation ask before the run ends', () =>
 {

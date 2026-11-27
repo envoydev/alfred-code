@@ -154,7 +154,7 @@ function ledgerRow(row) {
     }) + '\n');
   } catch { /* never throws */ }
 }
-const UNATTENDED_SKIP = 'skip: nobody is at the terminal - logged, not offered';
+const UNATTENDED_SKIP = 'skip: auto-run is on, or this is a print-mode run - no person is asked, logged, not offered';
 
 const EVENT = payload.hook_event_name || '';
 const IS_SKILL_CALL = payload.tool_name === 'Skill';
@@ -370,7 +370,7 @@ const COMPACT_NOTE = `This session compacts instead of offering a fresh session 
 
 // The hold itself. Released - never denied again - once an ask was answered after the compaction, the turn wrote the
 // single-short-step line, a fresh session would not pay back with the cache warm (the engine's verdict - audit
-// 2026-10-10 C26, 758ce661: 120k carry over a 90k floor, the unconditional ask cost two turns), nobody is at the terminal
+// 2026-10-10 C26, 758ce661: 120k carry over a 90k floor, the unconditional ask cost two turns), no person to ask
 // (a live AUTO waiver included), or it has denied twice; a hold past 12h is stale. With no post-compaction reading yet
 // (ctx 0) the call passes and the hold stays armed, no denial spent, for the first changing call that has one. A seat's call is the parent's work in
 // flight, never held. One `compact-hold` row (`idle-hold` on the idle route) records how it ended.

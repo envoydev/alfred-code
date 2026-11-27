@@ -1079,7 +1079,7 @@ function answeredWaiver(line) {
   if (!answeredAt(label, true)) return { problem: 'the answered: waiver was picked by no person (a hook gave that answer) - a skipped review needs the user' };
   let nobody = false;
   try { nobody = require('./hook-prelude.js').unattended(payload); } catch { nobody = false; }
-  if (nobody) return { problem: 'the answered: waiver was given while nobody is at the terminal (auto-mode answers its own Recommended option) - a skipped review needs the user' };
+  if (nobody) return { problem: 'the answered: waiver was given while auto-run is on or in print mode (auto-mode answers its own Recommended option) - a skipped review needs the user' };
   return { problem: null };
 }
 // When the latest answer carrying `label` landed - with `own`, only an answer a person gave - or 0 when none carries it.
