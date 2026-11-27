@@ -505,7 +505,7 @@ test('RU09: the navigation rule leaves the docs route to the session-start block
 test('SKC02: the git rule and the checkpoint mark the same option on an owed commit ask, pinned in the registry', () =>
 {
     const git = squash(read(GIT_SEED));
-    assert.ok(git.includes("when it names anything still owed, 'Show the diff first' takes the mark, and every push or publish ask marks holding."), git);
+    assert.ok(git.includes("when it names anything still owed, 'Show the diff first' takes the mark, and every push or publish ask marks holding unless the user's typed words in this exchange asked for that push or publish, a go-ahead to it included."), git);
     assert.ok(!git.includes('holding takes the mark'), 'the old owed-case mark');
     const cp = squash(read('stack/skills/habits-commit-checkpoint/SKILL.md'));
     assert.ok(cp.includes("when the question names anything still owed, 'Show the diff first' takes the mark instead"), 'the checkpoint home');

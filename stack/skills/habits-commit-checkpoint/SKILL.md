@@ -184,6 +184,14 @@ receipt minted before the merge still reads the pre-merge tip, a different tree 
    - 'Publish' - push or merge exactly the set named above
    ```
 
+   Where the user's typed words in this exchange asked for this push, a go-ahead to your own proposal included, ask:
+
+   ```ask
+   You asked for this push: <the commit set> goes to <remote>/<branch>. It leaves this machine for CI and everyone on the branch.
+   - 'Publish (Recommended)' - push or merge exactly the set named above
+   - 'Hold - push later' - nothing leaves the machine and no receipt is written
+   ```
+
 2. Write the receipt as its own call.
 3. Publish, read `git status -sb` back into the close (the branch level with its upstream), then
    clear the receipt.

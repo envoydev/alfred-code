@@ -585,7 +585,7 @@ test('PF1: task-solve keeps its state in the plan folder, resumes through the sc
     assert.match(flat(read('stack/skills/task-solve/references/step-mechanics.md')), /paste its output under a `Build record` heading/, 'the conformance rules carry the build record (one home)');
     assert.doesNotMatch(text, /Stamp `(?:Approved|Completed|Conformance)/);
     assert.doesNotMatch(text.replace(/Flat plans \(until 4\.0\.0\)[^.]*\./, ''), /`Resume:` line is the one cursor|work\/plans\/<feature>\.md|work\/plans\/csv\.md/);
-    assert.strictEqual(asks(skill('task-solve')).length, 11, 'no ask template added or dropped');
+    assert.strictEqual(asks(skill('task-solve')).length, 12, 'no ask template added or dropped');
 });
 
 test('PF1: task-implement ticks through the script, runs fail before its ask alone, and carries the foreign-start ask', () => {

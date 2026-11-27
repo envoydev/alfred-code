@@ -548,3 +548,11 @@ test("issue-diagnoser: an unmarked ask is denied and a 'waits for you:' ask keep
     assert.match(t, /the stop hook denies an unmarked ask, and an ask that opens 'waits for you: <why>' keeps its mark and waits\./);
     assert.doesNotMatch(t, /an unmarked ask gets its first option taken/);
 });
+
+// N04 (session audit 2026-11-27): a line beside the push pair says which template to use.
+test('N04: task-solve and the commit checkpoint name when the asked push template applies', () => {
+    for (const name of ['task-solve', 'habits-commit-checkpoint']) {
+        const t = flat(skill(name));
+        assert.ok(t.includes("Where the user's typed words in this exchange asked for this push, a go-ahead to your own proposal included, ask"), `${name}: the line that picks the template`);
+    }
+});

@@ -134,7 +134,7 @@ test('A4: a commit ask recommends the local commit and a push or publish ask rec
         assert.deepStrictEqual(close.options[0], 'Commit now (Recommended)', `${name}: the local commit is the recommendation, listed first`);
         assert.match(flat(text), /habits-commit-checkpoint/, `${name}: a picked commit runs the checkpoint`);
     }
-    let commits = 0, pushes = 0;
+    let commits = 0, pushes = 0, asked = 0;
     for (const name of fs.readdirSync(SKILLS)) {
         const dir = path.join(SKILLS, name);
         if (!fs.statSync(dir).isDirectory()) continue;
@@ -144,11 +144,33 @@ test('A4: a commit ask recommends the local commit and a push or publish ask rec
             for (const a of asks(fs.readFileSync(f, 'utf8'))) {
                 const marked = a.options.find((o) => /\(Recommended\)$/.test(o));
                 if (a.options.some((o) => /^Commit now\b/.test(o))) { commits += 1; assert.strictEqual(marked, 'Commit now (Recommended)', `${f}: ${a.question}`); }
-                if (a.options.some((o) => /^(Push now|Publish)\b/.test(o))) { pushes += 1; assert.strictEqual(marked, 'Hold - push later (Recommended)', `${f}: ${a.question}`); }
+                if (a.options.some((o) => /^(Push now|Publish)\b/.test(o)))
+                {
+                    pushes += 1;
+                    if (/^You asked for this push/.test(a.question)) { asked += 1; assert.ok(/^(Push now|Publish) \(Recommended\)$/.test(a.options[0]), `${f}: an asked push marks the push first: ${a.question}`); }
+                    else assert.strictEqual(marked, 'Hold - push later (Recommended)', `${f}: ${a.question}`);
+                }
             }
         }
     }
-    assert.ok(commits >= 3 && pushes >= 2, `the walk found the asks (commit ${commits}, push ${pushes})`);
+    assert.ok(commits >= 3 && pushes >= 4 && asked >= 2, `the walk found the asks (commit ${commits}, push ${pushes}, asked ${asked})`);
+});
+
+// N04 (session audit 2026-11-27): the user asked 'can we publish?', the agent proposed it, the user said 'Do the update',
+// and the ask still marked Hold - the publish waited 34 minutes. A push the typed words asked for marks the push.
+test('N04: a push template whose question opens \'You asked for this push\' marks Push now or Publish first, after the unasked one', () =>
+{
+    for (const name of ['task-solve', 'habits-commit-checkpoint'])
+    {
+        const text = read(`stack/skills/${name}/SKILL.md`);
+        const pushes = asks(text).filter((a) => a.options.some((o) => /^(Push now|Publish)\b/.test(o)));
+        assert.strictEqual(pushes.length, 2, `${name}: the unasked and the asked push template`);
+        assert.ok(!/^You asked for this push/.test(pushes[0].question), `${name}: the unasked template stays first`);
+        assert.strictEqual(pushes[0].options[0], 'Hold - push later (Recommended)', `${name}: the unasked template marks Hold`);
+        assert.match(pushes[1].question, /^You asked for this push:/, `${name}: the asked template`);
+        assert.match(pushes[1].options[0], /^(Push now|Publish) \(Recommended\)$/, `${name}: the push is first and marked`);
+        assert.strictEqual(pushes[1].options[1], 'Hold - push later', `${name}: Hold second, unmarked`);
+    }
 });
 
 test('A4: the stop-contract hook\'s pending-close push offers no commit', () => {
@@ -181,8 +203,8 @@ test('A5: the build bar - a model change never leaves its task without its migra
 test('full spec: the solve flow states the checklist, runs the check script and pins the merged ask', () => {
     const { ASK_FLOW_TEMPLATES } = require('./lint-skills.js');
     // stack audit 2026-10-20 row 13: +1 task-solve (judgment item), +1 issue-diagnoser (4a / 4c close), task-version-upgrade pinned at 5;
-    // usage audit 2026-11-03 U28: +1 task-solve (the step-5 findings stop); burn-down R127: +1 capture-quality (the unstamped stop)
-    assert.deepStrictEqual(ASK_FLOW_TEMPLATES, { 'task-solve': 11, 'task-solve-cross': 5, 'issue-diagnoser': 5, 'habits-adjust-agents-md': 3,
+    // usage audit 2026-11-03 U28: +1 task-solve (the step-5 findings stop); N04 2026-11-27: +1 task-solve (the asked-push twin); burn-down R127: +1 capture-quality (the unstamped stop)
+    assert.deepStrictEqual(ASK_FLOW_TEMPLATES, { 'task-solve': 12, 'task-solve-cross': 5, 'issue-diagnoser': 5, 'habits-adjust-agents-md': 3,
         'loop-architecture-quality': 10, 'loop-code-quality': 10, 'loop-test-coverage-quality': 8, 'capture-quality': 8, 'capture-awareness': 3, 'task-implement': 11, 'task-build-from-scratch': 5,
         'task-version-upgrade': 5, 'task-design': 1, 'task-verify-plan': 2 });
     for (const name of ['task-solve', 'task-solve-cross']) {
