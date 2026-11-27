@@ -20,7 +20,7 @@ the sibling `/alfred-code:init` command. `worktree-of-installed <main>` -> print
 stamp (no install record, but two of the stack's own signatures in `.claude/`) -> go on:
 this command is its route - step 2's preflight prints `no-stamp` (the fast path) and offers its data move like
 any older install's, and the installer logs `no stamp: an unstamped legacy install`, reads the picks off disk
-(each old name under its new one; a project's own skill never one of them, never overwritten, and named), prunes
+(each old name under its new one; a project's own skill is never one, never overwritten, and named), prunes
 the old copies and writes the stamp. `installed` / `initialised` -> go on. Every scope - project,
 user or local - keeps the stamp, the library copies and the settings in the project's `.claude/`,
 so there is one mode. The user names items to add or drop -> that is the sibling
@@ -38,14 +38,14 @@ Nothing printed: go on. Otherwise follow `workspace-include.md`, printed with it
 
 Everything this step needs comes back from one call in the snapshot - the preflight, then the release notes THIS
 install owes (only the releases between its stamp and the snapshot, from `setup-plugin/references/update-history.md`;
-a snapshot without the script prints an error - read nothing more for it and go on):
+a snapshot without the script prints an error: go on):
 
 ```bash
 node "$TMP/repo/scripts/update-preflight.js" --snapshot "$TMP/repo" --root . ; node "$TMP/repo/scripts/install/release-notes.js" --root . ; node "$TMP/repo/scripts/workspace.js" plan --root . --rescan --source "$TMP/repo" > "$TMP/plan.txt" ; grep -E '^workspace-plan: ([2-9]|[0-9]{2,}) |^set-aside: |^gone: |^rescan: |^nested: ' "$TMP/plan.txt" && cat "$TMP/plan.txt" "$TMP/repo/setup-plugin/references/update-workspace.md"
 ```
 
-(The last two read the workspace: with children below, their rows (trigger rows print twice) and `update-workspace.md`,
-the cascade's walk; standalone, nothing. Every update looks below for installed projects with no role recorded: each is a `rescan:` row. The joins run
+(The last two read the workspace: with children below, their rows and `update-workspace.md`,
+the cascade's walk; standalone, nothing. Every update looks below for installed projects with no role: each is a `rescan:` row. The joins run
 after step 2's AskUserQuestion answers are applied - this project's own `role --answer` first - and before the installer call.) Pass
 `timeout: 600000` to this call: `plan` reads each parent back, one installer run per project with children.
 
@@ -53,8 +53,7 @@ after step 2's AskUserQuestion answers are applied - this project's own `role --
 over `settings.json`. A fork install passes `--repo <owner/name>`; a
 non-default stamp or settings path passes `--stamp` / `--settings`.) This is the WHOLE pre-install read - never
 hand-write a second probe for anything it already prints, and never open `meta/migrations.json` yourself: the script
-evaluates its declarative `detect` rules. A printed release-notes section
-is reported in step 7 beside the installer lines it explains.
+evaluates its declarative `detect` rules. A printed release-notes section is reported in step 7 beside the installer lines it explains.
 
 It prints, in order:
 
@@ -62,10 +61,10 @@ It prints, in order:
 - `status<TAB>path` lines (`modified`/`added`/`removed`, `renamed` with `<- old-path`) filtered
   to stack-owned paths - what has been RELEASED since the stamp.
 - `changed: skills=<n> agents=<n> rules=<n> hooks=<n> template=<yes|no>` - the RELEASE's delta bucketed by
-  install class; the installer's log tail counts every file it COPIED, which is all of them on every run,
-  so it can never answer 'what changed'.
+  install class; the installer's log tail counts every file it COPIED - all of them, every run - so it
+  never answers 'what changed'.
 - `changed-here: skills=<n> agents=<n> rules=<n> hooks=<n>` - the part of that delta THIS install carries. Step 7
-  names THIS as the refresh, and it gates the `/capture-awareness` suggestion.
+  names THIS as the refresh, and it gates the `/capture-awareness` suggestion. A capped compare: `changed-here: not counted (the compare stops at 300 files)`.
 - `migration: <id><TAB><detect kind>` per DETECTED entry, or `migrations: none detected`, each
   followed by its own indented `why:` / `then:` / `remove:` / `unwire:` / `env-rename:` /
   `env-rename-prefix:` / `env-remove:` / `env-reset:` / `env-off:` / `env-fold:` lines - everything you act on. A detected entry joins the prune

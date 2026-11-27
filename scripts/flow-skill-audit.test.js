@@ -517,7 +517,7 @@ test('SKF-04: the upgrade has one auto mode, and its hard stop waits for the use
 });
 
 // ---- mode commands (2026-11-12): the flows name the two mode commands, and a `--mode-*` token switches nothing ----
-const MODES_PARAGRAPH = "**Modes.** Auto-run, auto-compact and output scoring are modes the user turns on and off with the mode commands (`/alfred-code:mode:auto-run on`, `/alfred-code:mode:scoring on`); each stays on, new sessions included, until its off command, and a hook line on each prompt says which are on. Under the hook's auto-run contract, follow it. With no hook line (hooks off, a host that runs none), a mode is on only when the user said so in this conversation and holds for this conversation: under auto-run each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off; under scoring this run's output is graded before it is handed over. A `--mode-*` token after the command is no part of the request and switches nothing: drop it and say the mode commands replaced it.";
+const MODES_PARAGRAPH = "**Modes.** Auto-run, auto-compact and output scoring are modes the user turns on and off with the mode commands (`/alfred-code:mode:auto-run on`, `/alfred-code:mode:scoring on`); each stays on, new sessions included, until its off command, and a hook line on each prompt says which are on. Under the hook's auto-run contract, follow it. With no hook line (hooks off, a host that runs none), a mode is on only when the user said so in this conversation and holds for this conversation: under auto-run each stop takes its `(Recommended)` option, listed in the close, one whose question opens 'waits for you:' waits, nothing goes outward, no fresh-session hand-off; under scoring this run's output is graded before it is handed over. A `--mode-*` token after the command is no part of the request and switches nothing: drop it and say the mode commands replaced it.";
 test('every flow paragraph names the mode commands and no flag', () => {
     const files = copiesOf(shared()['auto-mode-contract']);
     assert.strictEqual(files.length, 14, 'the owner and its 13 sites (the five capture parts read their router\'s paragraph, audit 2026-10-30 SKC-06)');
@@ -541,4 +541,10 @@ test('mode-auto-run: a question takes route 3, answered with nothing changed; th
     assert.ok(t.includes("A question ('why does X fail?', 'can we add Z?') is no code change: it takes route 3."), 'route 1 sends a question to route 3');
     assert.ok(t.includes('a question: answer it, change nothing and name a fix in one line at most'), 'route 3 answers a question and changes nothing');
     assert.ok(read('stack/rules/alfred-interaction.md').includes('a status or how-to answer naming such a change offers to make it'), 'the rule offers a how-to step');
+});
+
+test("issue-diagnoser: an unmarked ask is denied and a 'waits for you:' ask keeps its mark, no ask 'gets its first option taken'", () => {
+    const t = flat(skill('issue-diagnoser'));
+    assert.match(t, /the stop hook denies an unmarked ask, and an ask that opens 'waits for you: <why>' keeps its mark and waits\./);
+    assert.doesNotMatch(t, /an unmarked ask gets its first option taken/);
 });

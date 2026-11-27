@@ -241,3 +241,12 @@ test("a seat row and a sidechain edit are not the session's own", () => {
   const rows = edit('/x/a.js', '', 'probe').map((r) => ({ ...r, isSidechain: true }));
   assert.equal(consent.ownEditsOf(rows).size, 0);
 });
+
+test("S21: the stash ask says what 'drop' does - the entry is deleted and its changes are gone", () => {
+  const { dir, git } = repo();
+  fs.writeFileSync(path.join(dir, 'app.js'), 'const a = 1;\nconst b = 3;\n');
+  git('stash', 'push', '-qm', 'user work');
+  const ask = runRm(dir, 'git stash drop stash@{0}', null);
+  assert.equal(ask.status, 'ask');
+  assert.match(ask.text, /'drop' deletes the stash entry, and its changes are gone/);
+});

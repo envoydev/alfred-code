@@ -1144,7 +1144,7 @@ function main()
         const kinds = [...groups.values()];
         const entries = (n) => `entr${n === 1 ? 'y' : 'ies'}`;
         const head = (g) => (g.kind === 'stash'
-            ? `this destroys ${g.rows.length} stash ${entries(g.rows.length)}, and a dropped stash leaves no\nreflog entry to recover it from.`
+            ? `this destroys ${g.rows.length} stash ${entries(g.rows.length)}: 'drop' deletes the stash ${entries(g.rows.length)}, and ${g.rows.length === 1 ? 'its' : 'their'} changes are gone.\nA dropped stash leaves no reflog entry to recover it from.`
             : `this discards uncommitted work in ${g.rows.length} file(s) under ${g.named ? 'the path(s) this command names' : 'the working tree'}, and there is\nno reflog for a working tree - once it is gone it is gone.`);
         const body = kinds.map((g, k) => `${k ? 'And ' : 'Blocked: '}${head(g)}\n` +
             g.rows.slice(0, 10).map((r) => `  ${r}`).join('\n') +

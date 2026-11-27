@@ -19,6 +19,7 @@
 //
 //   changed: skills=<n> agents=<n> rules=<n> hooks=<n> template=<yes|no>   (the RELEASE's delta)
 //   changed-here: skills=<n> agents=<n> rules=<n> hooks=<n>                (the part of it THIS install carries)
+//   changed-here: not counted (the compare stops at 300 files)             (instead, when the compare was cut at its cap)
 //   validate: yes|no                        (the version delta spans more than one release)
 //   policy-rev: current|none|stale installed=<hash|none> snapshot=<hash|none>
 //   migration: <id>\t<detect kind>          (one line per DETECTED entry; none -> no lines)

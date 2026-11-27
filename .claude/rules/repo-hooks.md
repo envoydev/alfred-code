@@ -99,7 +99,8 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   is the ONE parser every reader calls - the start hook, the scoring switch, the ON line, the banner, the dispatch guard
   and the stop contract's solve-flow mark. A mode command line gives `mode`, `flagOnly` and the field it switches
   (`autoRun`, `scoring`, `compact`); anything but one `on` / `off` after it sets `extra`, which switches nothing and is
-  said with ONE line, `[mode] type the command alone on its line, then on or off`; the bare command says the mode's
+  said with ONE line, `[mode] type the command alone on its line, then on or off` - or, where `extra` is one plain word
+  (`auto-run om`), `[mode] 'om' is not on or off - type <command> on or off`; the bare command says the mode's
   state. After a `task-*`, `capture-*`, `loop-*`, `issue-*` or `mode-*` command group every leading token shaped like a
   flag (`--mode-*` and the two older 2.x spellings, `MODE_LIKE_RE`) goes to `old` and switches NOTHING; a prose mention
   starts nothing; the expansion matcher takes every family name (audit 2026-10-14 HK06). The commands are handled at

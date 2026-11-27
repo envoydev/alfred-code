@@ -146,7 +146,8 @@ NEW-ITEMS line (what arrived, what was taken, what stays off - say where that sw
   nothing. Update prunes only what upstream deleted; what this project stopped needing is validate's pass.
 
 The run rewrote `alfred-code.stamp` - the next update or configure diffs from here. Name `/capture-awareness` (when
-installed) as the USER's next step when step 2's `changed-here:` line shows `skills=` or `agents=` above 0 - gated on
+installed) as the USER's next step when step 2's `changed-here:` line shows `skills=` or `agents=` above 0 (a `not counted` line
+suggests nothing) - gated on
 THAT number alone (the installer re-copies every file every run, so any other gate is always true; the generated
 inventory stamps each skill's first sentence, which drifts with content-only updates). Never invoke it from this
 run - the line is the user's to run, and no guard stops a Skill call of it; the report line is the

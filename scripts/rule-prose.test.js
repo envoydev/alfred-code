@@ -609,3 +609,19 @@ test('alfred-interaction: every budget and confidence sentence keeps the house l
     assert.ok(opensOnVerb('Cut an over-budget draft in this order.') && opensOnVerb('Never trim a field.'), 'an imperative is found');
     assert.ok(!opensOnVerb('Code, tables and command output do not count.') && !opensOnVerb('Only the user\'s own message lifts it.'), 'a description is not an instruction');
 });
+
+// Session audit 2026-11-27 (A2c, T01): the auto-run picks follow the user's stated rules, and a read past the workspace needs a yes.
+test('A2c: the Recommended option follows the user, a wait is marked and kept, and an unchecked claim is low confidence', () => {
+    const text = injected('alfred-interaction');
+    for (const clause of [
+        "Check a Recommended option against every rule the user stated this conversation ('use brave', 'new users sign up, existing log in') and any unactioned request: an option against one is never marked, and a contradiction gets a plain, non-defaulted question.",
+        "A push or a publish the user's prompt asked for is the Recommended option, not a hold.",
+        'While a wait runs, recommend the next work, never idling.',
+        "An ask that must wait opens 'waits for you: <why>' and keeps its mark - only for a hard stop, a standing rule, other people's data or privacy, money, or an act that cannot be undone.",
+        "A claim that no tool could check this session is labelled '(low confidence - <why>)'.",
+    ]) assert.ok(text.includes(squash(clause)), clause.slice(0, 60));
+});
+
+test('T01: a read or a write past the workspace needs the yes first', () => {
+    assert.ok(injected('alfred-security').includes("A read or a write past the workspace - another project's files or its database included - needs the user's yes first."));
+});
