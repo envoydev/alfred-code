@@ -3191,24 +3191,31 @@ const AUTO_FILING_RE = new RegExp(`${AUTO_FILING_VERB}[^.;?\\n]{0,40}\\b(?:${AUT
 // Rotation is a credential act whenever the ask names a credential anywhere ('NPM_TOKEN', 'the creds'); a photo the
 // server rotates, with no credential word in the ask, is local work (session f2de8d99).
 const AUTO_SECRET_WORD = String.raw`(?<![A-Za-z])(?:keys?|keypairs?|tokens?|secrets?|creds?|credentials?|passwords?|passphrases?|certs?|certificates?)(?![A-Za-z])`;
-// A pick that is nothing but a hold of an outward act ('Hold', 'Hold - push later', 'Skip the publish', 'Leave them for
-// later') does nothing outward, so its question and the act it names are not read as the act (sessions f2de8d99 and
-// eb8ad61b, 2026-11-25..27: 36 'Hold' picks waited for an away user, one for 7.5 hours). Only the whole label counts:
-// anything after the hold ('Skip the push, publish to npm', 'Hold - push when green', 'Wait for green') is judged as any
-// pick, since a condition reads as approval once it holds (review 2026-11-27). Its description still waits on a forward
-// act ('then push develop', 'push once CI is green').
 // 'uploads' is the files, not the act, only after an age word ('older HEIC uploads', 'existing photo uploads'), with no
 // act verb before it in its clause ('Run the resize on the older uploads' still waits) and no 'to' after it - every
 // other spelling stays the act, the safe side (session f2de8d99, 2026-11-26: a photo-resize ask waited on 'older HEIC
 // uploads'; three reviews of 2026-11-27 found the wider readings answered real uploads).
 const AUTO_UPLOADS_VERB = String.raw`(?:(?<!\b(?:older|old|existing|earlier|past|previous)\s+(?:(?:heic|jpe?g|png|webp|photos?|images?|media|files?)\s+)?)uploads|(?<=\b(?:retry|retries|resume|re-?run|run|launch|kick\s+off|start|restart|continue|queue|redo|finish|trigger|send|push|re-?upload|upload)\b[^.;?\n]*)uploads|uploads(?=\s+(?:to|into|onto)\b))(?!\s+(?:folder|dir(?:ectory)?)\b)`;
 const AUTO_DEFER_ACT = String.raw`(?:push(?:es|ed|ing)?|merg(?:e|es|ed|ing)|deploy(?:s|ed|ing|ment)?|publish(?:es|ed|ing)?|releases?|ship(?:s|ping)?|send(?:s|ing)?|post(?:s|ing)?|upload(?:s|ing)?)`;
-const AUTO_HOLD_ONLY_RE = new RegExp(String.raw`^\s*(?:hold|skip|defer|don'?t|do\s+not|not\s+now|leave|postpone|park|later|keep\s+holding|stop\s+here)\b(?:[\s,:-]+(?:(?:the|a|any|both|all|this|that|it|them)\s+)?${AUTO_DEFER_ACT}(?:\s*(?:and|\/|\+)\s*${AUTO_DEFER_ACT})*(?:\s+(?:it|them|both|all|branch(?:es)?|commits?))?)?(?:[\s,:-]+(?:it|them))?(?:[\s,:-]+(?:(?:for\s+)?later|for\s+now|here))?\s*(?:\(Recommended\))?\s*$`, 'i');
+// A HOLD pick ('Hold', 'Hold - push later', 'Skip the publish', 'Leave them for later', 'Hold - publish when rooms are empty')
+// does nothing outward, so its question and the act it names are not read as the act (sessions f2de8d99 and eb8ad61b,
+// 2026-11-25..27: 36 'Hold' picks waited for an away user, one for 7.5 hours; session audit 2026-11-27 B14, S01: a hold
+// with its act inside a deferral waited too). `holdLabel` says it: the label opens with a hold word, and once each clause
+// holding 'later', 'when', 'once', 'after' or 'until' is cut, nothing outward is left. A clause opening with 'then' is
+// the next act, never a deferral ('Hold, then push', 'Hold - push later, then open the PR'). Its description still waits
+// on a forward act ('then push develop', 'push once CI is green').
+const AUTO_HOLD_WORD = String.raw`(?:hold|skip|defer|don'?t|do\s+not|not\s+now|leave|postpone|park|later|keep\s+holding|stop\s+here)`;
+const AUTO_HOLD_OPEN_RE = new RegExp(String.raw`^\s*${AUTO_HOLD_WORD}\b(?:\s+(?:(?:the|a|any|both|all|this|that|it|them)\s+)?${AUTO_DEFER_ACT}(?:\s+(?:it|them|both|all|branch(?:es)?|commits?))?)?`, 'i');
+const AUTO_CLAUSE_SPLIT_RE = /\s+-\s+|[,;:]/;
+const AUTO_DEFERRAL_RE = /\b(?:later|when|once|after|until)\b/i;
+const AUTO_NEXT_ACT_RE = /^\s*(?:then|and\s+then|after\s+that|afterwards?)\b/i;
 const AUTO_FORWARD_ACT_RE = new RegExp(String.raw`\b(?:then|and\s+then|after\s+that|afterwards?)\b[^.;\n]{0,40}\b${AUTO_DEFER_ACT}\b|\b${AUTO_DEFER_ACT}\b[^.;\n]{0,40}\b(?:when|once|after|as\s+soon\s+as|if)\b`, 'i');
 // A pick's own scope statement ('nothing is pushed', 'it is not merged') says what it leaves undone; in the question the
 // same words describe a state the pick may act on ('not pushed yet. Do it now?'), so only 'no' / 'never' / 'without'
 // negate an act there (review 2026-11-27).
 const AUTO_PICK_SCOPE_RE = /\b(?:not|nothing(?:\s+(?:is|gets|was))?)\s+(?:yet\s+|been\s+)?(?:push|merg|deploy|publish|releas|ship)\w*/gi;
+const AUTO_SERIES_ACTS = String.raw`(?<!\b(?:no|not|without)\s+)\boutward acts?\b`;
+const AUTO_SERIES_RE = new RegExp(AUTO_SERIES_ACTS, 'i');
 const AUTO_OUTWARD_RE = new RegExp([
   // A negated act is the opposite statement ('Commit locally (no push)', 'without pushing'): session f2de8d99,
   // 2026-11-25..27 - 11 local commit asks waited for an away user on such a line. AUTO_PICK_SCOPE_RE takes the pick's own.
@@ -3219,7 +3226,7 @@ const AUTO_OUTWARD_RE = new RegExp([
   // The series ask the auto-run contract asks for (one ask for N outward writes, its question naming 'outward acts') waits for
   // the user whatever verb its label uses: a pick made here would read as the user's approval of N writes (final review 2026-11-18).
   // 'no / not / without outward acts' is the opposite statement ('Commit locally - no outward acts') and runs on.
-  String.raw`(?<!\b(?:no|not|without)\s+)\boutward acts?\b`,
+  AUTO_SERIES_ACTS,
   // A comment or a page, ticket or post write holds only with an outward TARGET: a comment on a ticket, a page update aimed at
   // Confluence. The bare words ('Add a comment to the function', 'Update the docs pages', 'Comment out the test', the
   // 'post-install' script) are local work and run on. A ticket key is rewritten to 'ticket' first (`outwardAsk`), because
@@ -3267,31 +3274,75 @@ const AUTO_UPLOADS_LOCAL_RE = /^\s*(?:resize|compress|convert|crop|rotate|optimi
 // 'Archive them to the client's vault' (seventh review).
 const AUTO_UPLOADS_MORE_RE = /[,;&+]|\b(?:then|and|also|to|into|onto|on|with|for|via)\b/i;
 const AUTO_UPLOADS_ACT_RE = /\b(?:retr|resum|resend|re-?run|run|launch|kick|start|restart|continu|re-?queue|queue|redo|finish|trigger|send|sent|push|sync|move|copy|go\s+out|again|re-?upload(?!s)|upload(?!s)|try)/i;
-function outwardAsk(text, pickLabel = '')
+// THE PICK, READ ON ITS OWN (session audit 2026-11-27, B14, S01: 'Add it to the plan' under a question about a tab cap
+// publish waited for the away user). `outwardAsk` reads the picked label and its description. The question counts too only
+// when the label names no act of its own: every word of it, the mark aside, is a confirm word ('Yes', 'Go ahead', 'Do it now'),
+// or it is one verb on a bare pronoun ('Rotate it'), since the act is then the question's. The uploads checks keep reading the question as before. Spec row B14.
+const CONFIRM_WORDS = new Set(['yes', 'go', 'ahead', 'do', 'it', 'proceed', 'continue', 'sure', 'ok', 'okay', 'apply', 'approve', 'confirm', 'accept', 'run', 'now']);
+const WORD_RE = /[a-z']+/g;
+const WAIT_WHY_MAX = 160;
+const WAIT_LEAD_RE = /^\s*waits for you:\s*/i;
+function bareConfirm(label)
 {
-    const plain = text.replace(AUTO_TICKET_KEY_RE, 'ticket');
-    if (AUTO_OUTWARD_RE.test(plain)) return true;
+    const words = String(label || '').replace(MARK_TAIL_RE, '').toLowerCase().match(WORD_RE) || [];
+    return words.length > 0 && words.every((word) => CONFIRM_WORDS.has(word));
+}
+// One verb on a bare pronoun ('Rotate it now', 'File it', 'Finish them') names no object of its own either: the question says what it
+// acts on, so it is read as before. 'Add it to the plan' names one ('the plan') and is not.
+const PRONOUN_ACT_RE = /^\s*[a-z][a-z-]*\s+(?:it|them|both|all)(?:\s+now)?\s*$/i;
+function actsOnQuestion(label)
+{
+    return bareConfirm(label) || PRONOUN_ACT_RE.test(String(label || '').replace(MARK_TAIL_RE, ''));
+}
+function holdLabel(label)
+{
+    const plain = String(label || '').replace(MARK_TAIL_RE, '');
+    if (!AUTO_HOLD_OPEN_RE.test(plain)) return false;
+    const kept = plain.split(AUTO_CLAUSE_SPLIT_RE).filter((clause) => AUTO_NEXT_ACT_RE.test(clause) || !AUTO_DEFERRAL_RE.test(clause)).join(', ');
+    const rest = kept.replace(AUTO_HOLD_OPEN_RE, ' ');
+    return !AUTO_OUTWARD_RE.test(rest) && !AUTO_FORWARD_ACT_RE.test(rest);
+}
+// A GRADE UNDER ITS PASS LEVEL waits (B10, T12): the `plan-approval` rule says a draft under the pass score waits for the user,
+// and an ask to accept it at 60 is that wait. Both numbers are read from the question: 'N/100' and 'level M' or 'pass M'.
+const GRADE_RE = /\b(\d{1,3})\s*\/\s*100\b/g;
+const PASS_LEVEL_RE = /\b(?:pass(?:ing)?|level)(?:\s+(?:level|score|mark))?\s*[:=]?\s*(\d{1,3})\b/gi;
+function gradeUnderPass(question)
+{
+    const text = String(question || '');
+    const grades = [...text.matchAll(GRADE_RE)].map((hit) => Number(hit[1]));
+    const levels = [...text.matchAll(PASS_LEVEL_RE)].map((hit) => Number(hit[1]));
+    return grades.some((grade) => levels.some((level) => grade < level));
+}
+function outwardAsk(question, own, pickLabel = '')
+{
+    const keyed = (text) => text.replace(AUTO_TICKET_KEY_RE, 'ticket');
+    const plain = keyed(`${question} ${own}`);
+    // a series ask for N outward writes names them in the question, whatever its label says (final review 2026-11-18)
+    if (AUTO_OUTWARD_RE.test(actsOnQuestion(pickLabel) ? plain : keyed(own)) || AUTO_SERIES_RE.test(question)) return true;
     return /\buploads\b/i.test(plain) && (!AUTO_UPLOADS_LOCAL_RE.test(String(pickLabel)) || AUTO_UPLOADS_ACT_RE.test(plain)
         || AUTO_UPLOADS_MORE_RE.test(String(pickLabel)));
 }
-function autoAnswers(questions) {
+// `why` is an optional out object: when the ask waits, `why.text` says why, for the wait's ledger row (B14 Risks).
+function autoAnswers(questions, why = {}) {
   if (!Array.isArray(questions) || !questions.length) return null;
   const answers = {};
   for (const q of questions) {
-    if (!q || typeof q.question !== 'string' || !Array.isArray(q.options)) return null;
-    if (waitsForUser(q.question)) return null;
+    if (!q || typeof q.question !== 'string' || !Array.isArray(q.options)) { why.text = 'a question the hook cannot read'; return null; }
+    if (waitsForUser(q.question)) { why.text = `waits for you: ${q.question.replace(WAIT_LEAD_RE, '').trim()}`.slice(0, WAIT_WHY_MAX); return null; }
+    if (gradeUnderPass(q.question)) { why.text = 'a grade under its pass level'; return null; }
     const marked = q.options.filter((o) => o && typeof o.label === 'string' && /\(Recommended\)/i.test(o.label));
-    if (marked.length !== 1) return null;
+    if (marked.length !== 1) { why.text = 'no single Recommended option'; return null; }
     // The fresh-session hand-off is never taken: nobody is there to paste its resume block (task-solve's AUTO rule). An
     // ask that recommends it past a trigger gets the next option in the template's order, the smallest safe mode.
     const pick = AUTO_FRESH_RE.test(marked[0].label)
       ? q.options.find((o) => o && typeof o.label === 'string' && o !== marked[0] && !AUTO_FRESH_RE.test(o.label)) : marked[0];
-    if (!pick) return null;
-    const holds = AUTO_HOLD_ONLY_RE.test(pick.label) && !AUTO_FORWARD_ACT_RE.test(pick.description || '');
+    if (!pick) { why.text = 'no option left after the fresh-session hand-off'; return null; }
+    const holds = holdLabel(pick.label) && !AUTO_FORWARD_ACT_RE.test(pick.description || '');
     const own = `${pick.label} ${pick.description || ''}`.replace(AUTO_PICK_SCOPE_RE, ' ');
-    if ((!holds && outwardAsk(`${q.question} ${own}`, pick.label)) || autoBilled(q.question, pick)) return null;
+    if (!holds && outwardAsk(q.question, own, pick.label)) { why.text = 'an outward pick'; return null; }
+    if (autoBilled(q.question, pick)) { why.text = 'a billed run'; return null; }
     // an ask the English list cannot read waits for the user: a miss could push or post for them, a wait costs one click
-    if (unreadable(`${q.question} ${pick.label}`)) return null;
+    if (unreadable(`${q.question} ${pick.label}`)) { why.text = 'an ask the English list cannot read'; return null; }
     answers[q.question] = pick.label;
   }
   return answers;
@@ -3326,7 +3377,8 @@ if (payload.tool_name === 'AskUserQuestion') {
 }
 if (autoRun) {
   const input = payload.tool_input || {};
-  const answers = autoAnswers(input.questions);
+  const waited = {};
+  const answers = autoAnswers(input.questions, waited);
   if (answers) {
     const picked = Object.entries(answers).map(([q, a]) => `'${q}' -> '${a}'`).join('; ');
     // The flow stop-field check runs BEFORE this return (audit 2026-10-20 C04): a waived stop still prints its fields.
@@ -3352,7 +3404,7 @@ if (autoRun) {
   // a wait the tracker-filing clause caused names it, so its false holds can be counted from the ledger (usage audit 2026-11-19)
   const filing = (Array.isArray(input.questions) ? input.questions : []).some((q) => q && Array.isArray(q.options) && q.options.some((o) =>
     o && /\(Recommended\)/i.test(String(o.label || '')) && AUTO_FILING_RE.test(`${q.question} ${o.label} ${o.description || ''}`.replace(AUTO_TICKET_KEY_RE, 'ticket'))));
-  ledgerRow({ tool: 'AskUserQuestion', mode: 'auto', kind: 'auto-ask-waits', reason: 'auto-mode: no single Recommended option, or an outward one - the ask waits for the user',
+  ledgerRow({ tool: 'AskUserQuestion', mode: 'auto', kind: 'auto-ask-waits', reason: `auto-mode: the ask waits for the user - ${redactShapes(waited.text || 'no reason recorded')}`,
     ...(filing ? { detail: { clause: 'tracker-filing' } } : {}) });
 }
 // THE ask-fixed ROW IS SETTLED LATER (audit 2026-10-20, the hooks track's minor list): PreToolUse hooks run in parallel, so

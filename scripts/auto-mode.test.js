@@ -539,6 +539,9 @@ test('auto-mode asks: a holding pick, a negated act and a photo rotation are ans
         ['4 commits on develop are not pushed. Push them?', 'Hold - push later (Recommended)'],
         ['8a5cb01 is pushed but not on the live desk. Publish it?', 'Hold the publish (Recommended)'],
         ['Next for tab cap 1.1.0 (not pushed)?', 'Hold - push and publish later (Recommended)'],
+        // B14 (2026-11-27): a hold whose act sits inside a deferral - when, once, after, until - does nothing outward either
+        ['Next?', 'Hold, push after CI passes (Recommended)'], ['Next?', 'Hold the push until CI is green (Recommended)'],
+        ['Publish 7 commits to the live desk?', 'Hold - publish when rooms 1-3 are empty (Recommended)'],
         ['Commit 3 local commits on develop (no push)?', 'Commit now (Recommended)'],
         ['Commit 6 files on develop?', 'Commit now (Recommended)', 'Stage the 6 paths and commit them; nothing is pushed'],
         ['A token leaked last week. Rotate the photo thumbnails?', 'Skip it (Recommended)'],
@@ -560,8 +563,6 @@ test('auto-mode asks: a holding pick, a negated act and a photo rotation are ans
         ['Next?', 'Do not push, merge into main instead (Recommended)'], ['Next?', "Don't merge, push the branch (Recommended)"],
         ['Next?', 'Skip the push, publish to npm (Recommended)'], ['Next?', 'Skip the push and publish to npm instead (Recommended)'],
         ['Next?', 'Skip the merge, upload the build to S3 (Recommended)'], ['Next?', 'Wait - push when green (Recommended)'],
-        ['Next?', 'Hold, push after CI passes (Recommended)'], ['Next?', 'Hold the push until CI is green (Recommended)'],
-        ['Publish 7 commits to the live desk?', 'Hold - publish when rooms 1-3 are empty (Recommended)'],
         ['The 4 commits on develop are not pushed yet. Do it now?', 'Yes, do it now (Recommended)'],
         ['Nothing is deployed yet to staging. Proceed?', 'Proceed (Recommended)'], ['The fix branch is not merged yet. Finish it?', 'Finish it (Recommended)'],
         ['Next?', 'Rotate the creds (Recommended)'], ['Rotate the SSH keypair?', 'Yes (Recommended)'],
@@ -775,6 +776,74 @@ test('auto-mode asks: an ordinary ask is still answered under auto-run after the
     autoStamp(p, 'wf2');
     const one = q('Plan ready. Build it?', ['Approve and build (Recommended)', 'Changes needed']);
     assert.deepStrictEqual(answered(ask(p, 'wf2', [one])), { 'Plan ready. Build it?': 'Approve and build (Recommended)' });
+});
+
+// B14 (session audit 2026-11-27, S01): the outward test reads the PICKED label and its description. The question counts too only
+// when the label names no act of its own ('Yes', 'Go ahead'). A hold label is a hold when no outward act is left outside its
+// deferral. The picks below are the spec's rows.
+test('auto-mode asks: an ordinary pick is answered under a question that names a publish (B14, S01)', () =>
+{
+    const p = project();
+    autoStamp(p, 'b14a');
+    const question = 'a tab cap publish leaves the rooms on the old package. How do we go on?';
+    for (const label of ['Add it to the plan (Recommended)', 'Commit now (Recommended)', 'Run the tests (Recommended)'])
+        assert.deepStrictEqual(answered(ask(p, 'b14a', [q(question, [label, 'Not now'])])), { [question]: label }, label);
+});
+
+test('auto-mode asks: an outward pick, or a bare confirm of an outward question, still waits (B14)', () =>
+{
+    const p = project();
+    autoStamp(p, 'b14b');
+    for (const [question, label] of [['Ready. Next?', 'Push now (Recommended)'], ['Push the branch?', 'Yes (Recommended)'],
+        ['Push the branch?', 'Continue (Recommended)'], ['Push the branch?', 'Go ahead (Recommended)'], ['Push the branch?', 'Yes, go ahead (Recommended)'],
+        ['Publish the package?', 'Proceed (Recommended)'], ['Merge the PR?', 'Do it (Recommended)'], ['Deploy to staging?', 'Sure (Recommended)'],
+        ['Ready. Next?', 'Hold, then push (Recommended)'], ['Ready. Next?', 'Skip the tests and publish (Recommended)']])
+        assert.strictEqual(answered(ask(p, 'b14b', [q(question, [label, 'Not now'])])), null, `waits: ${question} ${label}`);
+    const described = q('Ready. Next?', ['Add it (Recommended)', 'Not now']);
+    described.options[0].description = 'pushes to origin';
+    assert.strictEqual(answered(ask(p, 'b14b', [described])), null, 'the description is read');
+});
+
+test('auto-mode asks: a hold label is answered when its act sits inside a deferral, whatever the question names (B14, S01)', () =>
+{
+    const p = project();
+    autoStamp(p, 'b14c');
+    const question = 'a tab cap publish leaves the rooms on the old package. Publish it now?';
+    for (const label of ['Hold - publish when rooms are empty (Recommended)', 'Keep holding, ask when empty (Recommended)', 'Hold both for now (Recommended)',
+        'Hold the push until CI is green (Recommended)', 'Hold, push after CI passes (Recommended)', 'Hold - push later (Recommended)'])
+        assert.deepStrictEqual(answered(ask(p, 'b14c', [q(question, [label, 'Publish now'])])), { [question]: label }, label);
+    // a hold that goes on to an act outside its deferral still waits
+    for (const label of ['Hold - push later, then open the PR (Recommended)', 'Hold, then push (Recommended)', 'Hold - push when green, then merge (Recommended)',
+        'Skip the push, publish to npm (Recommended)', 'Hold, publish to npm (Recommended)'])
+        assert.strictEqual(answered(ask(p, 'b14c', [q(question, [label, 'Publish now'])])), null, `waits: ${label}`);
+});
+
+// B10 (T12): a grade under its pass level is never auto-answered - the plan-approval rule says it waits for the user.
+test('auto-mode asks: a grade under its pass level waits; a grade at or over it is answered (B10, T12)', () =>
+{
+    const p = project();
+    autoStamp(p, 'b10');
+    for (const question of ['The plan scored 60/100 (level 90). Next?', 'The plan scored 75/100 after round 3, pass 90. Next?', 'Graded 89/100, pass level 90. Next?'])
+        assert.strictEqual(answered(ask(p, 'b10', [q(question, ['Accept it at 60 (Recommended)', 'Revise'])])), null, `waits: ${question}`);
+    for (const question of ['The plan scored 92/100 (level 90). Next?', 'The plan scored 90/100, pass 90. Next?', 'The plan scored 60/100. Next?', 'Pass 90 tests this run. Next?'])
+        assert.deepStrictEqual(answered(ask(p, 'b10', [q(question, ['Build it (Recommended)', 'Revise'])])), { [question]: 'Build it (Recommended)' }, question);
+});
+
+// B14 Risks row: an ask that waits names why in its ledger row, so a 'waits for you:' overuse can be counted.
+test('auto-mode asks: the wait row names why, and a waits for you ask carries its reason (B14)', () =>
+{
+    const p = project();
+    autoStamp(p, 'why1');
+    ask(p, 'why1', [q('waits for you: other people\'s data. Read the browser history?', ['Skip it (Recommended)', 'Read it'])]);
+    ask(p, 'why1', [q('Ready. Next?', ['Push now (Recommended)', 'Hold'])]);
+    ask(p, 'why1', [q('The plan scored 60/100 (level 90). Next?', ['Accept (Recommended)', 'Revise'])]);
+    ask(p, 'why1', [q('Which name?', ['alpha', 'beta'])]);
+    const waits = rows(p, 'why1').filter((x) => x.kind === 'auto-ask-waits');
+    assert.strictEqual(waits.length, 4);
+    assert.match(waits[0].reason, /the ask waits for the user - waits for you: other people's data\. Read the browser history\?$/);
+    assert.match(waits[1].reason, /outward/);
+    assert.match(waits[2].reason, /grade under its pass level/);
+    assert.match(waits[3].reason, /no single Recommended option/);
 });
 
 // A2b (session audit 2026-11-27, S03 / S05 / T17): an ask about where the user is, or whose marked pick is a step only the
@@ -1313,20 +1382,28 @@ test('compact instead: an ask still carrying a fresh-session option goes out wit
     assert.match(lone.stderr, /A question left with one option is no question/);
 });
 
-test('scoring asks: each option of the continue and withhold-final asks is auto-answered when it is the recommended one (R19)', () =>
+// B10 (2026-11-27, T12) replaces R19: the continue ask of the output-scoring skill carries 'scored S/100 (level n)'. A grade under its pass
+// level waits for the user, whichever option is marked, as the `plan-approval` rule says (a draft under the pass score waits).
+test('scoring asks: the continue and withhold-final asks wait for the user while the grade is under its pass level (B10, was R19)', () =>
 {
     const p = project();
     autoStamp(p, 'sc1');
     const options = [['Answer the open decisions', 'your answers join the task and one more attempt runs'],
         ['Accept it at 70, marked', 'it goes out now, its score and open findings named'],
         ['Revise once more', 'one more revision and grade, about one seat run'], ['Keep it withheld', 'the best draft stays where it is']];
-    const question = 'The designer-plan scored 70/100 (level 80); the next revision can reach at most 78 - 1 open decision(s). How should it go on?';
-    for (const [pick] of options)
+    const ask80 = (grade, pick) =>
     {
+        const question = `The designer-plan scored ${grade}/100 (level 80); the next revision can reach at most 78 - 1 open decision(s). How should it go on?`;
         const ordered = [options.find(([l]) => l === pick), ...options.filter(([l]) => l !== pick)]
             .map(([label, description], i) => ({ label: i ? label : `${label} (Recommended)`, description }));
-        const r = ask(p, 'sc1', [{ question, header: 'Scoring', multiSelect: false, options: ordered }]);
-        assert.deepStrictEqual(answered(r), { [question]: ordered[0].label }, pick);
+        return { question, answers: answered(ask(p, 'sc1', [{ question, header: 'Scoring', multiSelect: false, options: ordered }])), label: ordered[0].label };
+    };
+    for (const [pick] of options)
+        assert.strictEqual(ask80(70, pick).answers, null, `waits at 70: ${pick}`);
+    for (const [pick] of options)
+    {
+        const r = ask80(80, pick);
+        assert.deepStrictEqual(r.answers, { [r.question]: r.label }, `answered at the level: ${pick}`);
     }
 });
 
