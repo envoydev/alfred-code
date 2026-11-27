@@ -1297,10 +1297,26 @@ function ownerOf(input, start) {
   } catch { return null; }
 }
 const RUN_KEYS = ['run', 'part', 'runAt', 'runFile', 'runId', 'arch'];
-// An actor's member records, in both places recordFiles names: a clear or a compact start drops them.
-const dropMembers = (files) => files.forEach((f) => { try { const d = path.dirname(f); const stem = path.basename(f, '.json');
-  for (const e of fs.readdirSync(d)) if (e.startsWith(stem) && /^-m-[0-9a-f]{12}\.json$/.test(e.slice(stem.length))) fs.rmSync(path.join(d, e));
+// An actor's member records, in both places recordFiles names: a clear start drops them. A compact start (`keepReads`) drops
+// only the push mark `entered`, so the entry pieces ride the actor's next call again and the read marks stay (A4).
+const dropMembers = (files, keepReads) => files.forEach((f) => { try { const d = path.dirname(f); const stem = path.basename(f, '.json');
+  for (const e of fs.readdirSync(d)) {
+    if (!e.startsWith(stem) || !/^-m-[0-9a-f]{12}\.json$/.test(e.slice(stem.length))) continue;
+    const file = path.join(d, e);
+    if (!keepReads) { fs.rmSync(file); continue; }
+    const marks = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (marks && typeof marks === 'object' && 'entered' in marks) { delete marks.entered; fs.writeFileSync(file, JSON.stringify(marks)); }
+  }
 } catch {} });
+// A4: the note a compact start carries in place of a re-armed hold: the preference docs the actor read before the compaction
+// (a mark is `<doc key>` or `<doc key>#<entry>`), and what to do before a change they govern.
+function compactNote(marks) {
+  const keys = new Set(Object.keys(marks).map((k) => k.split('#')[0]));
+  const read = ALL_DOCS.filter((d) => keys.has(d.key)).map((d) => d.file);
+  if (!read.length) return '';
+  return `A compaction dropped the text of the preference docs this session read: ${read.join(', ')}. Their read marks stay, so no hold repeats - `
+    + 'read a doc again before you change what it governs.';
+}
 function main() {
   try { prelude().blockingStdio(); } catch { /* no prelude: the default stdio */ }
   let input;
@@ -1326,26 +1342,21 @@ function main() {
   const actor = input.agent_id ? String(input.agent_id).replace(/^agent-/, '') : 'main';
   const files = Object.assign(recordFiles(base, input.session_id, member ? `${actor}-m-${member.key}` : actor), { strip: member && RUN_KEYS });
   if (input.hook_event_name === 'SessionStart') {
-    if (members && /^(?:clear|compact)$/.test(input.source)) dropMembers(files);
+    if (members && /^(?:clear|compact)$/.test(input.source)) dropMembers(files, input.source === 'compact');
+    // A /clear starts a new conversation: the record goes. A compaction keeps it, the run and a seat's architecture
+    // hand-over with it (A4): the read hold fires once per session, and the start adds a note naming what was read.
     if (input.source === 'clear') dropRecord(files);
-    else if (input.source === 'compact') {
-      // The docs left the context; the run and a seat's architecture hand-over go on.
-      const kept = {};
-      const was = loadMarks(files);
-      for (const k of ['run', 'runAt', 'runFile', 'runId', 'arch']) if (was[k] !== undefined) kept[k] = was[k];
-      dropRecord(files);
-      if (Object.keys(kept).length) saveMarks(files, kept);
-    }
+    const note = input.source === 'compact' ? compactNote(loadMarks(files)) : '';
     if (input.agent_id) {
       // a seat's own compaction: the personal doc is the main session's, the seat's tool order is its own
       const tools = input.agent_type && !NO_ORDER_SEAT.test(String(input.agent_type)) ? toolsText(ctx, seatOf(ctx, input.agent_type)) : '';
-      const text = [tools, hostText()].filter(Boolean).join('\n\n');
+      const text = [tools, hostText(), note].filter(Boolean).join('\n\n');
       if (text) emit('SessionStart', { additionalContext: text });
       return;
     }
     // The personal doc leads: in an output Claude Code caps, the tools line is the part to lose; the host lines are short.
     const personal = personalPush(ctx);
-    const rest = [personal, toolsText(ctx, null), hostText()].filter(Boolean).join('\n\n');
+    const rest = [personal, toolsText(ctx, null), hostText(), note].filter(Boolean).join('\n\n');
     const memory = memoryText(ctx, rest ? rest.length + 2 : 0);
     const text = [rest, memory].filter(Boolean).join('\n\n');
     // A measurement, never a block (`mode`): the usage analyzer's preferences claim reads it (item 7, 2026-10-25).

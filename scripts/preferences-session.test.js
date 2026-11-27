@@ -166,7 +166,7 @@ test('each actor is held on its own: a seat\'s first edit waits even after the m
     finally { p.rm(); }
 });
 
-test('with no personal doc a compaction clears the record and says nothing; another session start keeps it and says nothing', () =>
+test('with no personal doc a compaction keeps the record and adds a note, a clear drops it, and a resume says nothing', () =>
 {
     const p = project();
     try
@@ -178,9 +178,12 @@ test('with no personal doc a compaction clears the record and says nothing; anot
         assert.ok(!denied(p.hook(edit('src/app.ts', s))), 'a resume keeps what was read');
         const compact = p.hook({ hook_event_name: 'SessionStart', session_id: s, source: 'compact' });
         assert.strictEqual(compact.status, 0, compact.stderr);
-        assert.strictEqual(compact.stdout, '');
-        assert.ok(!p.exists(`.alfred/state/sessions/preferences-${s}-main.json`), 'the record is gone');
-        assert.ok(denied(p.hook(edit('src/app.ts', s))), 'the summary dropped the docs, so the next edit waits again');
+        assert.match(out(compact).additionalContext, /^A compaction dropped the text of the preference docs this session read: PERSONAL-CODE-PREFERENCES\.md, ARCHITECTURE-PREFERENCES\.md, PROJECT-CODE-PREFERENCES\.md\. Their read marks stay/, 'the note names what was handed over');
+        assert.ok(p.exists(`.alfred/state/sessions/preferences-${s}-main.json`), 'the record stays (A4)');
+        assert.ok(!denied(p.hook(edit('src/app.ts', s))), 'the read hold fires once per session: the next edit goes through');
+        p.hook({ hook_event_name: 'SessionStart', session_id: s, source: 'clear' });
+        assert.ok(!p.exists(`.alfred/state/sessions/preferences-${s}-main.json`), 'a /clear drops the record');
+        assert.ok(denied(p.hook(edit('src/app.ts', s))), 'and the next edit waits again');
     }
     finally { p.rm(); }
 });
@@ -530,7 +533,7 @@ test('the personal doc is pushed at every session start - startup, resume, clear
     {
         const s = sid();
         p.hook(edit('src/app.ts', s));
-        for (const source of ['startup', 'resume', 'clear', 'compact'])
+        for (const source of ['startup', 'resume', 'compact', 'clear'])
         {
             const r = p.hook(start(s, source));
             assert.strictEqual(r.status, 0, r.stderr);
@@ -540,8 +543,9 @@ test('the personal doc is pushed at every session start - startup, resume, clear
             assert.match(text, /every session start and after each compaction/, source);
             assert.doesNotMatch(text, /<!--/, `${source}: the id lines are left out`);
             assert.doesNotMatch(text, /static helper class|feature\/<ticket>/, `${source}: the code and git docs wait for their holds`);
+            if (source === 'compact') assert.ok(p.exists(`.alfred/state/sessions/preferences-${s}-main.json`), 'the compact start keeps the read record (A4)');
         }
-        assert.ok(!p.exists(`.alfred/state/sessions/preferences-${s}-main.json`), 'the compact start still deletes the read record');
+        assert.ok(!p.exists(`.alfred/state/sessions/preferences-${s}-main.json`), 'the clear start drops the read record; the compact start before it kept it (A4)');
     }
     finally { p.rm(); }
 });
@@ -837,7 +841,7 @@ test('PF-11 / G14: the push strips block and inline comments, keeps fenced text,
     }
 });
 
-test('PF-12 / G3: clear and compact clear the main record; a seat\'s own compaction clears only that seat and pushes nothing', () =>
+test('PF-12 / G3 (A4): a compaction keeps the main record and a seat\'s own, a clear drops only the actor\'s own, and the seat\'s start adds a note', () =>
 {
     const p = project({ docs: { 'PERSONAL-PREFERENCES.md': PERSONAL_PREFS, 'PERSONAL-CODE-PREFERENCES.md': PERSONAL } });
     try
@@ -848,13 +852,39 @@ test('PF-12 / G3: clear and compact clear the main record; a seat\'s own compact
         p.hook(start2(s, 'resume'));
         assert.ok(!denied(p.hook(edit('src/app.ts', s))), 'resume keeps the record');
         const seatStart = p.hook(start2(s, 'compact', { agent_id: 'agent-1', agent_type: 'alfred-code:web-angular-implementer' }));
-        assert.strictEqual(seatStart.stdout, '', 'the personal doc is the main session\'s');
-        assert.ok(!p.exists(record(s, 'agent-1')), 'the seat\'s record goes');
+        assert.ok(!/lead with the verdict/.test(seatStart.stdout), 'the personal doc is the main session\'s');
+        assert.match(seatStart.stdout, /A compaction dropped the text of the preference docs this session read: PERSONAL-CODE-PREFERENCES\.md\./, 'the note names what the seat read');
+        assert.ok(p.exists(record(s, '1')), 'the seat\'s record stays (A4); the hook drops the agent- prefix from its file name');
         assert.ok(p.exists(record(s, 'main')), 'the main record stays');
         assert.ok(!denied(p.hook(edit('src/app.ts', s))), 'so main is not handed the docs again');
-        assert.ok(denied(p.hook(edit('src/app.ts', s, { agent_id: 'agent-1' }))), 'the seat is');
+        assert.ok(!denied(p.hook(edit('src/app.ts', s, { agent_id: 'agent-1' }))), 'nor the seat');
+        p.hook(start2(s, 'clear', { agent_id: 'agent-1', agent_type: 'alfred-code:web-angular-implementer' }));
+        assert.ok(!p.exists(record(s, '1')), 'a seat\'s clear start drops its record');
+        assert.ok(denied(p.hook(edit('src/app.ts', s, { agent_id: 'agent-1' }))), 'the seat is held again');
+        assert.ok(!denied(p.hook(edit('src/app.ts', s))), 'main\'s record is the main session\'s');
         p.hook(start2(s, 'clear'));
         assert.ok(denied(p.hook(edit('src/app.ts', s))), '/clear dropped the docs: held again');
+    }
+    finally { p.rm(); }
+});
+
+// A4 (session audit 2026-11-27): the git and code docs are handed over once per session. A compact start keeps their marks,
+// names the docs read, and still pushes the personal doc; a /clear starts the hold again.
+test('A4: after a compact start a git write and a code edit draw no second hold, the note names both docs and the personal push stays', () =>
+{
+    const p = project({ docs: { 'PERSONAL-PREFERENCES.md': PERSONAL_PREFS, 'PERSONAL-CODE-PREFERENCES.md': PERSONAL, 'GIT-PREFERENCES.md': GIT } });
+    try
+    {
+        const s = sid();
+        assert.ok(denied(p.hook(bash('git commit -m x', s))), 'the first git write is held with the git doc');
+        assert.ok(denied(p.hook(edit('src/app.ts', s))), 'the first code edit is held with the code doc');
+        const compact = ctxOf(p.hook(start2(s, 'compact')));
+        assert.match(compact, /lead with the verdict, at most two bullets/, 'the personal push stays');
+        assert.match(compact, /A compaction dropped the text of the preference docs this session read: PERSONAL-CODE-PREFERENCES\.md, GIT-PREFERENCES\.md\./);
+        assert.ok(!denied(p.hook(bash('git commit -m x', s))), 'no second git hold');
+        assert.ok(!denied(p.hook(edit('src/app.ts', s))), 'no second code hold');
+        p.hook(start2(s, 'clear'));
+        assert.ok(denied(p.hook(bash('git commit -m x', s))), 'a clear start holds the git write again');
     }
     finally { p.rm(); }
 });
@@ -2496,7 +2526,7 @@ test('member: a call under the child reads the run marks from the start\'s recor
     finally { p.rm(); }
 });
 
-test('member: a clear start and a compact start drop the member\'s record, a resume keeps it', () =>
+test('member: a clear start drops the member\'s record, a compact start only its push mark, a resume keeps it', () =>
 {
     const p = joined();
     try
@@ -2511,13 +2541,18 @@ test('member: a clear start and a compact start drop the member\'s record, a res
             for (const f of [state, twin]) { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, '{}'); }
             return [state, twin];
         };
-        for (const source of ['clear', 'compact'])
-        {
-            const s = sid();
-            const files = put(s);
-            p.hook(start(s, source));
-            assert.deepStrictEqual(files.filter((f) => fs.existsSync(f)), [], source);
-        }
+        const c = sid();
+        const cleared = put(c);
+        p.hook(start(c, 'clear'));
+        assert.deepStrictEqual(cleared.filter((f) => fs.existsSync(f)), [], 'a clear start drops the record');
+        // A4: a compact start keeps the member's read marks and drops only the push mark, so the entry pieces ride again
+        const m = sid();
+        const marked = put(m);
+        for (const f of marked) fs.writeFileSync(f, JSON.stringify({ entered: true, 'PERSONAL-CODE': true }));
+        p.hook(start(m, 'compact'));
+        for (const f of marked) assert.deepStrictEqual(JSON.parse(fs.readFileSync(f, 'utf8')), { 'PERSONAL-CODE': true }, 'the compact start keeps the read marks only');
+        p.hook(start(m, 'compact'));
+        for (const f of marked) assert.deepStrictEqual(JSON.parse(fs.readFileSync(f, 'utf8')), { 'PERSONAL-CODE': true }, 'a second compact start changes nothing');
         const s = sid();
         const kept = put(s);
         p.hook(start(s, 'resume'));
@@ -2525,9 +2560,9 @@ test('member: a clear start and a compact start drop the member\'s record, a res
         fs.rmSync(path.join(p.root, PREFS), { recursive: true, force: true });
         const t = sid();
         const gone = put(t);
-        p.hook(start(t, 'compact'));
-        assert.deepStrictEqual(gone.filter((f) => fs.existsSync(f)), []);
-        for (const f of kept) fs.rmSync(f, { force: true });
+        p.hook(start(t, 'clear'));
+        assert.deepStrictEqual(gone.filter((f) => fs.existsSync(f)), [], 'with no docs left a clear start still drops it');
+        for (const f of [...kept, ...marked]) fs.rmSync(f, { force: true });
     }
     finally { p.rm(); }
 });

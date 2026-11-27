@@ -2594,8 +2594,72 @@ test('G4: the gate is per actor, and a compaction re-arms the actor it summarize
     assert.ok(denied(r.hook(editRefund(t, { agent_id: 'a2', agent_type: 'dotnet-implementer' }))), 'nor main\'s the seat\'s');
     assert.ok(!blocked(r.hook(editRefund(t))), 'main read it');
     r.hook({ hook_event_name: 'SessionStart', session_id: t, source: 'compact' });
-    assert.ok(denied(r.hook(editRefund(t))), 'the summary dropped the section: held again');
+    assert.ok(!blocked(r.hook(editRefund(t))), 'a compaction keeps the read mark: the hold fires once per session (A4)');
+    r.hook({ hook_event_name: 'SessionStart', session_id: t, source: 'clear' });
+    assert.ok(denied(r.hook(editRefund(t))), 'a /clear starts a new conversation: held again');
   } finally { r.rm(); }
+});
+
+// A4 (session audit 2026-11-27): the read hold fires once per session. A compact start keeps the read mark and says what
+// the summary lost; a /clear still drops it. A seat's compaction acts on that seat's mark alone.
+test('A4: a compact start keeps the read mark and adds a note naming what was read, in place of a second hold', () => {
+  const r = prefsRepo();
+  try {
+    const s = sid();
+    r.hook(pre('Read', { file_path: '.claude/docs/architecture/references/patterns.md' }, s));
+    assert.ok(!blocked(r.hook(editRefund(s))), 'the read credits the first change');
+    const text = ctx(r.hook({ hook_event_name: 'SessionStart', session_id: s, source: 'compact' }));
+    assert.match(text, /A compaction dropped the text of the docs this session read: \S*patterns\S*\./, text);
+    assert.match(text, /read a section again/, text);
+    assert.doesNotMatch(text, /Before your first change under/, 'the note replaces the hold line');
+    assert.ok(!blocked(r.hook(editRefund(s))), 'an edit after the compact start draws no hold');
+    assert.doesNotMatch(ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid(), source: 'compact' })), /A compaction dropped/, 'a session that read nothing gets no note');
+    const clear = ctx(r.hook({ hook_event_name: 'SessionStart', session_id: s, source: 'clear' }));
+    assert.doesNotMatch(clear, /A compaction dropped/, 'a /clear forgets what was read');
+    assert.ok(denied(r.hook(editRefund(s))), 'after /clear the hold is back');
+  } finally { r.rm(); }
+});
+
+test('A4: a seat\'s own compact start keeps that seat\'s read mark and leaves the main session\'s alone', () => {
+  const r = prefsRepo();
+  try {
+    const s = sid();
+    const seat = { agent_id: 'a1', agent_type: 'dotnet-implementer' };
+    r.hook({ ...pre('Read', { file_path: '.claude/docs/architecture/references/patterns.md' }, s), ...seat });
+    assert.ok(!blocked(r.hook(editRefund(s, seat))));
+    r.hook({ hook_event_name: 'SessionStart', session_id: s, source: 'compact', ...seat });
+    assert.ok(!blocked(r.hook(editRefund(s, seat))), 'the seat keeps its mark');
+    assert.ok(denied(r.hook(editRefund(s))), 'the main session never read the section');
+  } finally { r.rm(); }
+});
+
+// B16 (session audit 2026-11-27, S13 and S15): the plugin's own state under .alfred/ is no project change.
+test('B16: a write under .alfred/ draws no docs hold, a stdin script naming tests/ in its body included; a project file still does', () => {
+  const r = prefsRepo();
+  try {
+    const script = (target) => `python3 -I - ${target} <<'PYEOF'\nimport sys\nopen(sys.argv[1], 'w').write('see tests/ for the cases')\nPYEOF`;
+    assert.ok(!blocked(r.hook(pre('Bash', { command: script('.alfred/state/sessions/scoring/x.draft.md') }, sid()))), 'the S13 call: no hold');
+    assert.ok(!blocked(r.hook(pre('Edit', { file_path: '.alfred/state/sessions/scoring/x.draft.md' }, sid()))), 'an Edit of a state file');
+    assert.ok(!blocked(r.hook(pre('Write', { file_path: `${r.root}/.alfred/state/approvals/NOTES`, content: 'x\n' }, sid()))), 'a Write by absolute path');
+    assert.ok(denied(r.hook(pre('Bash', { command: script('src/Api/Orders/Refund.cs') }, sid()))), 'the same script aimed at a project file is held');
+    assert.ok(denied(r.hook(pre('Bash', { command: script('.alfred/../src/Api/Orders/Refund.cs') }, sid()))), 'a path that climbs out of .alfred/ is a project path');
+    assert.ok(denied(r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, sid()))), 'a real project file still gets its hold');
+    assert.ok(denied(r.hook(pre('Bash', { command: script('.alfred/state/x.md src/Api/Orders/Refund.cs') }, sid()))), 'one project path among the state paths is held');
+  } finally { r.rm(); }
+});
+
+// B17 (session audit 2026-11-27, K2): a docs-check excerpt skips a line holding only a list marker.
+test('B17: the docs check quotes the first line with text when a section opens on a bare list marker', () => {
+  for (const marker of ['1.', '-', '*', '2)']) {
+    const r = watched({ 'references/patterns.md': section('orders', 'src/Api/**', `${marker}\nRefunds are ledgered before the payment call.\nThen the rest.`) });
+    try {
+      const s = sid();
+      r.hook(subStart(s, 'a1'), GIT);
+      touchBy(r, s, 'a1');
+      const reason = JSON.parse(r.hook(subStop(s, 'a1'), GIT).stdout).reason;
+      assert.match(reason, /\n {2}"Refunds are ledgered before the payment call\."\n/, `${marker}: ${reason}`);
+    } finally { r.rm(); }
+  }
 });
 
 test('G8: a seat\'s start block names conflict markers too', () => {
@@ -3138,14 +3202,16 @@ test('member: the child\'s gate sits in the session\'s -m-<key> file, per actor'
   } finally { r.rm(); }
 });
 
-test('member: a compact start re-arms the child\'s gate for that actor only - with and without root docs', () => {
+test('member: a clear start re-arms the child\'s gate for that actor only, a compact start (A4) re-arms none - with and without root docs', () => {
   for (const rootDocs of [true, false]) {
     const r = joined({ rootDocs });
     try {
       const s = sid();
       for (const call of [edit('api/src/a.ts', s), preBy(s, 'seat-1', 'api/src/a.ts')]) { r.run(call); assert.ok(!blocked(r.run(call))); }
       r.run({ hook_event_name: 'SessionStart', session_id: s, source: 'compact' });
-      assert.ok(denied(r.run(edit('api/src/a.ts', s))), `rootDocs ${rootDocs}: the main session is held again`);
+      assert.ok(!blocked(r.run(edit('api/src/a.ts', s))), `rootDocs ${rootDocs}: a compaction keeps the main session's mark`);
+      r.run({ hook_event_name: 'SessionStart', session_id: s, source: 'clear' });
+      assert.ok(denied(r.run(edit('api/src/a.ts', s))), `rootDocs ${rootDocs}: the main session is held again after a clear`);
       assert.ok(!blocked(r.run(preBy(s, 'seat-1', 'api/src/a.ts'))), `rootDocs ${rootDocs}: the seat is not`);
     } finally { r.rm(); }
   }

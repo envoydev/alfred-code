@@ -2527,3 +2527,18 @@ test('review proof 3.12: the block row of a review-proof refusal carries its bra
   rpRefused(rpCommit(stale, tpStale, { session_id: 'rp-b17-none' }), /without the pre-commit gate receipt/, 'B17 no receipt');
   assert.equal(rpBlockRow(stale, 'rp-b17-none').detail, undefined);
 });
+
+// A4 (session audit 2026-11-27): a compact start lifts only the docs and preferences read holds. The commit gate is a hold that
+// protects: it still asks after the compact start, and a receipt still passes it.
+test('A4: a compact start of the docs and preferences hooks leaves the commit gate asking', () => {
+  const dir = scratchRepo();
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: dir };
+  assert.equal(gateWith(dir, 'git commit -am x').status, 2, 'no receipt: refused before the compact start');
+  for (const hook of ['docs-session.js', 'preferences-session.js']) {
+    const r = runIn(hook, { hook_event_name: 'SessionStart', session_id: 'a4-commit-gate', source: 'compact', cwd: dir }, { env, cwd: dir });
+    assert.equal(r.status, 0, r.stderr.slice(0, 400));
+  }
+  assert.equal(gateWith(dir, 'git commit -am x').status, 2, 'no receipt: refused after the compact start too');
+  writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: 'VERIFIED the change' }));
+  assert.equal(gateWith(dir, 'git commit -am x').status, 0, 'a receipt still passes it');
+});

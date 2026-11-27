@@ -41,6 +41,13 @@ const kindOf = (kind) =>
 };
 
 const statePath = (root, kind, name, env = process.env) => path.resolve(root, dataRoot(env), 'state', kindOf(kind), name);
+// B16: whether `target` (a path as written, resolved against `root`) sits inside the data root - the plugin's own state, which is
+// no project file: it draws no docs hold and no path rule.
+const underDataRoot = (root, target, env = process.env) =>
+{
+    const rel = path.relative(path.resolve(root, dataRoot(env)), path.resolve(root, String(target)));
+    return !!rel && rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
+};
 const statsPath = (root, parts, env = process.env) => path.resolve(root, dataRoot(env), 'statistics', ...parts);
 const legacyStatePath = (root, kind, name, env = process.env) =>
     path.resolve(root, docsRoot(env), kindOf(kind) === 'history' ? 'history' : 'flow', name);
@@ -1278,7 +1285,7 @@ function workspaceMemoryOf(projectRoot, { env = process.env, home = require('os'
 }
 
 module.exports = {
-    dataRoot, docsRoot, flowKind, statePath, statsPath, legacyStatePath, legacyStatsPath, findState, findStats, planDirs, LAYOUT_MOVES, ARCH_RENAME, runBookKey,
+    dataRoot, underDataRoot, docsRoot, flowKind, statePath, statsPath, legacyStatePath, legacyStatsPath, findState, findStats, planDirs, LAYOUT_MOVES, ARCH_RENAME, runBookKey,
     PLAN_ID, PLAN_DEVICE, planFolderId, planFiles, planOf, planIdOf, approvalPath, approvalStamps, projectRootOf, gitTopOf, worktreeMain, holdsRecord, dirKey, pathKey,
     settingFrom, dataRootOf, workspaceOn, ownWorkspace, workspaceChain, memberOf, hasMembers, enterMember,
     memoryDirsOf, defaultMemoryDirs, MEMORY_NAME_MAX, memoryDirSetting, trustedMemoryDir, trustedAdditionalDirs, localSettingsFile, staleLocalMemory, staleLocalMemoryFiles, unsafeLinkPath, unsafeLinkWalk, docsRootOf, topMember,
