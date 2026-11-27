@@ -765,14 +765,14 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     PASSWORD, PASSWD, PASS, PWD, PIN, OTP, CODE, LOGIN, DSN, CREDENTIAL, CREDENTIALS, CRED, AUTH, CERT, PRIVATE, SIGNING, SALT, HASH, COOKIE,
     SESSION, PASSPHRASE; the controller's ruling added PASSPHRASE), a trailing S allowed (`TOKENS`, `PASSWORDS`). A word of 5 letters or more
     also starts or ends a part (`SECRETKEY`, `GITHUBTOKEN`), and KEY, PASS and PWD end a joined part (`MASTERKEY`, `DBPASS`, `ADMINPWD`) unless
-    it is an ordinary word (`NOT_CREDENTIAL_WORDS`: `MONKEY`, `BYPASS`, ...); `KEYBOARD_LAYOUT` shows. LENGTH: a value of 4 characters or
+    it is an ordinary word (`NOT_CREDENTIAL_WORDS`: `MONKEY`, `HOTKEY`, `PUBKEY`, `BYPASS`, ...); `KEYBOARD_LAYOUT` shows. LENGTH: a value of 4 characters or
     more is masked under any of those words; a value of 2 or 3 only under a strong one (`STRONG_CREDENTIAL_WORDS`: PASSWORD, PASSWD, PASS, PWD,
     PIN, OTP, SECRET, TOKEN, PASSPHRASE), since a weak word would mask every `src` or `30` in the output (`KEY_PREFIX=app`, `CODE_DIR=src`,
     `SESSION_TIMEOUT=30` show; `SMTP_PWD=x9`, `OTP=123` and `ADMIN_CODE=4821` are masked); a 1-character value never (`PIN=7` shows: it would
     hit every standalone `7`). SHAPE: `credentialLike`, a PEM key, or a password embedded in the value (a connection string; an embedded password
     from the store skips the 6-character floor like a keyed one). `ORG_SLUG=acme-app` and `KEYBOARD_LAYOUT=us` print as they are.
     The line-shape redactor skips a value of 1-3 characters and a type word (`typeWord`: `originKey: string,`; a capitalised name followed by `,`
-    `;` `)` or `>` only with no digit and under 16 characters, so `ApiKey;` shows and `Summer2024x;` is masked), and a store pair
+    `;` `)` or `>` only with no digit and under 16 characters, or with 2 or more capital humps and no digit run past 3 - `ApiKey;`, `Uint8Array,`, `S3Client;` show, `Summer2024x;` and `Xy9fakefakefake;` are masked), and a store pair
     in a walk or a diff is judged by the same key and shape test (`storeValueMasked`); a line of the store that is no pair is still
     masked whole. The SessionStart note adds `Shown in output, not masked ...: <keys>` - names only - so the user can rename a key. The
     input guard's `SECRET_KEY_SOURCE` (lint holds it equal to `meta/environment.json`) is untouched: `OUTPUT_CREDENTIAL_WORDS` is the

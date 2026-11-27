@@ -1275,6 +1275,17 @@ test('A3 round 3: a short password inside a store connection string with spaces 
     assert.strictEqual(answer(r).updatedToolOutput.stdout, `login ${SET('ab12x')} ok\n`);
   }, 'CONN=Server=db host;User Id=app;Password=ab12x;Trust=yes\n');
 });
+test('A3 round 4: a type name with two capital humps and no long digit run stays a type (Uint8Array, S3Client, OAuth2Client, Sha256Hash)', () => {
+  const out = (text) => { const r = masked('node print-it.js', { response: said(text) }); return r.out ? answer(r).updatedToolOutput.stdout : text; };
+  for (const line of ['token: Uint8Array,', 'secret: S3Client;', 'apiKey: OAuth2Client,', 'token: Sha256Hash;', 'secret: Buffer<Uint8Array>)']) assert.strictEqual(out(`${line}\n`), `${line}\n`, line);
+  for (const [head, value] of [['password: ', 'Summer2024x,'], ['export API_TOKEN=', 'Xy9fakefakefake;']]) assert.strictEqual(out(`${head}${value}\n`), `${head}${SET(value)}\n`, head);
+});
+test('A3 round 4: HOTKEY, PUBKEY and MONKEYS are ordinary words, no credential key', () => {
+  withA3Store(() => {
+    const r = masked('node print-it.js', { response: said('keys ctrl-k1 pk-12345 banana-split\n') });
+    assert.strictEqual(r.out, '', 'nothing masked');
+  }, 'HOTKEY=ctrl-k1\nPUBKEY=pk-12345\nMONKEYS=banana-split\n');
+});
 test('A3: a long word counts at the end of a key (GITHUBTOKEN), a short one only as a part of it (MYPIN)', () => {
   withA3Store(() => {
     const r = masked('node print-it.js', { response: said('tok ab12; pin 7731\n') });

@@ -63,14 +63,17 @@ const STRONG_CREDENTIAL_WORDS = Object.freeze(['PASSWORD', 'PASSWD', 'PASS', 'PW
 const WEAK_VALUE_MIN = 4;
 // A short word also ends a joined key (MASTERKEY, DBPASS, ADMINPWD) - except an ordinary word that happens to end in one.
 const JOINED_END_WORDS = Object.freeze(['KEY', 'PASS', 'PWD']);
-const NOT_CREDENTIAL_WORDS = Object.freeze(['MONKEY', 'TURKEY', 'DONKEY', 'HOCKEY', 'JOCKEY', 'WHISKEY', 'BYPASS', 'COMPASS', 'TRESPASS', 'SURPASS', 'UNDERPASS', 'OVERPASS']);
+const NOT_CREDENTIAL_WORDS = Object.freeze(['MONKEY', 'TURKEY', 'DONKEY', 'HOCKEY', 'JOCKEY', 'WHISKEY', 'HOTKEY', 'PUBKEY', 'MONKEYS', 'BYPASS', 'COMPASS', 'TRESPASS', 'SURPASS', 'UNDERPASS', 'OVERPASS']);
 const KEY_WORD_SPLIT = /[_.-]+|(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/;
 const END_WORD_MIN = 5;
 // A value the line-shape redactor never takes for a credential: a type word (`originKey: string,`) or a value of 1-3
 // characters, which no output line gives away. A capitalised identifier counts when a `,` `;` `)` or `>` follows it.
 const TYPE_WORDS = Object.freeze(['string', 'number', 'boolean', 'unknown', 'any', 'never', 'void', 'null', 'undefined', 'object', 'true', 'false']);
-const TYPE_NAME_END = /^[A-Z][A-Za-z0-9_]*[,;)>]$/;
+const TYPE_NAME_END = /^[A-Z][A-Za-z0-9_<>]*[,;)>]$/;
 const TYPE_NAME_MAX = 16;
+// A name with this many capital humps and no digit run past 3 (Uint8Array, S3Client, OAuth2Client) is a type too.
+const TYPE_NAME_HUMPS = 2;
+const LONG_DIGIT_RUN = /\d{4}/;
 const SHORT_VALUE_MAX = 3;
 // A store value of one character is never masked, whatever its key (`PIN=7` would hide every standalone 7); two or more are.
 const STORE_VALUE_MIN = 2;
@@ -170,8 +173,11 @@ const strongCredentialKey = (key) => credentialWords(key).some((word) => STRONG_
 // A3: a type word or a capitalised type name, as `string,` or `ApiKey;` - never a credential value.
 const typeWord = (value) => {
   const text = String(value).trim();
-  // a capitalised name counts only with no digit and under TYPE_NAME_MAX characters: `Summer2024x;` is a password
-  return TYPE_WORDS.includes(text.replace(/[,;)>]+$/, '')) || (TYPE_NAME_END.test(text) && !/\d/.test(text) && text.length < TYPE_NAME_MAX);
+  // a capitalised name counts with no digit and under TYPE_NAME_MAX characters, or with TYPE_NAME_HUMPS capitals and no
+  // long digit run: `Summer2024x;` (one hump, a 4-digit run) and `Xy9fakefakefake;` (one hump) are passwords
+  const humps = (text.match(/[A-Z]/g) || []).length;
+  const named = TYPE_NAME_END.test(text) && ((!/\d/.test(text) && text.length < TYPE_NAME_MAX) || (humps >= TYPE_NAME_HUMPS && !LONG_DIGIT_RUN.test(text)));
+  return TYPE_WORDS.includes(text.replace(/[,;)>]+$/, '')) || named;
 };
 // A3: is this live store value hidden in output - its key names a credential (and the value is 2 characters or more), or the value has a credential shape.
 const keyHidesValue = (key, value) => (value.length >= WEAK_VALUE_MIN && credentialKey(key)) || (value.length >= STORE_VALUE_MIN && strongCredentialKey(key));
