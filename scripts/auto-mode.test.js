@@ -2163,9 +2163,23 @@ test('mode command: anything but on or off changes nothing', () =>
 {
     const p = project();
     const t = transcript();
-    for (const line of [`${AUTO_CMD} yes`, `${AUTO_CMD} on now`, `${AUTO_CMD} on off`, `${COMPACT_CMD} 1`, '/alfred-code:mode:scoring /task-solve x', `${AUTO_CMD} on\nfix the login`])
+    for (const line of [`${AUTO_CMD} on now`, `${AUTO_CMD} on off`, `${COMPACT_CMD} 1`, '/alfred-code:mode:scoring /task-solve x', `${AUTO_CMD} on\nfix the login`])
         assert.strictEqual(modeLine(p, 'x1', line, t), TYPE_ALONE, line);
     assert.ok(!fs.existsSync(p.gate) && rawMode(p) === null && !rows(p, 'x1').length);
+});
+
+// session audit 2026-11-27, S06: '/alfred-code:mode:auto-run om' got 'type the command alone on its line', which says
+// nothing of the typo. One mistyped word is named, with the two words the command takes.
+test('mode command: a mistyped word is named and the command is told its on and off', () =>
+{
+    const p = project();
+    const t = transcript();
+    assert.strictEqual(modeLine(p, 'x2', `${AUTO_CMD} om`, t), `[mode] 'om' is not on or off - type \`${AUTO_CMD} on\` or \`off\``);
+    assert.strictEqual(modeLine(p, 'x2', `${COMPACT_CMD} yes`, t), `[mode] 'yes' is not on or off - type \`${COMPACT_CMD} on\` or \`off\``, 'each mode names its own command');
+    assert.strictEqual(modeLine(p, 'x2', `<command-name>${AUTO_CMD}</command-name>\n<command-args>Of</command-args>`, t), `[mode] 'Of' is not on or off - type \`${AUTO_CMD} on\` or \`off\``, 'the tagged form too');
+    for (const line of [`${COMPACT_CMD} 1`, `${AUTO_CMD} on now`, `${AUTO_CMD} --mode-auto-run-on`])
+        assert.strictEqual(modeLine(p, 'x2', line, t), TYPE_ALONE, `${line}: not one plain word, so the old line`);
+    assert.ok(!fs.existsSync(p.gate) && rawMode(p) === null && !rows(p, 'x2').length, 'nothing switched');
 });
 
 test('mode command: a seat\'s prompt and a harness prompt are never read', () =>

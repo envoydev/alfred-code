@@ -188,8 +188,13 @@ function changedClasses(compareLines)
 // install enabled 21 seats). A skill or rule counts when its copy is on disk; a seat when its copy is, or when it rides
 // the core and no deny names it; a hook file when its copy is, or when the plugin route carries it and
 // ALFRED_CODE_HOOKS_OFF does not name it. The capture suggestion keys on this half.
+// A compare the API cut at its file cap lists only part of the release (stamp-compare.js prints the `TRUNCATED` line),
+// so a count taken from it could read 0 for items past the cap. The line says it was not counted instead.
+const TRUNCATED_LINE_RE = /^TRUNCATED\b/;
+const NOT_COUNTED_LINE = 'changed-here: not counted (the compare stops at 300 files)';
 function changedHere(compareLines, { claudeDir, stampFile, settings, routes })
 {
+    if (compareLines.some((line) => TRUNCATED_LINE_RE.test(line))) return NOT_COUNTED_LINE;
     const seen = changedItems(compareLines);
     const s = settings && typeof settings === 'object' ? settings : {};
     const env = s.env && typeof s.env === 'object' ? s.env : {};

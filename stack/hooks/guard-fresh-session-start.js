@@ -793,8 +793,20 @@ function writeAutoStamp({ root, sid, skill: name, words, current }) {
 // tells the model to say. A mode stays on for the checkout, new sessions included, until its off.
 const AUTO_ON = '[mode] auto-run is ON until /alfred-code:mode:auto-run off, new sessions included: each ask takes its (Recommended) option.'
   + ' auto-compact is ON with it';
+// The one plain word typed after a mode command, as typed: 'om' in `auto-run om`, in the tagged form's args too. A line
+// with a second token, a digit or a flag after the command has none, and keeps the TYPE_ALONE line.
+const MODE_TYPO_RE = /^[A-Za-z]{1,20}$/;
+function modeTypoWord(prompt) {
+  const tagged = /<command-args>([\s\S]*?)(?:<\/command-args>|$)/.exec(prompt);
+  const rest = tagged ? tagged[1] : prompt.trim().replace(/^\S+/, '');
+  const [word, ...more] = rest.match(/\S+/g) || [];
+  return word && !more.length && MODE_TYPO_RE.test(word) ? word : '';
+}
 function modeCommand(pre, flags, root, stamp, markerFile) {
-  if (flags.extra) return '[mode] type the command alone on its line, then on or off';
+  if (flags.extra) {
+    const word = modeTypoWord(String(payload.prompt || ''));
+    return word ? `[mode] '${word}' is not on or off - type \`${flags.commands[0]} on\` or \`off\`` : '[mode] type the command alone on its line, then on or off';
+  }
   if (flags.mode !== 'auto-run' && flags.mode !== 'auto-compact') return '';   // scoring: communication-reminder.js saves it and says the line
   const ms = require('./mode-settings.js');
   const [input, held, envIs] = [{ ...payload, cwd: root }, ms.autoRunHeld(root), (k) => String(pre.envOf(process.env, k) ?? '').trim()];
