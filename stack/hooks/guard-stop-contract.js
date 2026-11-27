@@ -1910,9 +1910,9 @@ const closeLabel = (name) => new RegExp(`(?:^|\\n)\\s*(?:[-*+]\\s*)?\\**${name}\
 // the run held every Stop and answered every ask after it). A prompt aimed at the run itself ends it as a run close does: the
 // whole prompt is a stop word, or it holds a run-directed phrase. A stop word aimed at something else ('stop the dev server',
 // 'add a pause button') is no stop, and a negation before the verb ('do not stop everything') never is.
-const STOP_WORD_RE = /^\s*(?:please\s+)?(?:stop|pause|wait|halt)\s*[.!]*\s*$/i;
-const STOP_NEGATED_RE = /\b(?:don'?t|do not|never|not|no need to|without)\s+(?:\w+\s+)?(?:stop|pause|halt)\b/i;
-const STOP_RUN_RE = /\b(?:stop|pause|halt)\s+everything\b|\b(?:stop|pause|halt|end|cancel)\s+(?:the|this)\s+run\b|\bstop\s+auto[- ]?run\b|\b(?:stop|pause|halt|wait|hold(?:\s+off)?)\b[^.?!\n]{0,24}?\buntil\s+I\s+(?:ask|say|tell|type)\b/i;
+const STOP_WORD_RE = /^\s*(?:(?:ok|okay|please)\b[\s,]*)*(?:stop|pause|wait|halt)(?:[\s,]+(?:now|please|it))*\s*[.!]*\s*$/i;
+const STOP_NEGATED_RE = /\b(?:don'?t|do not|never|not|no need to|without)\s+(?:\w+\s+)?(?:stop|pause|halt|wait)\b/i;
+const STOP_RUN_RE = /\b(?:stop|pause|halt|hold)\s+everything\b|\b(?:stop|pause|halt|end|cancel)\s+(?:the|this)\s+run(?![\w-])|\bstop\s+auto[- ]?run\b|\b(?:stop|pause|halt|wait)\b[^.?!\n]{0,24}?\buntil\s+I\s+(?:ask|say|tell|type)\b/i;
 function stopsRun(prompt) {
   const text = String(prompt || '').replace(/(`{3,}|~{3,})[\s\S]*?(?:\1|$)/g, ' ');
   if (STOP_NEGATED_RE.test(text)) return false;

@@ -1226,8 +1226,10 @@ test('auto-mode Stop: a run close with Done: and Left for you: ends the run - th
 // Stop and answered every ask after it. A typed prompt aimed at the run itself ends it, as a run close does: the marker goes,
 // and no ask is answered until a newer stamp (a typed /task-solve). The saved switch and the stamp are not touched.
 const typedAt = (text, msFromNow = 2000) => ({ type: 'user', entrypoint: 'cli', timestamp: new Date(Date.now() + msFromNow).toISOString(), message: { role: 'user', content: text } });
-const STOPS_THE_RUN = ['stop', 'Pause.', 'wait', 'could you stop everything until I ask run again?', 'pause the run', 'please stop until I ask', 'wait until I ask', 'stop auto run'];
-const NO_STOP = ['stop the dev server', 'add a pause button', 'wait for the build to finish, then continue', "don't stop everything, keep going", 'why did the run stop?', 'the stop button does not work'];
+const STOPS_THE_RUN = ['stop', 'Pause.', 'wait', 'could you stop everything until I ask run again?', 'pause the run', 'please stop until I ask', 'wait until I ask', 'stop auto run',
+    'stop now', 'stop please', 'Stop, please', 'ok stop', 'stop it', 'if the build fails, stop everything and tell me'];
+const NO_STOP = ['stop the dev server', 'add a pause button', 'wait for the build to finish, then continue', "don't stop everything, keep going", 'why did the run stop?', 'the stop button does not work',
+    'do not wait until I say go', 'hold off on the commit until I say', 'stop the run-time check'];
 test("auto-mode Stop: a typed 'stop everything until I ask' ends the run - no hold, the marker goes, the stamp stays (A2d)", () =>
 {
     const p = project();
