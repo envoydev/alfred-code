@@ -2830,7 +2830,7 @@ if (payload.hook_event_name === 'Stop') {
   // still out: a progress note over a running seat ('Chain A's fix delta is done ... Waiting on chain B') is no close,
   // and the fields belong to the close that comes after the notice (audit 2026-10-20 C02, 71d5428a, 3a8a1ee3).
   if (!continuation && autoLive(payload) && (DONE_RE.test(closeDone) || /\b(?:built|verified|implemented|pushed|merged|shipped)\b/i.test(closeDone))
-    && !fieldsStamped(prose) && solveTaskCycle() && liveBackgroundWork() !== true) {
+    && !fieldsStamped(prose) && solveTaskCycle() && liveBackgroundWork() !== true && !runStoppedNow(payload)) {
     blockDetail('auto-fields', 'solve-task close under AUTO without Result / Progress / Leftovers');
     process.stderr.write('This solve-task close went out under the AUTO waiver without its THREE named fields. A waived stop still\n'
       + 'prints them, because the morning reader has nothing else: restate the close with `Result:` (one line plus the\n'
@@ -3196,6 +3196,17 @@ function typedStopSinceStamp(stampMtimeMs) {
     return decided === null ? stoppedSinceStamp(seen, stampMtimeMs) : decided;
   } catch { return false; }
 }
+// The time a typed stop is judged against: the stamp FILE's mtime. The standing switch's stamp is made in memory with no file
+// and a time of now (hook-prelude.js approvalStamp), which no typed prompt is newer than, so it reads 0 where no file is
+// there: a stop typed in this session holds the answers, and a real stamp the mode command writes later is newer and resumes.
+function stampCutoffMs(stamp) {
+  try { return fs.statSync(stamp.file).mtimeMs; } catch { return 0; }
+}
+// True when the user typed a stop since this session's AUTO stamp: the auto-fields Stop hold reads it, so a stopped run is not held.
+function runStoppedNow(input) {
+  const stamp = input.agent_id ? null : stampOf(input);
+  return !!stamp && typedStopSinceStamp(stampCutoffMs(stamp));
+}
 // AN ASK AFTER A CLASSIFIER DENIAL WAITS (B3, R4 session b9e1a400 rows 211-222): Claude Code's auto-mode classifier refused a Bash call
 // - a user row whose tool_result has is_error true and 'denied by the Claude Code auto mode classifier' in its text, the row carrying
 // toolDenialKind 'automode-blocked' - and the next ask, 'Apply this plan?', was auto-answered 'Apply (Recommended)': the user's check
@@ -3466,7 +3477,7 @@ const askStamp = payload.tool_name === 'AskUserQuestion' && !payload.agent_id ? 
 const autoStampHere = !!(askStamp && askStamp.live && askStamp.session && /^AUTO\b/.test(askStamp.first));
 const walkHere = autoStampHere ? pluginWalk(payload) : '';
 // A typed stop since the stamp ends the answers too (A2d): the user is back, and the next ask goes to them.
-const runStopped = autoStampHere && !walkHere && typedStopSinceStamp(askStamp.mtimeMs);
+const runStopped = autoStampHere && !walkHere && typedStopSinceStamp(stampCutoffMs(askStamp));
 const autoRun = autoStampHere && !walkHere && !runStopped;
 if (runStopped) ledgerRow({ tool: 'AskUserQuestion', mode: 'auto', kind: 'auto-ask-stopped', reason: 'auto-run answers no ask after the user typed a stop - it goes to the user until the next run starts' });
 if (walkHere) ledgerRow({ tool: 'AskUserQuestion', mode: 'auto', kind: 'auto-walk-asks', reason: `auto-run answers no ask inside a plugin's ${walkHere} walk - it goes to the user` });

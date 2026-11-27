@@ -1284,6 +1284,44 @@ test("auto-mode asks: no ask is answered after a typed 'stop everything until I 
     assert.strictEqual(answered(askAfter('sa2', [bare])), null, 'a stop row with no time reads as current');
 });
 
+// A2d fix round 1: the standing switch's stamp is synthetic (no file, a time of now), so a typed stop never looked newer than it;
+// and the auto-fields hold read the stamp alone, so it held a close the user had stopped.
+test("auto-mode asks: under the standing auto-run a typed stop holds the answers, and a real stamp written later resumes them (A2d)", () =>
+{
+    const p = project();
+    fs.mkdirSync(path.join(p.root, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(p.root, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_AUTO_RUN: '1' } }));
+    const one = [q('Run the tests next?', ['Run the tests (Recommended)', 'Skip them'])];
+    const askAfter = (rowsAfter) => ask(p, 'sd1', one, { transcript_path: transcript(rowsAfter) });
+    assert.ok(answered(askAfter([])), 'control: the standing mode answers an ordinary ask');
+    assert.ok(answered(askAfter([typedAt('stop the dev server')])), "'stop the dev server' is no stop");
+    // typed 5 s ago: older than the synthetic stamp's 'now', as every real prompt is
+    assert.strictEqual(answered(askAfter([typedAt('stop everything until I ask', -5000)])), null, 'a typed stop holds the answers');
+    assert.ok(!fs.existsSync(p.gate), 'no stamp file: the switch is not touched');
+    // /alfred-code:mode:auto-run on typed after the stop writes a real stamp, which is newer than the stop
+    autoStamp(p, 'sd1');
+    const later = new Date(Date.now() + 10000);
+    fs.utimesSync(p.gate, later, later);
+    assert.ok(answered(askAfter([typedAt('stop everything until I ask', -5000)])), 'a real stamp newer than the stop resumes the answers');
+});
+
+test('auto-mode Stop: a close the user stopped owes no Result / Progress / Leftovers fields (A2d)', () =>
+{
+    const p = project();
+    const solveRow = { type: 'user', entrypoint: 'cli', message: { role: 'user', content: '<command-name>/task-solve</command-name>' } };
+    const stopAfter = (sid, rowsAfter) => run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: sid, cwd: p.root, transcript_path: transcript([solveRow, ...rowsAfter]),
+        last_assistant_message: 'Done: the logout fix is built and verified - met\nLeft for you: push 1 commit', background_tasks: [] }, { CLAUDE_PROJECT_DIR: p.root });
+    autoStamp(p, 'sf1');
+    openRun(p, 'sf1');
+    const held = stopAfter('sf1', []);
+    assert.match(held.stderr, /THREE named fields/, 'control: the close owes its fields');
+    autoStamp(p, 'sf2');
+    openRun(p, 'sf2');
+    const stopped = stopAfter('sf2', [typedAt('stop everything until I ask')]);
+    assert.doesNotMatch(stopped.stderr, /THREE named fields/, 'a typed stop since the stamp skips the fields hold');
+    assert.strictEqual(stopped.status, 0, stopped.stderr);
+});
+
 // review 2026-11-27, finding 2: the close's own Stop still reaches the rotation ask before the run ends.
 test('auto-mode Stop: a run close naming a credential still gets the rotation ask before the run ends', () =>
 {
