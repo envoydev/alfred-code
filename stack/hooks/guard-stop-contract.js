@@ -3151,6 +3151,30 @@ function waitsForUser(question)
 {
     return WAIT_PREFIX_RE.test(String(question || ''));
 }
+// NO ASK ABOUT THE USER (session audit 2026-11-27, A2b: S03, S05, T17): an ask is for a choice the user can make from where they
+// are. A question about their own state or whereabouts ('Where are you?'), or a marked pick that is a step only they can do ('I type
+// /task-solve'), is no choice: the model names the step in its reply and ends the turn, or goes on with other work. The check
+// runs before the auto-answer, so a run under auto-run never answers it. A pick in the model's voice opens with a verb ('Run the
+// tests, then I'll push') and passes. Only the marked label is judged: another option may say what the user does.
+const USER_STATE_RE = /\bwhere (?:are|were) you\b|\bare you (?:back|there|away|around)\b|\bshould I wait for you\b|\bstay(?:ing)? paused\b/i;
+const USER_STEP_VERBS = new Set(['type', 'run', 'do', 'push', 'commit', 'paste', 'send', 'click', 'open', 'start', 'restart', 'decide',
+  'choose', 'pick', 'approve', 'fix', 'handle', 'enter', 'write', 'copy', 'log', 'sign', 'say', 'tell', 'merge', 'deploy', 'install',
+  'edit', 'review', 'test', 'check']);
+const USER_STEP_I_RE = /^\s*I(?:\s+(?:type|run|do|will)\b|['\u2019]ll\b)/;
+const USER_STEP_YOU_RE = /^\s*You\s+([a-z]+)\b/i;
+const USER_STEP_REASON = 'name the step in the reply and end the turn, or go on with other work';
+const MARK_TAIL_RE = /\s*\(Recommended\)\s*$/i;
+function userStepAsk({ question, marked })
+{
+    const label = String(marked || '').replace(MARK_TAIL_RE, '');
+    const you = USER_STEP_YOU_RE.exec(label);
+    const aboutUser = USER_STATE_RE.test(String(question || ''));
+    const userStep = USER_STEP_I_RE.test(label) || (!!you && USER_STEP_VERBS.has(you[1].toLowerCase()));
+    if (!aboutUser && !userStep) return null;
+    const what = aboutUser ? 'asks about the user\'s own state or whereabouts' : `marks '${label.slice(0, 80)}', a step only the user can do`;
+    return { reason: `Blocked: this AskUserQuestion ${what}. An ask is for a choice the user can make from here: ${USER_STEP_REASON}. `
+      + 'A pick in your own voice opens with a verb (\'Run the tests, then I\'ll push\'); reword the ask if it was not about the user.' };
+}
 const AUTO_TARGET = String.raw`(?:tickets?|issues?|PRs?|pull requests?|MRs?|cards?|threads?|Confluence|Notion|wiki|Jira|Linear)`;
 // A ticket key: two to ten capitals or digits led by a capital, a dash, digits (PROJ-12, AB2-7). Not one letter ('X-1'), not
 // glued to a word or a dotted name, and not an encoding or standard name ('UTF-8', 'SHA-256', 'ISO-8601', 'RFC-9110'), which
@@ -3285,6 +3309,21 @@ const autoStampHere = !!(askStamp && askStamp.live && askStamp.session && /^AUTO
 const walkHere = autoStampHere ? pluginWalk(payload) : '';
 const autoRun = autoStampHere && !walkHere;
 if (walkHere) ledgerRow({ tool: 'AskUserQuestion', mode: 'auto', kind: 'auto-walk-asks', reason: `auto-run answers no ask of /alfred-code:${walkHere} - it goes to the user` });
+// A2b runs first: the deny comes before any auto-answer. A throw inside it fails open, except the denial's own exit.
+if (payload.tool_name === 'AskUserQuestion') {
+  let userStepDenied = false;
+  try {
+    for (const q of (payload.tool_input || {}).questions || []) {
+      if (!q) continue;
+      const pick = q.multiSelect || !Array.isArray(q.options) ? null : q.options.find((o) => o && /\(Recommended\)/i.test(String(o.label || '')));
+      const hit = userStepAsk({ question: q.question, marked: pick ? pick.label : '' });
+      if (!hit) continue;
+      global.BLOCK_DETAIL = { branch: 'user-step' };
+      userStepDenied = true;
+      blockCall(payload, hit.reason);
+    }
+  } catch (e) { if (userStepDenied) throw e; }
+}
 if (autoRun) {
   const input = payload.tool_input || {};
   const answers = autoAnswers(input.questions);

@@ -777,6 +777,65 @@ test('auto-mode asks: an ordinary ask is still answered under auto-run after the
     assert.deepStrictEqual(answered(ask(p, 'wf2', [one])), { 'Plan ready. Build it?': 'Approve and build (Recommended)' });
 });
 
+// A2b (session audit 2026-11-27, S03 / S05 / T17): an ask about where the user is, or whose marked pick is a step only the
+// user can do, is no ask. The deny runs before the auto-answer, so a run under auto-run never answers it for the user.
+test('auto-mode asks: an ask about the user\'s whereabouts is denied, never auto-answered (A2b, S03)', () =>
+{
+    const p = project();
+    autoStamp(p, 'us1');
+    const where = q('Where are you?', ['Adding it - keep waiting (Recommended)', 'Go on without you']);
+    const r = ask(p, 'us1', [where]);
+    assert.strictEqual(answered(r), null, 'the auto-answer does not run');
+    assert.strictEqual(r.status, 'ask', `denied: ${r.stderr}`);
+    assert.match(r.stderr, /name the step in the reply and end the turn, or go on with other work/);
+    assert.ok(rows(p, 'us1').some((x) => x.detail && x.detail.branch === 'user-step'), 'the block row names its branch');
+    for (const text of ['Are you back?', 'Should I wait for you?', 'Stay paused until you say go?', 'Hi - are you there? Pick the next stage.'])
+        assert.strictEqual(ask(p, 'us1', [q(text, ['Keep going (Recommended)', 'Stop'])]).status, 'ask', text);
+    // the wait form does not excuse it
+    assert.strictEqual(ask(p, 'us1', [q('waits for you: other people\'s data. Where are you?', ['Hold (Recommended)', 'Go'])]).status, 'ask', 'wait form');
+    // attended, the same ask is denied too
+    const attended = project();
+    assert.strictEqual(ask(attended, 'us2', [where]).status, 'ask', 'no auto-run stamp');
+});
+
+test('auto-mode asks: an ask whose marked pick is a step only the user can do is denied (A2b, S05, T17)', () =>
+{
+    const p = project();
+    autoStamp(p, 'us3');
+    for (const label of ['I type /task-solve (Recommended)', 'I run the migration (Recommended)', 'I do it by hand (Recommended)', 'I will push (Recommended)',
+        "I'll push after the tests (Recommended)", 'I’ll push after the tests (Recommended)', 'You run the tests (Recommended)', 'You type the key (Recommended)']) {
+        const r = ask(p, 'us3', [q('How do we go on?', [label, 'Something else'])]);
+        assert.strictEqual(r.status, 'ask', label);
+        assert.strictEqual(answered(r), null, label);
+    }
+    assert.match(ask(p, 'us3', [q('How do we go on?', ['I type /task-solve (Recommended)', 'Other'])]).stderr, /name the step in the reply and end the turn, or go on with other work/);
+});
+
+test('auto-mode asks: a pick in the model\'s voice, or a step word in an unmarked label, passes the user-step check (A2b)', () =>
+{
+    const p = project();
+    autoStamp(p, 'us4');
+    const pass = (label, question = 'How do we go on?') => assert.deepStrictEqual(answered(ask(p, 'us4', [q(question, [label, 'Something else'])])), { [question]: label }, label);
+    pass('Commit now (Recommended)');
+    // an outward pick passes this check and then waits for the user, as before
+    const outward = ask(p, 'us4', [q('How do we go on?', ['Push after the tests (Recommended)', 'Hold'])]);
+    assert.strictEqual(outward.status, 0, outward.stderr);
+    assert.strictEqual(answered(outward), null, 'a push pick still waits');
+    // opens with a verb, so it passes this check; its push then waits for the user, as an outward pick does
+    const verbFirst = ask(p, 'us4', [q('How do we go on?', ["Run the tests, then I'll push (Recommended)", 'Hold'])]);
+    assert.strictEqual(verbFirst.status, 0, verbFirst.stderr);
+    pass('Add it to the plan (Recommended)');
+    pass('Run the tests (Recommended)');
+    // only the marked label is judged: a user-step label that is not the pick is a plain option
+    pass('Run the tests (Recommended)', 'Next step?');
+    assert.deepStrictEqual(answered(ask(p, 'us4', [q('How do we go on?', ['Run the tests (Recommended)', 'I type it myself'])])), { 'How do we go on?': 'Run the tests (Recommended)' }, 'an unmarked user-step option');
+    // a word that only starts like one: 'I' and 'You' as a first word of other labels
+    pass('Youtube embed first (Recommended)');
+    pass('Index the files (Recommended)');
+    // a pick on a multi-select question carries no single mark to judge
+    assert.strictEqual(ask(p, 'us4', [q('Which files?', ['I run a.js', 'b.js'], true)]).status, 0, 'multi-select');
+});
+
 // ---------------------------------------------------------------------------------------------
 // the run goes on: guard-stop-contract.js Stop
 // ---------------------------------------------------------------------------------------------
