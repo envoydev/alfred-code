@@ -124,6 +124,8 @@ test('the typed word clears a stash drop only after the model proposed that entr
   assert.equal(runRm(dir, 'repeat 2 git stash drop', loop).status, 'ask', 'third review M2: zsh repeat');
   const listed = transcript(dir, [said('`stash@{0}` holds a stale copy. Drop it?'), typed('then drop'), call('Bash', { command: 'git stash list' })]);
   assert.equal(runRm(dir, 'git stash drop stash@{0}', listed).status, 0, 'a stash list moves no ref, so the word holds');
+  assert.equal(runRm(dir, 'git stash list && git stash drop stash@{0}', named).status, 0, 'a stash list in the same command is no second call');
+  assert.equal(runRm(dir, 'git stash show -p stash@{0}; git stash drop stash@{0}', named).status, 0, 'nor is a stash show');
   const own = call('Bash', { command: 'git stash drop stash@{0}' })[0];
   const withOwnRow = transcript(dir, [said('`stash@{0}` holds a stale copy. Drop it?'), typed('then drop'), own]);
   assert.equal(runRm(dir, 'git stash drop stash@{0}', withOwnRow, { tool_use_id: own.message.content[0].id }).status, 0, 'the judged call\'s own row is no other call');
