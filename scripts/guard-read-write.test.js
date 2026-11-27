@@ -720,3 +720,22 @@ test('4c read guard: a store rule, a native rule, neither, and a root\'s store r
   put(path.join(root, '.alfred', 'stack', 'rules', 'javascript-conventions.md'), JS);
   assert.match(said(child), /\.alfred\/stack\/rules\/javascript-conventions\.md/, 'a root\'s store rule reminds in a joined child');
 });
+
+test('guard-cross-project-write: sqlite3 and interpreter calls ask on a path past the workspace, and a copy still does (B6)', { skip: process.platform === 'win32' && 'POSIX paths' }, () => {
+  const proj = fs.realpathSync.native(fs.mkdtempSync(path.join(TMP, 'acme-app-')));
+  const other = fs.realpathSync.native(fs.mkdtempSync(path.join(TMP, 'Other-')));
+  fs.mkdirSync(path.join(proj, '.git'));
+  fs.writeFileSync(path.join(proj, 'a'), 'x');
+  fs.writeFileSync(path.join(proj, 'erase.py'), 'x');
+  fs.writeFileSync(path.join(other, 'db'), 'x');
+  const at = (command) => run(XWRITE, { tool_name: 'Bash', tool_input: { command }, cwd: proj },
+    { cwd: proj, env: { ...process.env, CLAUDE_PROJECT_DIR: proj, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' } }).status;
+  const db = path.join(other, 'db');
+  assert.equal(at(`cp a ${other}/b`), 2, 'a copy past the workspace asks');
+  assert.equal(at(`sqlite3 ${db} "delete from notes"`), 2, 'sqlite3 on a database past the workspace asks');
+  assert.equal(at(`python -I erase.py ${db}`), 2, 'an interpreter on an existing path past the workspace asks');
+  assert.equal(at(`sqlite3 "file:${db}?mode=ro" "select 1"`), 0, 'a read-only handle passes');
+  assert.equal(at('sqlite3 :memory: "select 1"'), 0, ':memory: passes');
+  assert.equal(at('python3 erase.py a'), 0, 'an interpreter call on a project path passes');
+  assert.equal(at('python3 -c "print(1)"'), 0, 'code with no path passes');
+});

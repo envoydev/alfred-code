@@ -621,3 +621,76 @@ test('a grant of the account folder, or of one holding it, opens no other projec
   passes(fx, read(fx.own), {}, 'this project\'s own memory still opens');
   passes(fx, read(fx.at('.claude', 'plugins', 'cache', 'x')), {}, 'the rest of the account folder is open as before');
 }));
+
+// ---- sqlite3 and interpreter calls on a path past the workspace (session audit fixes, B6) ---------------------------
+// The sibling sits beside the fake home, outside the project zone, so only the write half can judge it.
+const WINDOWS = process.platform === 'win32';
+function outsideDb(fx) {
+  const dir = path.join(fx.outer, 'Other');
+  fs.mkdirSync(dir, { recursive: true });
+  const db = path.join(dir, 'db');
+  fs.writeFileSync(db, 'x');
+  return { db, relative: path.relative(fx.proj, db).split(path.sep).join('/') };
+}
+
+test('sqlite3 writing a database past the workspace asks first', { skip: WINDOWS && 'POSIX paths' }, withFixture((fx) => {
+  const { db, relative } = outsideDb(fx);
+  const r = asks(fx, bash(`sqlite3 ${db} "delete from notes"`), {}, 'an absolute database past the workspace');
+  assert.match(blockText(r), new RegExp(db.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), 'the ask names the database');
+  asks(fx, bash(`sqlite3 ${relative} "delete from notes"`), {}, 'a relative database past the workspace');
+  asks(fx, bash(`cd .. && sqlite3 ${path.relative(path.dirname(fx.proj), db).split(path.sep).join('/')} "vacuum"`), {}, 'a relative database after a cd');
+  asks(fx, bash(`sqlite3 -cmd '.timeout 5' -header ${db} "delete from notes"`), {}, 'options before the database');
+  asks(fx, bash(`sqlite3 "file:${db}" "delete from notes"`), {}, 'a file: URI with no mode');
+  asks(fx, bash(`sqlite3 "file:${db}?mode=rwc" "delete from notes"`), {}, 'a file: URI that writes');
+}));
+
+test('sqlite3 on a read-only handle, :memory: or a project database passes with no prompt', { skip: WINDOWS && 'POSIX paths' }, withFixture((fx) => {
+  const { db } = outsideDb(fx);
+  fx.put('work/proj/data.db');
+  passes(fx, bash(`sqlite3 "file:${db}?mode=ro" "select 1"`), {}, 'a mode=ro URI is a read');
+  passes(fx, bash(`sqlite3 -readonly ${db} "select 1"`), {}, 'the -readonly flag is a read');
+  passes(fx, bash(`sqlite3 --readonly ${db} "select 1"`), {}, 'the --readonly flag is a read');
+  passes(fx, bash('sqlite3 :memory: "select 1"'), {}, ':memory:');
+  passes(fx, bash('sqlite3 data.db "select 1"'), {}, 'a database inside the project');
+  passes(fx, bash(`sqlite3 ${fx.proj}/data.db "delete from t"`), {}, 'the project database by its absolute path');
+  passes(fx, bash('sqlite3 --version'), {}, 'no database at all');
+  passes(fx, bash('sqlite3 -readonly $DB "select 1"'), {}, 'an unexpanded variable is not judged');
+}));
+
+test('an interpreter call that names an existing path past the workspace asks first', { skip: WINDOWS && 'POSIX paths' }, withFixture((fx) => {
+  const { db, relative } = outsideDb(fx);
+  fx.put('work/proj/erase.py');
+  const r = asks(fx, bash(`python -I erase.py ${db}`), {}, 'python on an outside file');
+  assert.match(blockText(r), /python/, 'the ask names the interpreter');
+  asks(fx, bash(`python3 erase.py ${relative}`), {}, 'python3 on a relative outside file');
+  asks(fx, bash(`node erase.js --db ${db}`), {}, 'node with an option and an outside file');
+  asks(fx, bash(`ruby erase.rb ${db}`), {}, 'ruby');
+  asks(fx, bash(`perl erase.pl ${db}`), {}, 'perl');
+  asks(fx, bash(`bash erase.sh ${db}`), {}, 'bash');
+  asks(fx, bash(`sh erase.sh ${db}`), {}, 'sh');
+  asks(fx, bash(`python3 -c "import sys; print(sys.argv)" ${db}`), {}, 'python3 -c with an outside argument');
+  asks(fx, bash(`python3 erase.py "${db}"`), {}, 'a quoted outside path');
+}));
+
+test('an interpreter call on a project path, a missing path, a system path or code with no path passes with no prompt', { skip: WINDOWS && 'POSIX paths' }, withFixture((fx) => {
+  const { relative } = outsideDb(fx);
+  fx.put('work/proj/scripts/x.py');
+  fx.put('work/proj/src/a.ts');
+  passes(fx, bash('python3 scripts/x.py src/a.ts'), {}, 'both paths inside the project');
+  passes(fx, bash(`python3 scripts/x.py ${fx.proj}/src/a.ts`), {}, 'an absolute project path');
+  passes(fx, bash('python3 -c "print(1)"'), {}, 'python3 -c with no path');
+  passes(fx, bash('node -e "console.log(1)"'), {}, 'node -e with no path');
+  passes(fx, bash(`python3 scripts/x.py ${relative}.missing`), {}, 'an outside path that does not exist');
+  passes(fx, bash('python3 scripts/x.py --verbose -n 3'), {}, 'options and a number');
+  passes(fx, bash('bash ~/.nvm/x'), {}, 'a toolchain folder under the home folder');
+  passes(fx, bash('python3 scripts/x.py $OUT'), {}, 'an unexpanded variable');
+  passes(fx, bash('echo python3 ../../../Other'), {}, 'an echo of the words');
+  if (fs.existsSync('/usr/bin/env')) passes(fx, bash('python3 scripts/x.py /usr/bin/env'), {}, 'a system tool path');
+}));
+
+test('a copy to a path past the workspace still asks beside the sqlite3 and interpreter rule', { skip: WINDOWS && 'POSIX paths' }, withFixture((fx) => {
+  const { relative } = outsideDb(fx);
+  asks(fx, bash(`cp x ${relative}.copy`), {}, 'cp a ../Other/b');
+  asks(fx, bash(`echo hi > ${relative}.out`), {}, 'a redirect past the workspace');
+  passes(fx, bash('cp x x2'), {}, 'a copy inside the project');
+}));

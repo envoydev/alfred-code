@@ -90,6 +90,19 @@ try { cursorOff = require('./hook-prelude.js').cursorStandDown(payload, __filena
 // Stood down by any gate: only a write into the installed plugins' code is judged (above).
 const PLUGIN_ONLY = off || cursorOff;
 
+// B6 (session audit fixes): a `sqlite3` database and an interpreter's path argument past the workspace ask like a write.
+const SQLITE_VERB = /^sqlite3?$/;
+const INTERPRETER_VERB = /^(?:python[\d.]*|node|ruby|perl|bash|sh)$/;
+const SQLITE_VALUE_OPTIONS = new Set(['-cmd', '-init', '-separator', '-newline', '-nullvalue', '-vfs', '-mmap', '-pagecache', '-lookaside', '-maxsize', '-nonce', '-afl']);
+const SQLITE_READ_ONLY_OPTION = /^--?readonly$/;
+const SQLITE_MEMORY_DATABASE = /^(?::memory:|)$/;
+const SQLITE_URI_PREFIX = /^file:/i;
+const SQLITE_READ_ONLY_QUERY = /(?:^|&)(?:mode=ro|immutable=1)(?:&|$)/;
+const INTERPRETER_CODE_OPTIONS = new Set(['-c', '-e', '-E', '-m', '-r', '-p', '-W', '-X', '--eval', '--print', '--require', '--import', '--input-type']);
+const SYSTEM_TOOL_ROOTS = Object.freeze(['/usr', '/bin', '/sbin', '/opt', '/etc', '/dev', '/System', '/Library', '/Applications', '/private/etc']);
+const SQLITE_WRITE_WHAT = 'a sqlite3 database';
+const INTERPRETER_PATH_WHAT = 'call on a path';
+
 // What the shell command reads past the boundary (THE READ HALF, below), kept until the call's own verdict: a block of the
 // write half takes it into its prompt (`blockCall`), and a call nothing else blocked asks for it when it exits. Declared
 // here, above the exit wrapper, which runs on every exit - the ones before the shell section too.
@@ -1012,6 +1025,88 @@ function judge(rawIn, index, what, verb) {
   // name the token the session wrote unless a cd moved it - then the resolved path says where it lands
   block(what, explicit ? raw : abs, abs);
 }
+// The database a `sqlite3` call opens: the first word that is no option (a value option takes the word after it). `{ path,
+// readOnly }`, or null for `:memory:`, a temporary database and a call that names none. A `file:` URI is read down to its
+// path; `-readonly`, `mode=ro` and `immutable=1` make the open a read, which this half leaves to the read half.
+function sqliteTarget(argv) {
+  let readOnly = false;
+  for (let at = 0; at < argv.length; at++) {
+    const word = argv[at];
+    if (word === '--') return databaseOf(argv[at + 1], readOnly);
+    if (!word.startsWith('-')) return databaseOf(word, readOnly);
+    if (SQLITE_READ_ONLY_OPTION.test(word)) readOnly = true;
+    else if (SQLITE_VALUE_OPTIONS.has(word.replace(/^--/, '-'))) at++;
+  }
+  return null;
+}
+function databaseOf(word, readOnly) {
+  if (typeof word !== 'string' || SQLITE_MEMORY_DATABASE.test(word)) return null;
+  if (!SQLITE_URI_PREFIX.test(word)) return { path: word, readOnly };
+  const [location, query = ''] = word.replace(SQLITE_URI_PREFIX, '').split('?', 2);
+  const filePath = location.replace(/^\/\/[^/]*(?=\/)/, '');
+  let decoded = filePath;
+  try { decoded = decodeURIComponent(filePath); } catch { /* the path as written */ }
+  if (SQLITE_MEMORY_DATABASE.test(decoded)) return null;
+  return { path: decoded, readOnly: readOnly || SQLITE_READ_ONLY_QUERY.test(query) };
+}
+// The words of an interpreter call that name an existing path, read from `cwd` where a word is relative. An option is no
+// path and a code option (`-c`, `-e`) takes the next word as code; no script body is read. `exists` is injected so the
+// decision stays a pure function.
+function interpreterPaths(argv, cwd, exists = fs.existsSync) {
+  const paths = [];
+  for (let at = 0; at < argv.length; at++) {
+    const word = argv[at];
+    if (word.startsWith('-')) { if (INTERPRETER_CODE_OPTIONS.has(word)) at++; continue; }
+    if (word && exists(resolveTarget(expandTilde(word), cwd))) paths.push(word);
+  }
+  return paths;
+}
+// A tool's own folder is no project: a system folder, and a dot-folder or toolchain folder under the home folder (the read
+// half's zone test says which folders under HOME hold projects).
+function toolOwnedPath(abs) {
+  const t = realish(abs);
+  if (process.platform !== 'win32' && SYSTEM_TOOL_ROOTS.some((root) => inside(t, root))) return true;
+  return Boolean(crossRead && HOME_REAL && inside(t, HOME_REAL) && fold(t) !== fold(HOME_REAL) && !inReadZone(t));
+}
+// The arguments a command word's own words carry, dequoted and expanded the way `judge` expands them.
+function argvOf(cmd, cand, next) {
+  const own = cmd.words.slice(cand.at + 1, next ? next.at : cmd.words.length);
+  return own.map((word) => scan.expandVars(shell.dequote(word.raw), word.s));
+}
+// Whether the read half already asks about this path (a project-zone database or file): its prompt covers the call, so the
+// write ask adds none.
+function readAsked(word, index) {
+  const base = anchorAt(index);
+  if (!base || !readHits || !readHits.length) return false;
+  const abs = resolveTarget(nativePath(expandTilde(word)), base);
+  return readHits.some((hit) => fold(realish(hit.path)) === fold(realish(abs)));
+}
+// The sqlite3 and interpreter calls of the command, judged as a write to the path they name (the existing ask).
+function judgeDatabaseAndInterpreterCalls() {
+  for (const cmd of scan.cmds || []) {
+    for (let k = 0; k < cmd.cands.length; k++) {
+      const cand = cmd.cands[k];
+      const next = cmd.cands[k + 1];
+      const isSqlite = SQLITE_VERB.test(cand.name);
+      if (!isSqlite && !INTERPRETER_VERB.test(cand.name)) continue;
+      if (next && next.chain.includes(cand.name)) continue;
+      const index = cmd.words[cand.at].s;
+      const argv = argvOf(cmd, cand, next).filter((word) => !isVar(word));
+      if (isSqlite) {
+        const target = sqliteTarget(argv);
+        if (target && !target.readOnly && !readAsked(target.path, index)) judge(target.path, index, SQLITE_WRITE_WHAT, cand.name);
+        continue;
+      }
+      const base = anchorAt(index);
+      if (!base) continue;
+      for (const word of interpreterPaths(argv, base)) {
+        const abs = resolveTarget(nativePath(expandTilde(word)), base);
+        if (allowed(abs) || toolOwnedPath(abs) || readAsked(word, index)) continue;
+        judge(word, index, `a ${cand.name} ${INTERPRETER_PATH_WHAT}`, cand.name);
+      }
+    }
+  }
+}
 // Only WRITE-shaped commands are considered, and only the paths they actually write to. A path
 // that resolves inside the project - the overwhelming majority, relative paths included - never
 // reaches the check, so the false-positive surface is limited to commands genuinely writing out
@@ -1051,5 +1146,8 @@ for (const u of unread) {
     `Run a smaller piece the guard can read instead.\n`,
   );
 }
+
+// sqlite3 and interpreter calls (B6) come after the unread check: a script the guard could not read is told so first.
+judgeDatabaseAndInterpreterCalls();
 
 process.exit(0);
