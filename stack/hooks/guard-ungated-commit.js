@@ -747,7 +747,7 @@ function boundAfter(bounds, i) {
 // A quote holding any letter outside ASCII: the lists cannot read it, so it is no consent (the header, ENGLISH ONLY).
 const foreignQuote = (text) => /[^\x00-\x7f]/.test(String(text).replace(/[^\p{L}]/gu, ''));
 const FOREIGN_HINT = ' - the gate reads a quote in English only; ask with AskUserQuestion (English labels) and write the picked option as `answered: <the chosen label>`';
-function consentIn(text, gate) {
+function consentIn(text, gate, detail) {
   if (text.length > CONSENT_QUOTE_CAP || foreignQuote(text)) return false;
   const clean = text.replace(POSITIVE_IDIOM, (m) => ' '.repeat(m.length));
   const bounds = [0];
@@ -775,7 +775,7 @@ function consentIn(text, gate) {
       const negated = answeredNo || NEGATION_BEFORE.test(before) || STOP_BEFORE.test(before) || NEGATION_AFTER.test(after)
         || BARE_NO_AFTER.test(after) || DEFERRAL_CLAUSE.test(clause) || (CI_DEFERRAL.test(clause) && !MERGE_VERB.test(m[0].trim())) || USER_KEEPS.test(clause);
       const word = m[0].trim();
-      if (negated && own.test(word)) return false;
+      if (negated && own.test(word)) { if (detail) detail.refused = true; return false; }
       if (negated || STATEMENT_AFTER.test(after)) continue;
       if (GENERIC_CONSENT.test(word)) genericHit = true;
       else if (gate !== 'PUSH-GATE' || CLASS_PUSH.test(word)) ownHit = true;
@@ -986,7 +986,7 @@ function transcriptScan() {
       if (/"type"\s*:\s*"user"/.test(line) && !line.includes('"tool_result"') && line.length < 256 * 1024) {
         let row;
         try { row = JSON.parse(line); } catch { return; }
-        if (!row || row.type !== 'user' || row.isMeta) return;
+        if (!row || row.type !== 'user' || row.isMeta || row.isCompactSummary || row.isVisibleInTranscriptOnly) return;   // a compaction summary quotes old words: never a typed turn
         const text = textOf(row.message && row.message.content);
         if (text && !/^\s*<(?:command-name|local-command|bash-|task-notification)/.test(text)) { _scan.typed.push(normQuote(text)); _scan.typedRaw.push({ text, ts: tsOf(row) }); }
         // a review the user TYPED as a slash command is a review run too, once its result line followed it
@@ -1086,12 +1086,16 @@ function transcriptScan() {
 function trivialConsent(scan) {
   const last = scan.typedRaw[scan.typedRaw.length - 1];
   if (last) {
+    // a sentence that refuses the commit ('do not commit yet') takes the whole turn's consent: a later 'commit it' in it is a plan, not the word
+    const refusal = {};
+    let said = false;
     for (const part of last.text.split(SENTENCE_END)) {
       const sentence = normQuote(part);
-      if (sentence && consentIn(sentence, 'COMMIT-GATE')) return true;
+      if (sentence && consentIn(sentence, 'COMMIT-GATE', refusal)) said = true;
     }
+    if (said && !refusal.refused) return true;
   }
-  const since = last ? last.ts : -1;
+  const since = last ? (last.ts || Infinity) : -1;   // a typed turn with no time is the newest: no earlier answer counts
   return scan.answers.some((a) => a.ts > since && a.labels.some((label) => consentIn(label, 'COMMIT-GATE')));
 }
 // Is this exact string one of the assistant's own AskUserQuestion option labels? Compared with the
@@ -2239,8 +2243,8 @@ try {
   if (files <= 2 && lines <= 15) {
     if (!trivialConsent(transcriptScan())) {
       blockCall(payload,
-        'Blocked: git commit - no word from the user asks for this commit in this session. A small change skips the gate receipt, not the user\'s consent.\n' +
-          'Ask the user with AskUserQuestion, the recommended option first: \'Commit now (Recommended)\'. A typed \'commit it\' or a picked \'Commit now\' lets it through. ' +
+        'Blocked: git commit - no word from the user asks for this commit since the user\'s latest message. A small change skips the gate receipt, not the user\'s consent.\n' +
+          'Ask the user with AskUserQuestion, the recommended option first: \'Commit now (Recommended)\'. A typed \'commit it\' or a picked \'Commit now\' lets it through; an answered commit ask counts only when it comes after the latest message. ' +
           'The gate reads English only: a word in another language gives no consent, so ask with English labels.');
     }
     recordTrivial(set); process.exit(0);
