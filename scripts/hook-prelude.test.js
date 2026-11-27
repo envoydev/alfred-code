@@ -1145,8 +1145,11 @@ test('H2 replay: a foreign repository\'s fsmonitor program never runs from the r
         fs.writeFileSync(path.join(repo, 'mon.sh'), `#!/bin/sh\ntouch "${mark}"\nexit 1\n`);
         fs.chmodSync(path.join(repo, 'mon.sh'), 0o755);
         g('config', 'core.fsmonitor', path.join(repo, 'mon.sh'));
+        // the user typed 'commit it': a trivial commit needs that word (N01, 2026-11-27)
+        const typed = path.join(proj, 'typed.jsonl');
+        fs.writeFileSync(typed, JSON.stringify({ type: 'user', timestamp: '2026-11-27T09:00:00Z', message: { role: 'user', content: 'commit it' } }) + '\n');
         const fire = (hook, payload) => require('./hook-test-env').legacyBlock(spawnSync(process.execPath, [path.join(__dirname, '..', 'stack', 'hooks', hook)],
-            { input: JSON.stringify({ session_id: 'h2', ...payload }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: proj } }));
+            { input: JSON.stringify({ session_id: 'h2', transcript_path: typed, ...payload }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: proj } }));
         const cases = [
             ['guard-read-whole-file.js', { tool_name: 'Read', tool_input: { file_path: path.join(repo, 'big.ts'), offset: 1, limit: 350 } }, 2],
             ['guard-catastrophic-rm.js', { tool_name: 'Bash', tool_input: { command: 'git checkout -- a.txt' }, cwd: repo }, 2],

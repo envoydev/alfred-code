@@ -25,7 +25,8 @@ delete process.env.ALFRED_CODE_CONTEXT_WINDOW_DEFAULT;
 process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));
 // A session where a review ran: every commit receipt needs one since 2026-10-22, so a case judging another of its lines
 // runs the guard over this transcript unless it hands its own.
-const REVIEWED = reviewedTranscript(TMP);
+// The user typed 'commit it': a trivial commit needs that word too (N01, 2026-11-27).
+const REVIEWED = reviewedTranscript(TMP, [JSON.stringify({ type: 'user', timestamp: '2026-11-27T09:00:00Z', message: { role: 'user', content: 'commit it' } })]);
 
 // A block is an ask or a deny now (guards ask, D3); `legacyBlock` reads it as the exit 2 with the reason on stderr these cases were written for.
 const runIn = (hook, payload, opts) =>
