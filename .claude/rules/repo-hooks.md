@@ -716,8 +716,9 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     with a recording mask; a file `secretIn` calls no credential file gives nothing); (2) `WELL_KNOWN` - the home
     credential files, the account settings and credentials, the project's root `.env*`, `.mcp.json` and settings files -
     credential verdicts only; (3) the stores (`denyStores`) and the key file at the project, the cwd, their data roots,
-    the home and the account dir, every value; (4) variables named like a credential. A value under 6 characters
-    (`OUTPUT_MASK_MIN`; the start line names a store key holding one), a placeholder and - outside a store - a sample are
+    the home and the account dir, every value of a dotenv or a named file, but of the data-root store only the values A3 below
+    names; (4) variables named like a credential. A value under 6 characters
+    (`OUTPUT_MASK_MIN`; a store value under a credential-named key keeps any length), a placeholder and - outside a store - a sample are
     not masked, and a value is masked only as a whole token, never inside a word (card item 4, 2026-11-23: a 5- and a
     12-character value were masked inside a field name and an issue key, and the letters around the mask gave them away;
     the `--with-sensitive` run keeps `MASK_MIN`, 4); each value is matched in its literal and
@@ -757,9 +758,20 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     default `--secret-file` - is neither masked by name nor refused by mention, `isDataRootSecrets`; both names and the data root
     in any letter case, since a case-insensitive disk opens `.ALFRED/.SECRETS` too - final review 2026-10-25 C2), a dotenv the user fills by hand, in the checkout the call runs in, else its main worktree (`sensitiveFile`, memory.js
     `projectRootOf`; the root is always `.alfred` - an absolute `ALFRED_CODE_DATA_PATH`, a harness's scratch, is the one value kept). Its kind is `sensitive` by
-    NAME: every value is a credential whatever its key (`DB_HOST` too), so a Read and a Grep of its content block and
-    `--redacted` of it masks every value; the masker's line pass reads a line out of it - a walk's `<path>/.secrets:N:` (either name)
-    prefix, `git grep`'s, a diff header naming it - by the same rule, a line that is no `KEY=value` pair masked whole (audit
+    NAME: a Read and a Grep of its content block and `--redacted` of it masks every value, whatever its key (`DB_HOST` too).
+    THE OUTPUT MASKER shows a plain store value (A3, the user's pick 'Mask secret-shaped values only', 2026-11-27, its key words widened
+    to short secrets such as `ADMIN_CODE=4821` and `DB_LOGIN=hunter2`): a store value is masked only when `credentialKey` holds - a part
+    of its key, split on `_` `-` `.` and case changes, is one of `OUTPUT_CREDENTIAL_WORDS` (TOKEN, SECRET, KEY, APIKEY, PASSWORD, PASSWD,
+    PASS, PWD, PIN, OTP, CODE, LOGIN, DSN, CREDENTIAL, CREDENTIALS, CRED, AUTH, CERT, PRIVATE, SIGNING, SALT, HASH, COOKIE, SESSION; a word of
+    5 letters or more counts at the key's end too, `GITHUBTOKEN`, and KEY is no part of `MONKEY`) - and then at any length, or the value
+    has a credential shape (`credentialLike`, a PEM key, an embedded password). `ORG_SLUG=acme-app` and `KEYBOARD_LAYOUT=us` print as they are.
+    The line-shape redactor skips a value of 1-3 characters and a type word (`typeWord`: `originKey: string,`, `ApiKey;`), and a store pair
+    in a walk or a diff is judged by the same key and shape test (`storeValueMasked`); a line of the store that is no pair is still
+    masked whole. The SessionStart note adds `Shown in output, not masked ...: <keys>` - names only - so the user can rename a key. The
+    input guard's `SECRET_KEY_SOURCE` (lint holds it equal to `meta/environment.json`) is untouched: `OUTPUT_CREDENTIAL_WORDS` is the
+    masker's alone. Accepted: a short secret under a key that names no credential prints (the spec's risk row). The line pass
+    reads a line out of the store - a walk's `<path>/.secrets:N:` (either name)
+    prefix, `git grep`'s, a diff header naming it - by the same rule (audit
     2026-10-20 H3: a walk through the store and a diff of a tracked store printed every value raw).
     THE STORE CHECK (swap 1 ruling 6; `storeCarry` over the data table `STORE_CARRIERS`): the store stays model-blind
     on every host and version. A copy, move, link, archive or `git add` NAMING it - `cp`, `ditto`, `mv`, `ln`,

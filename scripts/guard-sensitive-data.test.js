@@ -26,7 +26,6 @@ process.env.ALFRED_CODE_DOCS_PATH = path.join(TMP, 'ledger');
 // Fake by construction: long enough to be masked, and not a run of one character (a placeholder by content).
 const TOKEN = 'tok-' + 'a1b2'.repeat(6);
 const STORE = `# the project's own\nexport API_TOKEN="${TOKEN}"\nDB_HOST=db.internal\nPORT=80\n`;
-const STORE_VALUES = [TOKEN, 'db.internal'];   // every value is the store's: none may print
 
 // A project with a store under its data root; `root` is the data root's folder, `file` the store's name - `.secrets`
 // from item 3 (2026-10-25), `.sensitive-data` until every install has moved - so each case runs once per name.
@@ -97,8 +96,9 @@ test(`sensitive data: a shell read of the store runs above the masker's floor, i
         assert.match(r.stderr, /--presence/, command);
     }
     const shown = masked(dir, `cat "${file}"`, STORE);
-    for (const value of STORE_VALUES) assert.ok(!shown.includes(value), `${value} in the masked output:\n${shown}`);
-    assert.match(shown, /DB_HOST=<set \(11 chars\)>/, 'every value of the store is masked, whatever its key');
+    assert.ok(!shown.includes(TOKEN), `the token in the masked output:\n${shown}`);
+    assert.match(shown, /API_TOKEN="<set \(\d+ chars\)>"/, 'a credential-named value is masked');
+    assert.match(shown, /DB_HOST=db\.internal/, 'a plain key shows (A3, 2026-11-27): the masker hides credential-named and credential-shaped values only');
     const view = spawnSync(process.execPath, [HOOK, '--redacted', file], { encoding: 'utf8' });
     assert.strictEqual(view.status, 0, view.stderr);
     for (const value of [TOKEN, 'db.internal']) assert.ok(!view.stdout.includes(value), `${value} in the redacted view:\n${view.stdout}`);
@@ -312,24 +312,27 @@ test(`H3: a walk through the store and a git stream of it come back with every v
     const { dir } = project('h3-walk', { file: FILE });
     fs.writeFileSync(path.join(dir, 'app.js'), 'const host = process.env.DB_HOST;\n');
     const printed = (command) => spawnSync('sh', ['-c', command], { cwd: dir, encoding: 'utf8' }).stdout;
-    for (const command of ['grep -rn DB_HOST .', 'grep -rn internal .'])
+    for (const command of ['grep -rn API_TOKEN .', 'grep -rn DB_HOST .'])
     {
         assert.strictEqual(above(dir, command), 0, `${command}: runs as written`);
         const out = masked(dir, command, printed(command));
-        assert.ok(!out.includes('db.internal'), `${command}: printed raw - ${out}`);
-        assert.match(out, new RegExp(`${RE(FILE)}:\\d+:DB_HOST=<set \\(11 chars\\)>`), out);
+        assert.ok(!out.includes(TOKEN), `${command}: printed raw - ${out}`);
     }
+    // A3: a walk line of a plain key shows, one of a credential-named key is masked
+    assert.match(masked(dir, 'grep -rn DB_HOST .', printed('grep -rn DB_HOST .')), new RegExp(`${RE(FILE)}:\\d+:DB_HOST=db\\.internal`), 'a plain key shows');
+    assert.match(masked(dir, 'grep -rn API_TOKEN .', printed('grep -rn API_TOKEN .')), new RegExp(`${RE(FILE)}:\\d+:export API_TOKEN="<set \\(\\d+ chars\\)>"`), 'a credential-named key is masked');
     const clean = printed('grep -rn process.env .');
     assert.strictEqual(masked(dir, 'grep -rn process.env .', clean), clean, 'a walk that prints nothing of the store comes back as printed');
     // a store tracked by hand: the diff header names it, and every changed value is masked
     const g = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
     g('init', '-q'); g('config', 'user.email', 't@example.com'); g('config', 'user.name', 't');
     g('add', '-f', '.'); g('commit', '-qm', 'init');
-    fs.writeFileSync(path.join(dir, '.alfred', FILE), STORE.replace('db.internal', 'db2.internal') + 'PLAIN line no pair\n');
+    fs.writeFileSync(path.join(dir, '.alfred', FILE), STORE.replace('db.internal', 'db2.internal') + 'DB_PASS=zz-new-pass-1\nPLAIN line no pair\n');
     assert.strictEqual(above(dir, 'git diff'), 0, 'the diff runs as written');
     const out = masked(dir, 'git diff', printed('git diff'));
-    assert.ok(!/db2?\.internal|PLAIN line/.test(out) && !out.includes(TOKEN), out);
-    assert.match(out, /^\+DB_HOST=<set \(12 chars\)>$/m, out);
+    assert.ok(!/zz-new-pass-1|PLAIN line/.test(out) && !out.includes(TOKEN), out);
+    assert.match(out, /^\+DB_HOST=db2\.internal$/m, 'A3: a plain key shows in a diff of the store');
+    assert.match(out, /^\+DB_PASS=<set \(13 chars\)>$/m, out);
     assert.match(out, /^\+<sensitive-data line>$/m, out);
 });
 
