@@ -22,6 +22,9 @@ process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));
 
 let seq = 0;
 const logEnv = () => ({ ...process.env, ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'log-')) });
+// The remote-state note needs a git work tree (session audit B5): the asks that expect it run in one.
+const GIT_PROJECT = fs.mkdtempSync(path.join(TMP, 'git-root-'));
+spawnSync('git', ['init', '-q'], { cwd: GIT_PROJECT });
 // In-process (hook-inprocess.js); the ask runs below stay spawned, so the process boundary stays tested here too.
 const { runHook } = require('./hook-inprocess');
 const run = (payload) => runHook(path.basename(HOOK), { session_id: `s${++seq}`, ...payload }, { env: logEnv() });
@@ -198,7 +201,7 @@ test('C15: the ask branch counts typed turns on the live branch, and push as git
   const q = [{ question: 'Run it?', options: [{ label: 'Run (Recommended)', description: 'x' }, { label: 'Hold', description: 'y' }] }];
   const ask = (rows, questions) => {
     const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: `a${++seq}`, hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion',
-      transcript_path: transcript(rows), tool_input: { questions } }), encoding: 'utf8', env: logEnv() });
+      transcript_path: transcript(rows), tool_input: { questions } }), encoding: 'utf8', env: { ...logEnv(), CLAUDE_PROJECT_DIR: GIT_PROJECT } });
     return r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext || '' : '';
   };
   // ca65b406: the client double-submitted a slash command as two siblings of one parent
@@ -299,7 +302,7 @@ test('SD10: an answer to a request for information from a read-only turn is no d
 test('SD10: a merge, PR or remote ask is backed only by a remote-aware read', () => {
   const ask = (rows, question) => {
     const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: `a${++seq}`, hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion',
-      transcript_path: transcript(rows), tool_input: { questions: [{ question, options: [{ label: 'Wait (Recommended)', description: 'x' }, { label: 'Go now', description: 'y' }] }] } }), encoding: 'utf8', env: logEnv() });
+      transcript_path: transcript(rows), tool_input: { questions: [{ question, options: [{ label: 'Wait (Recommended)', description: 'x' }, { label: 'Go now', description: 'y' }] }] } }), encoding: 'utf8', env: { ...logEnv(), CLAUDE_PROJECT_DIR: GIT_PROJECT } });
     return r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext || '' : '';
   };
   const ran = (command) => { const id = `r${seq}`; return [typed('go'), call(id, 'Bash', { command }), result(id, 'ok')]; };
@@ -319,7 +322,7 @@ test('a pipeline watch and a forge read count on every transport', () => {
     assert.strictEqual(over([typed('go')], ci, { background_tasks: [{ id: 'b9', type: 'shell', status: 'running', command }] }).status, 0, command);
   const ask = (rows, question) => {
     const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: `a${++seq}`, hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion',
-      transcript_path: transcript(rows), tool_input: { questions: [{ question, options: [{ label: 'Wait (Recommended)', description: 'x' }, { label: 'Go now', description: 'y' }] }] } }), encoding: 'utf8', env: logEnv() });
+      transcript_path: transcript(rows), tool_input: { questions: [{ question, options: [{ label: 'Wait (Recommended)', description: 'x' }, { label: 'Go now', description: 'y' }] }] } }), encoding: 'utf8', env: { ...logEnv(), CLAUDE_PROJECT_DIR: GIT_PROJECT } });
     return r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext || '' : '';
   };
   const used = (name, input) => { const id = `r${seq}`; return [typed('go'), call(id, name, input), result(id, 'ok')]; };
@@ -1057,7 +1060,7 @@ test('U10: a status question over live work, and a close after the user picked i
 test('fn-8: gh repo view and gh api user are remote reads', () => {
   const ask = (rows, question) => {
     const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: `a${++seq}`, hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion',
-      transcript_path: transcript(rows), tool_input: { questions: [{ question, options: [{ label: 'Wait (Recommended)', description: 'x' }, { label: 'Go now', description: 'y' }] }] } }), encoding: 'utf8', env: logEnv() });
+      transcript_path: transcript(rows), tool_input: { questions: [{ question, options: [{ label: 'Wait (Recommended)', description: 'x' }, { label: 'Go now', description: 'y' }] }] } }), encoding: 'utf8', env: { ...logEnv(), CLAUDE_PROJECT_DIR: GIT_PROJECT } });
     return r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext || '' : '';
   };
   const ran = (command) => { const id = `r${seq}`; return [typed('go'), call(id, 'Bash', { command }), result(id, 'ok')]; };

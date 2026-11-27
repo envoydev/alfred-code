@@ -3187,7 +3187,19 @@ function blockStateFile() {
 //      Measured across the collection: 13 sessions loaded that contract, 5 used the fields even
 //      once, across 109 asks - one session missed all 12 of its own stops.
 // The stale-scope note's remote half (read by freshStateReadThisTurn, so declared before the branch runs).
-const REMOTE_STATE_RE = /\b(?:merged?|merging|pull request|PRs?|remote|upstream|deploy(?:ed|ment)?|pipeline|CI|workflow run)\b/i;
+// B5 (session audit 2026-11-27): 'remote' and 'upstream' count only in lowercase and not joined to a hyphen, so a project
+// name such as 'Remote-Ops' is no remote state. The note also needs the project root to be a git work tree.
+const REMOTE_STATE_RE = /\b(?:merged?|merging|pull request|PRs?|deploy(?:ed|ment)?|pipeline|CI|workflow run)\b/i;
+const REMOTE_NAME_RE = /\b(?:remote|upstream)\b(?!-)/;
+const namesRemoteState = (text) => REMOTE_STATE_RE.test(text) || REMOTE_NAME_RE.test(text);
+const insideGitWorkTree = (root) => {
+  try {
+    const run = require('child_process').spawnSync(...require('./hook-prelude.js').gitSafe(['rev-parse', '--is-inside-work-tree'], {
+      cwd: root, encoding: 'utf8', timeout: 3000, windowsHide: true,
+    }));
+    return !run.error && run.status === 0 && String(run.stdout).trim() === 'true';
+  } catch { return false; }
+};
 const REMOTE_READ_RE = /\bgh\s+(?:repo\s+view|api\s+user)\b|\bgit\s+(?:fetch|pull|ls-remote|remote\s+(?:update|show))\b|\bgit\s+(?:log|rev-list|branch|show|merge-base|diff|cherry)\b[^\n;|&]*\s(?:origin|upstream)\/|\bgit\s+branch\b[^\n;|&]*\s(?:-r|-a|--remotes|--all)\b/;
 // AUTO-MODE answers the ask (the user's ruling, 2026-10-14). Under a live AUTO stamp the run is the user's own go-ahead, and the
 // user's word was 'run everything with the recommended options'. So an ask whose every question marks ONE option
@@ -3905,16 +3917,16 @@ if (payload.tool_name === 'AskUserQuestion') {
     // A bare 'push' is not git state: 'Run the push check on the Android emulator against staging?' named a push
     // NOTIFICATION and got the git re-read note (audit 2026-10-10 C15, ecea6d56) - so push counts in a git shape only.
     const GIT_PUSH_RE = /\bgit push\b|\bunpushed\b|\bpush(?:ed|ing)?\s+(?:it|them|this|that|now|develop|main|master|origin|upstream|the\s+(?:branch|commits?|tags?|diff|changes?|fix))\b|\bpush(?:ed|ing)?\s+(?:\S+\s+){0,2}?to\s+(?:origin|the remote|remote|upstream|develop|main|master|github|gitlab)\b|\borigin\//i;
-    if ((/\b(commit|branch|pull request|\bPRs?\b|merge|rebase|stash|staged|unstaged|uncommitted|untracked|remote|upstream|deploy(ed|ment)?|pipeline|\bCI\b|workflow run|job)\b/i.test(askText) || GIT_PUSH_RE.test(askText) || REMOTE_STATE_RE.test(askText))
-        && !freshStateReadThisTurn(REMOTE_STATE_RE.test(askText))) {
+    if ((/\b(commit|branch|pull request|\bPRs?\b|merge|rebase|stash|staged|unstaged|uncommitted|untracked|deploy(ed|ment)?|pipeline|\bCI\b|workflow run|job)\b/i.test(askText) || GIT_PUSH_RE.test(askText) || namesRemoteState(askText))
+        && !freshStateReadThisTurn(namesRemoteState(askText))) {
       // Merge, pull-request, remote and job state lives past the clone: `git status` cannot see whether a ticket branch
       // merged, so such an ask is backed only by a remote-aware read (audit 2026-10-11 SD10, session 2ca8e8ee: 'wait
       // until the earlier ticket is merged' rested on a day-old read and one `git status --short`; it had merged - and
       // 'merged' was no word of the list above, so that ask drew no note at all).
       // Each note is its imperative alone (deep hooks review 2026-10-16, ~67k chars a window): the two stories - a
       // day-old merge read, a fifty-minute-old status overtaken by another agent - are in docs/baseline-rules-evidence.md.
-      if (REMOTE_STATE_RE.test(askText)) notes.push('This ask named remote or job state that no remote-aware read in this turn backed. '
-        + 'Read it fresh (`git fetch` then `git log origin/<branch>`, or the change request or pipeline through the forge tool this session has) before acting; if it moved, say so and re-ask.');
+      if (namesRemoteState(askText)) { if (insideGitWorkTree(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd())) notes.push('This ask named remote or job state that no remote-aware read in this turn backed. '
+        + 'Read it fresh (`git fetch` then `git log origin/<branch>`, or the change request or pipeline through the forge tool this session has) before acting; if it moved, say so and re-ask.'); }
       else notes.push('This ask named git state that no `git status` / `git diff` / forge read in this turn backed. '
         + 'Read it fresh before acting; if it moved, say so and re-ask.');
     }
