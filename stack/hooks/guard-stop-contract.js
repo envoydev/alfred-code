@@ -3276,7 +3276,8 @@ const AUTO_UPLOADS_MORE_RE = /[,;&+]|\b(?:then|and|also|to|into|onto|on|with|for
 const AUTO_UPLOADS_ACT_RE = /\b(?:retr|resum|resend|re-?run|run|launch|kick|start|restart|continu|re-?queue|queue|redo|finish|trigger|send|sent|push|sync|move|copy|go\s+out|again|re-?upload(?!s)|upload(?!s)|try)/i;
 // THE PICK, READ ON ITS OWN (session audit 2026-11-27, B14, S01: 'Add it to the plan' under a question about a tab cap
 // publish waited for the away user). `outwardAsk` reads the picked label and its description. The question counts too only
-// when the label names no act of its own: every word of it, the mark aside, is a confirm word ('Yes', 'Go ahead', 'Do it now'),
+// when the label names no act of its own: every word of it, the mark aside, is a confirm word ('Yes', 'Go ahead', 'Do it now' - 'now'
+// is the one word added to the spec's list, for 'Yes, do it now' to 'not pushed yet. Do it now?'),
 // or it is one verb on a bare pronoun ('Rotate it'), since the act is then the question's. The uploads checks keep reading the question as before. Spec row B14.
 const CONFIRM_WORDS = new Set(['yes', 'go', 'ahead', 'do', 'it', 'proceed', 'continue', 'sure', 'ok', 'okay', 'apply', 'approve', 'confirm', 'accept', 'run', 'now']);
 const WORD_RE = /[a-z']+/g;
@@ -3302,13 +3303,17 @@ function holdLabel(label)
     const rest = kept.replace(AUTO_HOLD_OPEN_RE, ' ');
     return !AUTO_OUTWARD_RE.test(rest) && !AUTO_FORWARD_ACT_RE.test(rest);
 }
-// A GRADE UNDER ITS PASS LEVEL waits (B10, T12): the `plan-approval` rule says a draft under the pass score waits for the user,
-// and an ask to accept it at 60 is that wait. Both numbers are read from the question: 'N/100' and 'level M' or 'pass M'.
+// A GRADE UNDER ITS PASS LEVEL waits (B10, T12): the `plan-approval` rule says a plan, spec or design under the pass score waits for
+// the user, and an ask to accept it at 60 is that wait. Both numbers are read from the question: 'N/100' and 'level M' or 'pass M'.
+// Only a question naming such a draft counts ('inline-plan scored 60/100'): the output-scoring skill's own continue ask for another
+// output ('designer-plan scored 70/100 (level 80)') is answered as before (ruling of the controller, 2026-11-27).
+const DRAFT_WORD_RE = /(?<![\w-])(?:inline-plan|plan|spec|design|draft)\b/i;
 const GRADE_RE = /\b(\d{1,3})\s*\/\s*100\b/g;
 const PASS_LEVEL_RE = /\b(?:pass(?:ing)?|level)(?:\s+(?:level|score|mark))?\s*[:=]?\s*(\d{1,3})\b/gi;
 function gradeUnderPass(question)
 {
     const text = String(question || '');
+    if (!DRAFT_WORD_RE.test(text)) return false;
     const grades = [...text.matchAll(GRADE_RE)].map((hit) => Number(hit[1]));
     const levels = [...text.matchAll(PASS_LEVEL_RE)].map((hit) => Number(hit[1]));
     return grades.some((grade) => levels.some((level) => grade < level));
