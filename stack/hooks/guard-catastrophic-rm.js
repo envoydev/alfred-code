@@ -1115,7 +1115,8 @@ function main()
             body +
             `\nA house rule enforced here, no prose copy to consult - same class as the recursive-rm gate in this file.` +
             `\n${keep}\n` + narrow +
-            `Reverting these files with Edit or Write instead is the same discard.\n`));
+            `Reverting these files with Edit or Write instead is the same discard. A line this session added itself - a debug\n` +
+            `probe, a temporary log - is not that work: take out only those lines with Edit and leave the rest.\n`));
     }
 
     // PowerShell carries no `sh -c` script, and its Windows roots (`C:\`) must reach the target test as written - with

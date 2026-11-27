@@ -3584,6 +3584,14 @@ test('PF1: status.json and scoring.json are written by their scripts only', () =
     for (const command of [`node .claude/hooks/plan-status.js show --plan csv`, `node .claude/hooks/plan-status.js done --plan csv --task 1 <<'EOF'\nresult: a > b\nEOF`, `cat ${PLAN_ROOT}/csv/status.json`])
       assert.ok(!blocked(r.hook(pre('Bash', { command }, s))), command);
     assert.ok(!blocked(r.hook(pre('Read', { file_path: at('status.json') }, s))), 'a read');
+    // session eb8ad61b, 2026-11-25: removing a scrapped plan whole - its Markdown or its folder too - drops it, forges nothing
+    for (const command of [`rm ${PLAN_ROOT}/csv/csv.md ${PLAN_ROOT}/csv/status.json && rmdir ${PLAN_ROOT}/csv`, `rm -rf ${PLAN_ROOT}/csv/status.json ${PLAN_ROOT}/csv/`])
+      assert.ok(!blocked(r.hook(pre('Bash', { command }, s))), command);
+    assert.ok(denied(r.hook(pre('Bash', { command: `rm ${PLAN_ROOT}/csv/status.json ${PLAN_ROOT}/csv/notes.md` }, s))), 'another file beside it is no plan removal');
+    // review 2026-11-27: a removal that writes the json back forges it
+    for (const command of [`rm -f ${PLAN_ROOT}/csv/status.json ${PLAN_ROOT}/csv/csv.md && echo '{"approvedAt":"x"}' > ${PLAN_ROOT}/csv/status.json`,
+        `rm -f ${PLAN_ROOT}/csv/status.json ${PLAN_ROOT}/csv/csv.md && printf x > ./${PLAN_ROOT}/csv/status.json`])
+        assert.ok(denied(r.hook(pre('Bash', { command }, s))), command);
   } finally { r.rm(); }
 });
 
@@ -3611,6 +3619,7 @@ test('PF1: the approved plan is not edited; before approval and while reopened i
     assert.match(reasonOf(no), /csv\.md was approved \(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z\) - the approved plan is not edited.*decide.*deviate.*add-task.*redesign/s);
     assert.ok(denied(r.hook(pre('Write', { file_path: plan.md, content: '# x\n' }, s))), 'a Write');
     assert.ok(denied(r.hook(pre('Bash', { command: `echo x >> ${PLAN_ROOT}/csv/csv.md` }, s))), 'a shell append');
+    assert.ok(denied(r.hook(pre('Bash', { command: `rm ${PLAN_ROOT}/csv/csv.md` }, s))), 'the Markdown removed alone (review 2026-11-27)');
     plan.run(['redesign', '--plan', 'csv'], 'why: the seam moved\n');
     assert.ok(!blocked(edit()), 'reopened');
     plan.run(['approve', '--plan', 'csv', '--mode', 'session']);
@@ -3618,7 +3627,7 @@ test('PF1: the approved plan is not edited; before approval and while reopened i
     fs.writeFileSync(path.join(plan.dir, 'status.json'), '{');
     assert.ok(!blocked(edit()), 'an unreadable status.json denies nothing');
     const rows = r.read(`.alfred/statistics/hook-blocks/${s}.jsonl`).trim().split('\n').map((l) => JSON.parse(l));
-    assert.strictEqual(rows.length, 4, 'one block row per denial: the edit, the Write, the shell append, the edit after the second approve');
+    assert.strictEqual(rows.length, 5, 'one block row per denial: the edit, the Write, the shell append, the rm, the edit after the second approve');
   } finally { r.rm(); }
 });
 

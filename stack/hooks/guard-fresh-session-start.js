@@ -892,7 +892,7 @@ function modePrompt() {
       ledgerRow({ mode: 'auto', kind: 'auto-input', reason: 'auto-run kept: a prompt typed mid-run is input to the run' });
       lines.push('auto-run stays ON: the user typed this message while the run goes on, so it is INPUT to the run - answer '
         + 'or apply it, then carry on with the run\'s next step; each ask still takes its (Recommended) option. If this message '
-        + `asks to stop or pause the run, print its close and delete ${rel} - that ends this run; auto-run stays on until /alfred-code:mode:auto-run off.`);
+        + `asks to stop or pause the run, print its close with its \`Done:\` and \`Left for you:\` lines - the Stop hook then removes ${rel}, which ends this run; never delete it yourself or ask the user to; auto-run stays on until /alfred-code:mode:auto-run off.`);
     }
   }
   if (lines.length) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: lines.join('\n') } }));
@@ -1630,19 +1630,21 @@ if (auto) {
       : `auto-run is on for this session (${auto.file} holds the user's words)`}${m ? `, and ${m} marks this run` : ''}. `
     + 'Nobody answers until the run ends. '
     + '(1) Every stop takes its (Recommended) option: an AskUserQuestion whose every question marks one is answered with it by the stop hook, '
-    + 'and one carrying a question that marks none - or whose recommended option acts outward (push, merge, deploy, publish, open a PR, post, send, delete a remote, rotate, reset, drop, spend on a billed run) - waits for the user, so put only those; '
+    + 'and one carrying a question that marks none - or whose recommended option acts outward (push, merge, deploy, publish, open a PR, post, send, delete a remote, rotate a credential, reset, drop, spend on a billed run) - waits for the user, so put only those; a pick that holds such an act (\'Hold - push later\') is answered; '
     + "a guard's security ask (a credential shown, work discarded, a write outside the project, a protective guard switched off) is never auto-run's to allow: take its safe option and list the act for the user in the close; "
+    + "the (Recommended) option is the user's own choice where they stated one in this session - your case against it goes in the question text and the close - and it carries the run on to its end: never one that holds, stops or leaves for later a step the run may still take itself, or hands it to the user. "
+    + 'A finding the run raises, a MINOR included, is fixed in the run when the fix stays inside the change; only one that needs the user\'s decision or an outward act goes to the close. A fix covers every path with the same cause, not only the one reported. '
     + "write every AskUserQuestion's questions and labels in English while auto-run is on - the hook reads English only and an ask it cannot read waits for the user - and the rest of the run in the user's language. "
     + "When the run holds a series of outward acts of one kind (N publishes, N ticket comments), put ONE ask before the first, its question naming them 'outward acts' and listing each act by its target and kind (the page or ticket, and create / update / comment / upload), its recommended option the whole series as listed. The user's pick is the approval a plan or project rule asks for each listed act: each then runs without another ask, its body shown in chat with its dry run before it goes out and read back after; an act on another target or of another kind asks again. A project rule that says each write needs its OWN ask outranks the pick: then ask per act, as before. "
     + (m ? `(2) Do not end a turn between steps: the Stop hook sends you back while ${m} stands. ` : '(2) Do not end a turn between steps: no run marker stands, so carry each step on in the same turn. ')
-    + 'A wait on work this session started is a one-line turn end; the harness wakes you when it lands. '
-    + "(3) Commit through the usual gates; never push, merge, deploy or send anything out, unless the user's own pick in this run approved that exact act (the series rule in (1)) - list each other one for the user in the close (an unpushed commit is a Leftovers line, never an ask). "
+    + 'Before any wait - on work, a clock time or the user - start every open step that does not depend on it. A wait on work this session started is a one-line turn end; the harness wakes you when it lands. '
+    + "(3) Commit through the usual gates; never push, merge, deploy or send anything out, unless the user's own pick in this run approved that exact act (the series rule in (1)) - list each other one for the user in the close (an unpushed commit is a Leftovers line, never an ask). Remove what the run made by its literal path, never through a shell variable (`rm -rf $S/x`) - Claude Code's own check refuses that and waits for a person; a debug line the run added to a tracked file comes out with Edit, never by a stash or a revert of the file, which ask the user. "
     + '(4) The fresh-session offers are off and the fresh-session hand-off is never taken or recommended: the session compacts at its auto-compact window and the run goes on from its own state files. '
     + "(5) A `--mode-*` token in the arguments is a retired flag, not a target - leave it out. "
     + `(6) The stamp is the session's approval: never write an APPROVED or AUTO line over it and never delete it - only the user's /alfred-code:mode:auto-run off ends auto-run. An answered ask is the go - carry on in the same turn. `
-    + (m ? `(7) When the whole run is finished, print its close and delete ${m} if its \`skill:\` line names this run - that ends this run; ` : '(7) When the whole run is finished, print its close - that ends this run; ')
+    + (m ? `(7) When the whole run is finished, print its close with its \`Done:\` and \`Left for you:\` lines (or \`Result:\` and \`Leftovers:\`) - the Stop hook removes ${m}, which ends this run; never delete it yourself and never ask the user to; ` : '(7) When the whole run is finished, print its close - that ends this run; ')
     + `${lasts()} /alfred-code:mode:auto-run off. `
-    + `(8) A message the user types mid-run is input to the run: take it in and carry on; if it asks to stop the run, print its close${m ? ` and delete ${m}` : ''}.`
+    + `(8) A message the user types mid-run is input to the run: take it in and carry on; if it asks to stop the run, print its close as (7) says.`
     + (AUTO_SELF_RE.test(auto.run) ? ` ${solveFlowLine()}` : '');
   if (SAY) expansionOut(contract);
   process.exit(0);

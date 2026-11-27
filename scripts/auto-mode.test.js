@@ -162,7 +162,7 @@ test('auto-run start: after the mode command a typed flow command opens the run 
     assert.doesNotMatch(said, /Do NOT start the run yet/, 'the offer is never made under auto-run');
     for (const rule of [/\(Recommended\) option/, /Do not end a turn between steps/, /never push, merge, deploy or send anything out/, /fresh-session hand-off is never taken/,
         /never write an APPROVED or AUTO line over it/, /an unpushed commit is a Leftovers line/,
-        /delete \.alfred\/state\/sessions\/AUTO-RUN-s2 if its `skill:` line names this run - that ends this run; auto-run stays on, new sessions included, until \/alfred-code:mode:auto-run off/])
+        /the Stop hook removes \.alfred\/state\/sessions\/AUTO-RUN-s2, which ends this run; never delete it yourself and never ask the user to; auto-run stays on, new sessions included, until \/alfred-code:mode:auto-run off/])
         assert.match(said, rule);
     assert.doesNotMatch(said, /delete \.alfred\/state\/approvals\/APPROVAL/, 'the close never deletes the stamp');
     assert.match(fs.readFileSync(marker(p, 's2'), 'utf8'), /^skill: loop-code-quality\nprompt: [0-9a-f]{12}\nat: \d{4}-/, 'and the run marker');
@@ -291,13 +291,13 @@ test('mode texts: the Stop hold stderr and the auto-input note name the run mark
     openRun(p, 'x1');
     const note = context(sub(p, 'x1', 'use the v2 endpoint instead', t));
     assert.match(note, /^auto-run stays ON: the user typed this message while the run goes on, so it is INPUT to the run/);
-    assert.match(note, /If this message asks to stop or pause the run, print its close and delete \.alfred\/state\/sessions\/AUTO-RUN-x1 - that ends this run; auto-run stays on until \/alfred-code:mode:auto-run off\./);
+    assert.match(note, /If this message asks to stop or pause the run, print its close with its `Done:` and `Left for you:` lines - the Stop hook then removes \.alfred\/state\/sessions\/AUTO-RUN-x1, which ends this run; never delete it yourself or ask the user to; auto-run stays on until \/alfred-code:mode:auto-run off\./);
     assert.doesNotMatch(note, /approvals\/APPROVAL/, 'the note never names the stamp');
     assert.ok(rows(p, 'x1').some((r) => r.kind === 'auto-input'), 'an auto-input row');
     const held = run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'x1', cwd: p.root, transcript_path: t,
         last_assistant_message: 'Stage 2 of 4 is done; stage 3 starts next.' }, { CLAUDE_PROJECT_DIR: p.root });
     assert.strictEqual(held.status, 2);
-    assert.match(held.stderr, /If the run is finished,\s+print its close and delete \S*AUTO-RUN-x1 - that ends this run; auto-run stays on for the session until\s+\/alfred-code:mode:auto-run off\./);
+    assert.match(held.stderr, /If the run is finished,\s+print its close with its `Done:` and `Left for you:` lines \(or `Result:` and `Leftovers:`\) - the hook then removes \S*AUTO-RUN-x1, which ends this run; never delete it yourself and never ask the user to; auto-run stays on for the session until\s+\/alfred-code:mode:auto-run off\./);
     assert.doesNotMatch(held.stderr, /APPROVAL/, 'the hold never names the stamp');
     assert.strictEqual(context(sub(p, 'x1', '/task-solve B', t)), '', 'a typed family command gets no auto-input note');
     const contract = context(expand(p, 'x1', '/task-solve B', t));
@@ -529,6 +529,48 @@ test('auto-mode asks: every question marking one Recommended option is answered 
     assert.strictEqual(answered(ask(p, 'a1', two)), null, 'no stamp - the user answers');
 });
 
+// sessions f2de8d99 and eb8ad61b, 2026-11-25..27: 61 asks the run could take waited for an away user - a pick that
+// holds an outward act, a negated act ('no push') read as the act, and a photo's rotation read as a credential's.
+test('auto-mode asks: a holding pick, a negated act and a photo rotation are answered; the acts themselves still wait', () =>
+{
+    const p = project();
+    autoStamp(p, 'hold1');
+    for (const [question, label, description] of [['Push both develop branches?', 'Hold (Recommended)'],
+        ['4 commits on develop are not pushed. Push them?', 'Hold - push later (Recommended)'],
+        ['8a5cb01 is pushed but not on the live desk. Publish it?', 'Hold the publish (Recommended)'],
+        ['Next for tab cap 1.1.0 (not pushed)?', 'Hold - push and publish later (Recommended)'],
+        ['Commit 3 local commits on develop (no push)?', 'Commit now (Recommended)'],
+        ['Commit 6 files on develop?', 'Commit now (Recommended)', 'Stage the 6 paths and commit them; nothing is pushed'],
+        ['A token leaked last week. Rotate the photo thumbnails?', 'Skip it (Recommended)'],
+        ['A memory failure while the server rotates, shrinks or saves a photo is never marked. Fix?', 'Fix it in this run (Recommended)']].map(([a, b, c]) => [a, b, c]))
+    {
+        const one = q(question, [label, 'Publish now']);
+        if (description) one.options[0].description = description;
+        assert.deepStrictEqual(answered(ask(p, 'hold1', [one])), { [question]: label }, `answered: ${question} ${label}`);
+    }
+    const pushAfter = { question: 'The suite was red from 2 timeouts. How to go on?', header: 'H', multiSelect: false,
+        options: [{ label: 'Stop the emulator, re-run the full suite (Recommended)', description: 'the develop push follows only on green' }, { label: 'Hold all pushes', description: 'd' }] };
+    for (const [question, label] of [['3 commits are not pushed. Push them?', 'Push them (Recommended)'], ['Ready. Next?', 'Hold, then push (Recommended)'],
+        ['Next?', 'Leave a comment on the PR (Recommended)'], ['The API key in the log should be rotated. Go?', 'Do it now (Recommended)'],
+        ['Next?', 'Hold - push later, then open the PR (Recommended)'],
+        // review 2026-11-27: a second act after the hold, a conditional hold, a state the generic pick acts on, a credential far off
+        ['Next?', 'Do not push, merge into main instead (Recommended)'], ['Next?', "Don't merge, push the branch (Recommended)"],
+        ['Next?', 'Skip the push, publish to npm (Recommended)'], ['Next?', 'Skip the push and publish to npm instead (Recommended)'],
+        ['Next?', 'Skip the merge, upload the build to S3 (Recommended)'], ['Next?', 'Wait - push when green (Recommended)'],
+        ['Next?', 'Hold, push after CI passes (Recommended)'], ['Next?', 'Hold the push until CI is green (Recommended)'],
+        ['Publish 7 commits to the live desk?', 'Hold - publish when rooms 1-3 are empty (Recommended)'],
+        ['The 4 commits on develop are not pushed yet. Do it now?', 'Yes, do it now (Recommended)'],
+        ['Nothing is deployed yet to staging. Proceed?', 'Proceed (Recommended)'], ['The fix branch is not merged yet. Finish it?', 'Finish it (Recommended)'],
+        ['Next?', 'Rotate the creds (Recommended)'], ['Rotate the SSH keypair?', 'Yes (Recommended)'],
+        ['The CI log for job 4812 printed the full value of the npm token in step 3 of the release lane. Next?', 'Rotate it (Recommended)'],
+        ['NPM_TOKEN showed in the log. Next?', 'Rotate it (Recommended)']])
+        assert.strictEqual(answered(ask(p, 'hold1', [q(question, [label, 'Not now'])])), null, `waits: ${question} ${label}`);
+    const holdThen = q('Push develop?', ['Hold (Recommended)', 'Push now']);
+    holdThen.options[0].description = 'then push develop and merge to main';
+    assert.strictEqual(answered(ask(p, 'hold1', [holdThen])), null, 'a hold whose description carries the act on waits');
+    assert.strictEqual(answered(ask(p, 'hold1', [pushAfter])), null, 'a pick that is work is judged with its description');
+});
+
 // Hooks audit 2026-11-19 (B7-S1): the auto-run answer's ledger row copied each question and picked label as typed, so a
 // question quoting a token wrote it into the hook-blocks ledger. The answer the session gets keeps the text.
 test('auto-mode asks: the auto-answer ledger row stores <redacted> for a credential shape; the answer keeps the text', () =>
@@ -697,7 +739,7 @@ test('auto-mode Stop: the run is sent back until its close deletes the run marke
     const held = stop('r1');
     assert.strictEqual(held.status, 2, 'a turn ending between steps is sent back');
     assert.match(held.stderr, /auto-run is on and its run is not closed/);
-    assert.match(held.stderr, /delete \S*AUTO-RUN-r1 - that ends this run/);
+    assert.match(held.stderr, /the hook then removes \S*AUTO-RUN-r1, which ends this run/);
     // the continuation with no tool call since: the run can only wait or ask - it ends its turn
     assert.strictEqual(stop('r1', { stop_hook_active: true }).status, 0, 'never a loop');
     // work since the hold re-arms it
@@ -854,6 +896,107 @@ test('auto-mode Stop: the 50th Stop under one run marker passes with one auto-co
     // a torn count file reads as 0, never as a cap
     fs.writeFileSync(file, '{"stamp":');
     assert.strictEqual(stop().status, 2, 'a torn count file holds');
+});
+
+// session f2de8d99, 2026-11-26 and 11-27: Claude Code's auto-mode classifier refused the model's own `rm` of the run
+// marker three times ('Undermining Oversight'), so the run never closed and the model asked the user to delete it. The
+// close itself now ends the run: the Stop hook removes the marker.
+test('auto-mode Stop: a run close with Done: and Left for you: ends the run - the hook removes the marker', () =>
+{
+    const p = project();
+    const t = transcript();
+    const stop = (sid, text) => run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: sid, cwd: p.root, transcript_path: t,
+        last_assistant_message: text, background_tasks: [] }, { CLAUDE_PROJECT_DIR: p.root });
+    autoStamp(p, 'rc1');
+    openRun(p, 'rc1');
+    const closed = stop('rc1', 'The invite fix is in.\n\nDone: the invite fix - met\nChanged: 3 files, commit ae12608b\nChecks: npm test - 47 passed\nLeft for you: push ae12608b');
+    assert.strictEqual(closed.status, 0, `the close passes: ${closed.stderr}`);
+    assert.ok(!fs.existsSync(marker(p, 'rc1')), 'the hook removed the run marker');
+    assert.ok(fs.existsSync(p.gate), 'the stamp stands: auto-run stays on');
+    assert.strictEqual(rows(p, 'rc1').filter((r) => r.kind === 'auto-run-closed').length, 1, 'one auto-run-closed row');
+    autoStamp(p, 'rc2');
+    openRun(p, 'rc2');
+    const fields = stop('rc2', 'Result: logout fix - committed\nProgress: 4 of 4\nLeftovers: none');
+    assert.strictEqual(fields.status, 0, `a close with Result: and Leftovers: passes: ${fields.stderr}`);
+    assert.ok(!fs.existsSync(marker(p, 'rc2')), 'and ends the run too');
+    autoStamp(p, 'rc3');
+    openRun(p, 'rc3');
+    assert.strictEqual(stop('rc3', 'Done: stage 2 of 4. Stage 3 starts next.').status, 2, 'a progress note with Done: alone is sent back');
+    assert.ok(fs.existsSync(marker(p, 'rc3')), 'and the marker stands');
+    // the close written right after a hold is the same Stop cycle, which the chain passes unread: it still ends the run
+    const log = fs.mkdtempSync(path.join(TMP, 'rc4-'));
+    const env = { CLAUDE_PROJECT_DIR: p.root, ALFRED_CODE_HOOK_LOG_DIR: log };
+    autoStamp(p, 'rc4');
+    openRun(p, 'rc4');
+    const again = (text, active) => run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'rc4', cwd: p.root, transcript_path: t,
+        last_assistant_message: text, background_tasks: [], stop_hook_active: active }, env);
+    assert.strictEqual(again('Stage 2 of 4 is done; stage 3 starts next.', false).status, 2, 'held');
+    assert.strictEqual(again('Done: the fix - met\nLeft for you: none', true).status, 0, 'the close passes');
+    assert.ok(!fs.existsSync(marker(p, 'rc4')), 'and ends the run inside the held cycle');
+    // a solve-task close owes Result / Progress / Leftovers first: held for them, then the stamped close ends the run
+    const solve = transcript([{ type: 'user', entrypoint: 'cli', message: { role: 'user', content: '<command-name>/task-solve</command-name>' } }]);
+    const log5 = fs.mkdtempSync(path.join(TMP, 'rc5-'));
+    autoStamp(p, 'rc5');
+    openRun(p, 'rc5');
+    const solveStop = (text, active) => run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'rc5', cwd: p.root, transcript_path: solve,
+        last_assistant_message: text, background_tasks: [], stop_hook_active: active }, { CLAUDE_PROJECT_DIR: p.root, ALFRED_CODE_HOOK_LOG_DIR: log5 });
+    const owed = solveStop('Done: the logout fix is built and verified - met\nLeft for you: push 1 commit', false);
+    assert.strictEqual(owed.status, 2, `held for the fields: ${owed.stderr}`);
+    assert.match(owed.stderr, /THREE named fields/);
+    assert.ok(fs.existsSync(marker(p, 'rc5')), 'the run stays open while the fields are owed');
+    assert.strictEqual(solveStop('Done: the logout fix - met\nResult: built\nProgress: 4 of 4\nLeftovers: none\nLeft for you: push 1 commit', true).status, 0);
+    assert.ok(!fs.existsSync(marker(p, 'rc5')), 'the stamped close ends the run');
+    // review 2026-11-27: a solve-task stop short of its last step and a fenced close template are no close
+    autoStamp(p, 'rc6');
+    openRun(p, 'rc6');
+    const mid = stop('rc6', 'Result: plan written - docs/p.md\nProgress: 2 of 5\nLeftovers: build, verify, close');
+    assert.ok(fs.existsSync(marker(p, 'rc6')), `a Progress: 2 of 5 stop keeps the run open: ${mid.status}`);
+    stop('rc6', 'Stage 3 of 5 runs next; the close will read:\n```text\nDone: <the result>\nLeft for you: <the acts>\n```');
+    assert.ok(fs.existsSync(marker(p, 'rc6')), 'a fenced close template keeps the run open');
+});
+
+// review 2026-11-27, finding 2: the close's own Stop still reaches the rotation ask before the run ends.
+test('auto-mode Stop: a run close naming a credential still gets the rotation ask before the run ends', () =>
+{
+    const p = project();
+    const at = new Date(Date.now() - 60000).toISOString();
+    const t = transcript([{ type: 'user', entrypoint: 'cli', timestamp: at, message: { role: 'user', content: 'finish the fix' } }]);
+    autoStamp(p, 'rr1');
+    openRun(p, 'rr1');
+    const log = fs.mkdtempSync(path.join(TMP, 'rr1-'));
+    const stopRr = (text, active) => run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'rr1', cwd: p.root, transcript_path: t,
+        last_assistant_message: text, background_tasks: [], stop_hook_active: active }, { CLAUDE_PROJECT_DIR: p.root, ALFRED_CODE_HOOK_LOG_DIR: log });
+    const close = 'Done: the fix - met\nLeft for you: rotate the GitHub token that was printed in the log';
+    const first = stopRr(close, false);
+    assert.strictEqual(first.status, 2, `the rotation ask comes first: ${first.stderr}`);
+    assert.match(first.stderr, /rotat/i);
+    assert.ok(fs.existsSync(marker(p, 'rr1')), 'the run stays open while the ask is owed');
+    assert.strictEqual(stopRr(close, true).status, 0, 'the close after the hold passes');
+    assert.ok(!fs.existsSync(marker(p, 'rr1')), 'and ends the run');
+});
+
+test('auto-run texts tell the model the close ends the run and never to delete the marker or hand it to the user', () =>
+{
+    const p = project();
+    const t = transcript();
+    autoOn(p, 'rt1', t);
+    const said = folded(context(expand(p, 'rt1', '/loop-code-quality src/', t)));
+    assert.ok(said.includes('the Stop hook removes'), `contract (7) names the hook: ${said}`);
+    assert.ok(said.includes('never delete it yourself and never ask the user to'), 'and forbids the hand-off');
+    // sessions eb8ad61b and f2de8d99, 2026-11-25..27: auto-run took Chrome over the user's Brave, a 'Hold'
+    // ended a run the user wanted finished, minors were listed as optional cleanup, and a run waited on a clock time idle.
+    assert.ok(said.includes("the (Recommended) option is the user's own choice where they stated one in this session"), 'the user\'s choice is recommended');
+    assert.ok(said.includes('never one that holds, stops or leaves for later a step the run may still take itself'), 'no parking option');
+    assert.ok(said.includes('A finding the run raises, a MINOR included, is fixed in the run'), 'minors are fixed');
+    assert.ok(said.includes('Before any wait - on work, a clock time or the user - start every open step that does not depend on it.'), 'no idle wait');
+    autoStamp(p, 'rt2');
+    openRun(p, 'rt2');
+    const held = run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'rt2', cwd: p.root, transcript_path: t,
+        last_assistant_message: 'Stage 2 of 4 is done; stage 3 starts next.' }, { CLAUDE_PROJECT_DIR: p.root });
+    assert.ok(folded(held.stderr).includes('the hook then removes'), held.stderr);
+    assert.doesNotMatch(folded(held.stderr), /print its close and delete/, 'the hold no longer says to delete the marker');
+    const skill = folded(readRepo('stack', 'skills', 'mode-auto-run', 'SKILL.md'));
+    assert.doesNotMatch(skill, /Then delete the run marker/, 'the skill no longer says to delete it');
 });
 
 // ---------------------------------------------------------------------------------------------

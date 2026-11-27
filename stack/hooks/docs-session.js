@@ -1106,7 +1106,18 @@ function projectWrites(command) {
 // target is expanded from the same command's assignment, and one still holding a `$` names no file - it filled
 // COMPACT-STATE's 'files written' with `$S/demo.pw` and `$G` (audit 2026-10-10, sessions 68da4b6b, 758ce661).
 const UNKNOWN_INTERPRETER_WRITE = '<unknown interpreter write>';
+const REMOVE_VERBS = new Set(['rm', 'unlink', 'rmdir']);
 const isUnknown = (t) => t === UNKNOWN_SOURCE_WRITE || t === UNKNOWN_INTERPRETER_WRITE;
+// The paths a command removes (`rm`, `unlink`, `rmdir`) and the paths it writes any other way, as written; a `$NAME`
+// still unexpanded names none.
+function removedTargets(command) {
+  if (!shellReader) return { removes: [], others: [] };
+  const scan = shellReader.scanShell(String(command), {});
+  const spell = (t) => scan.expandVars(String(t.raw || '')).replace(/^['"]|['"]$/g, '').replace(/\/+$/, '');
+  const named = scan.targets.filter((t) => !t.unknown).map((t) => ({ verb: t.verb, at: spell(t) })).filter((t) => t.at && !t.at.includes('$'));
+  return { removes: named.filter((t) => REMOVE_VERBS.has(t.verb)).map((t) => t.at),
+    others: [...named.filter((t) => !REMOVE_VERBS.has(t.verb)).map((t) => t.at), ...projectWrites(command)] };
+}
 function writeTargets(command) {
   if (!shellReader) return [];
   const scan = shellReader.scanShell(String(command), {});
@@ -1372,15 +1383,25 @@ function planFolderWrite(input, root) {
     const name = input.tool_name || '';
     const t = input.tool_input || {};
     const targets = [];
+    const removed = new Set();
+    const rewritten = new Set();
     if (/^(?:Edit|Write|MultiEdit|NotebookEdit)$/.test(name)) {
       for (const p of [t.file_path, t.notebook_path]) if (typeof p === 'string' && p) targets.push(path.resolve(root, p));
     } else if (isShellTool(name) && typeof t.command === 'string') {
       const base = typeof input.cwd === 'string' && input.cwd ? input.cwd : root;
       for (const w of writeTargets(t.command)) if (!isUnknown(w)) targets.push(path.resolve(base, w.replace(/^['"]|['"]$/g, '')));
+      const { removes, others } = removedTargets(t.command);
+      for (const r of removes) removed.add(path.resolve(base, r));
+      for (const w of others) rewritten.add(path.resolve(base, w));
     }
     for (const abs of targets) {
       const plan = layout.planOf(abs);
       if (!plan || plan.shape !== 'folder') continue;
+      // A command removing the whole plan - its json beside its Markdown or its folder, and writing neither back - drops a
+      // plan, never forges its state (session eb8ad61b, 2026-11-25: a scrapped plan folder could not be removed at all).
+      // The Markdown alone keeps its approved-plan check (review 2026-11-27).
+      if (/^(?:status|scoring)\.json$/.test(path.basename(abs)) && removed.has(abs) && !rewritten.has(abs)
+        && (removed.has(path.join(plan.dir, `${plan.id}.md`)) || removed.has(path.resolve(plan.dir)))) continue;
       // only a folder under a docs root's work/plans (this project's or a member's): a project's own plans/<x>/ is no plan (final review, finding 5)
       if (!toPosix(path.dirname(plan.dir)).endsWith('/work/plans')) continue;
       const md = path.join(plan.dir, `${plan.id}.md`);

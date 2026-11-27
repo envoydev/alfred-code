@@ -160,7 +160,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   real answer the commit gate's `answered:` reads - taking the next option when the marked one is the fresh-session
   hand-off, and leaving to the user an ask with an unmarked question or a recommended OUTWARD act (`AUTO_OUTWARD_RE`:
   push, merge, deploy, publish, release, ship, a PR, an issue or ticket filed, a story, task or epic raised, submitted, filed, created, opened or added with Jira, Linear, YouTrack, GitHub, GitLab, a backlog or a tracker named beside it (2026-11-19, bcb7d392; its wait row carries `clause: tracker-filing`), an ask naming its outward acts, a comment on or a page or ticket update aimed at a ticket, issue, PR, card, thread, Confluence, Notion, wiki, Jira, Linear or a ticket key, post, send, upload, a remote branch or tag
-  deleted, a hard reset, a database dropped, rotate, revoke, pay - and a BILLED run, `autoBilled`: billed, a paid run, spend, a dollar amount, the pick's own words always, the question's unless the pick declines and its amount only in a forward frame, 45 of 2,457 local recommended questions held, 2026-11-04 - audit HK01: an auto-answered 'Open the PR' was push
+  deleted, a hard reset, a database dropped, rotate (only where the ask names a credential - a key, keypair, token, secret, creds, password, passphrase or certificate, inside an `_` name too), revoke, pay; 'no' / 'never' / 'without' before an act negates it anywhere, and the pick's own 'not' / 'nothing is' scope line too (`AUTO_PICK_SCOPE_RE`) - never the question's, where 'not pushed yet. Do it now?' is a state the pick acts on; a pick whose WHOLE label is a hold (`AUTO_HOLD_ONLY_RE`: 'Hold', 'Hold - push later', 'Skip the publish', 'Leave them for later', 'Stop here') and whose description carries no act on (`AUTO_FORWARD_ACT_RE`: 'then push', 'push once CI is green') is answered whatever its question names, while a second act or a condition after the hold ('Skip the push, publish to npm', 'Hold - push when green') is judged as any pick (sessions f2de8d99 and eb8ad61b, 2026-11-25..27, replayed: 155 of 283 auto-run asks answered before, 196 after) - and a BILLED run, `autoBilled`: billed, a paid run, spend, a dollar amount, the pick's own words always, the question's unless the pick declines and its amount only in a forward frame, 45 of 2,457 local recommended questions held, 2026-11-04 - audit HK01: an auto-answered 'Open the PR' was push
   consent to the commit gate; 2026-10-16, the user's report: 'pay for seats' and the fresh-session cost line 're-sends
   about 401k tokens per message' read as outward and sent an approval ask to the user - over 2,656 recommended questions
   in real transcripts the narrowed pattern drops 91 hits, all of those shapes or a `/purchases/` path, and adds none);
@@ -172,10 +172,13 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   `auto-continue-cap` row - audit HK05: Claude Code's own 8-continuation cap resets on every tool call; a Stop while the
   Stop input's `background_tasks` shows the run's own work out passes with one `auto-wait` row, and so does the
   `auto-fields` hold - audit 2026-10-20 C02: 7 of 7 holds in one session sent back a turn that could only wait, ~3.4M
-  across three sessions), until the run's close deletes the marker. Between runs, with the mode on, Stop is not held:
+  across three sessions), until the run's close deletes the marker - the Stop hook removes it itself when the close carries
+  `Done:` and `Left for you:` lines, or `Result:` and `Leftovers:`, each opening its own line (`closesRun`, one
+  `auto-run-closed` row; session f2de8d99, 2026-11-26: Claude Code's auto-mode classifier refused the model's own `rm`
+  of the marker three times as 'Undermining Oversight', and the model asked the user to delete it). Between runs, with the mode on, Stop is not held:
   asks are still answered and the session waits for the next prompt. A message typed mid-run is INPUT to the run
   (`UserPromptSubmit`, `modePrompt`; the user's ruling of 2026-10-15), kept with an `auto-input` row and a note saying so;
-  when it asks to stop the run, the model prints the close and deletes the marker, and the mode stays on. Only
+  when it asks to stop the run, the model prints the close and the Stop hook removes the marker, and the mode stays on. Only
   `/alfred-code:mode:auto-run off` ends the mode: it deletes this session's stamp and the marker, writes an
   `auto-end` row and says `[mode] auto-run is OFF` ('stop auto-mode' and a bare 'stop' are plain input
   since 2026-10-27). A harness prompt - a task notice, a command's output, a seat's hand-back, `hook-prelude.js`

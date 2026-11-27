@@ -84,5 +84,7 @@ Decisions auto-run made for you:
 Left for you: <each outward act, each NOT RUN and why> | none
 ```
 
-Then delete the run marker if the flow's close left it, as the contract's item (7) says - that ends this run. Never
-delete the `AUTO` stamp: auto-run stays on for the session until the user types `/alfred-code:mode:auto-run off`.
+The close ends the run: its `Done:` and `Left for you:` lines tell the Stop hook to remove the run marker, as the
+contract's item (7) says. Never delete the marker yourself and never ask the user to - Claude Code's auto mode can
+refuse that delete. Never delete the `AUTO` stamp: auto-run stays on for the session until the user types
+`/alfred-code:mode:auto-run off`.
