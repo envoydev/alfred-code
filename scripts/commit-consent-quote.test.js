@@ -4,7 +4,7 @@
 'use strict';
 const test = require('node:test');
 require('./hook-test-env').isolateHookSuite();
-const { legacyBlock, REVIEW_ROW, userPick } = require('./hook-test-env');
+const { legacyBlock, REVIEW_ROW, userPick, foreignWords } = require('./hook-test-env');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -50,7 +50,7 @@ function aheadRepo() {
   git('commit', '-qam', 'change');
   return dir;
 }
-function gateWith(rows, quote, command = 'git push') {
+function gateWith(rows, quote, command = 'git push', timeout) {
   const dir = aheadRepo();
   const tp = path.join(TMP, `t-${++n}.jsonl`);
   fs.writeFileSync(tp, `${[REVIEW_ROW, ...rows].join('\n')}\n`);
@@ -59,7 +59,7 @@ function gateWith(rows, quote, command = 'git push') {
   assert.equal(h.status, 0, h.stderr);
   return legacyBlock(spawnSync(process.execPath, [GUARD], {
     input: JSON.stringify({ hook_event_name: 'PreToolUse', session_id: `quote-${n}`, tool_name: 'Bash', tool_input: { command }, cwd: dir, transcript_path: tp }),
-    cwd: dir, encoding: 'utf8', env }));
+    cwd: dir, encoding: 'utf8', env, timeout }));
 }
 const passes = (rows, quote = QUOTE) => { const r = gateWith(rows, quote); assert.equal(r.status, 0, r.stderr); };
 const refused = (rows, quote, reason) => {
@@ -146,16 +146,51 @@ test("typed 'Push it.' and quoted 'push it' match: case is no part of the words"
   passes([typedRow('Push it.', '10:00:00')], 'push it');
 });
 
-test("a quote cut out of a refusing sentence meets the ask: typed 'don't push it', quoted 'push it'", () => {
-  refused([typedRow("don't push it", '10:00:00')], 'push it', NOT_TYPED);
-});
+// DEFERRED (round 2 ruling): a quote cut out of a refusal - typed 'don't push it', quoted 'push it' - passes the match. Only a
+// reader of the user's clause could close it, and that is a new parser. The quote's own words still go through consentIn.
 
-test("a quote from the consenting sentence of a longer turn passes: typed 'ok, push it. don't merge yet'", () => {
+test("a quote from a longer turn passes: typed 'ok, push it. don't merge yet'", () => {
   passes([typedRow("ok, push it. don't merge yet", '10:00:00')], 'push it');
 });
 
 test("a refusing sentence earlier in the turn does not hide a later one that consents", () => {
   passes([typedRow("don't push it yet. ok, push it now", '10:00:00')], 'push it now');
+});
+
+// Matching is whole words in order and reads no clause of the typed turn: honest consent is never refused for what else it says.
+test("typed \"commit and push, don't merge\" and quoted 'commit and push' pass on the PUSH-GATE", () => {
+  passes([typedRow("commit and push, don't merge", '10:00:00')], 'commit and push');
+});
+
+test("typed 'push it but don't merge' and quoted 'push it' pass", () => {
+  passes([typedRow("push it but don't merge", '10:00:00')], 'push it');
+});
+
+test("typed 'push it' with words of another script after it passes with the quote 'push it'", () => {
+  passes([typedRow(`push it, ${foreignWords(2, 5)}`, '10:00:00')], 'push it');
+});
+
+test("typed 'push it to Jos\u00e9 now' and quoted 'push it' pass", () => {
+  passes([typedRow('push it to Jos\u00e9 now', '10:00:00')], 'push it');
+});
+
+test('a typed run-on sentence past 1,000 characters holds a short quote', () => {
+  passes([typedRow(`ok push it ${'and then some words '.repeat(60)}`, '10:00:00')], 'push it');
+});
+
+// The parts of a cut quote are placed one after the other, each at its first whole-word place: no backtracking.
+test("a cut quote with many parts against a long typed turn is refused at once, not after a search of every placement", () => {
+  const typed = typedRow(`push it ${'a '.repeat(300)}`, '10:00:00');
+  const quote = 'push it ... a ... a ... a ... a ... zz';
+  const control = Date.now();
+  refused([typedRow('push it a', '10:00:00')], quote, NOT_TYPED);
+  const baseline = Date.now() - control;
+  const started = Date.now();
+  const r = gateWith([typed], quote, 'git push', 20000);
+  const took = Date.now() - started;
+  assert.equal(r.status, 2, 'the push is held');
+  assert.match(r.stderr, NOT_TYPED);
+  assert.ok(took < baseline + 500, `took ${took}ms against ${baseline}ms for a short turn`);
 });
 
 // The COMMIT-GATE receipt reads the same quote: a change past the trivial bar needs the receipt.

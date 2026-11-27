@@ -1132,40 +1132,24 @@ function isOwnOptionLabel(span) {
 }
 // Is this quote the user's own words (C3, N02)? Its parts (the quote cut at '...') are whole words of one turn the user typed
 // (a slash command's args included; a side agent's note, a peer message and a compaction summary are no typed turn) or of
-// an ask answer a person gave - an answer a hook gave (`user` false) is nobody's words - and the sentences that hold them
-// pass the consent reading of the gate, so a quote cut out of 'do not push it' is refused.
-function quoteTyped(quote, scan, gate) {
+// an ask answer a person gave - an answer a hook gave (`user` false) is nobody's words. The quote's own consent is judged
+// apart by consentIn; this reads no clause of the typed turn, so a quote cut out of a refusal still matches (deferred).
+function quoteTyped(quote, scan) {
   const parts = straightText(quote).split(ELLIPSIS_GAP).map(matchKey).filter(Boolean);
   if (!parts.length) return false;
   const turns = [...scan.typedRaw.map((t) => t.text), ...scan.answers.filter((a) => a.user).map((a) => a.text)];
-  return turns.some((text) => turnHolds(String(text), parts, gate));
+  return turns.some((text) => turnHolds(matchKey(text), parts));
 }
-function turnHolds(text, parts, gate) {
-  const sentences = text.split(SENTENCE_END);
-  let joined = ' ';
-  const spans = [];
-  sentences.forEach((sentence, index) => {
-    const key = matchKey(sentence);
-    if (!key) return;
-    spans.push({ index, from: joined.length, to: joined.length + key.length });
-    joined += `${key} `;
-  });
-  // every occurrence of each part is tried in order: the sentences that hold one placement must consent
-  const place = (step, from, held) => {
-    if (step === parts.length) {
-      const said = [...held].sort((a, b) => a - b).map((index) => normQuote(sentences[index])).join('. ');
-      return consentIn(said, gate);
-    }
-    for (let at = joined.indexOf(` ${parts[step]} `, from); at !== -1; at = joined.indexOf(` ${parts[step]} `, at + 1)) {
-      const start = at + 1;
-      const end = start + parts[step].length;
-      const next = new Set(held);
-      for (const span of spans) if (span.from < end && span.to > start) next.add(span.index);
-      if (place(step + 1, end, next)) return true;
-    }
-    return false;
-  };
-  return place(0, 0, new Set());
+// Each part sits at its first whole-word place after the end of the one before it: one pass, no backtracking.
+function turnHolds(key, parts) {
+  const padded = ` ${key} `;
+  let from = 0;
+  for (const part of parts) {
+    const at = padded.indexOf(` ${part} `, from);
+    if (at === -1) return false;
+    from = at + part.length + 1;
+  }
+  return true;
 }
 // The session's latest ask answer, for a denial that names what the receipt should carry: a receipt quoted the user's
 // typo ('commit and oush to develop') while the picked option sat in the transcript (audit 2026-10-10, session bda299a8).
@@ -1415,7 +1399,7 @@ function judgeReceipt(body, opts) {
       r.problem = `the authorized: quote is character-identical to an option label THIS run wrote - that is the model's sentence, not the user's. Consent given by picking an option is spelled \`answered: <the chosen label>\` instead${answerHint()}`;
       return r;
     }
-    if (!quoteTyped(authorized, transcriptScan(), opts && opts.gate)) {
+    if (!quoteTyped(authorized, transcriptScan())) {
       r.problem = `the authorized: quote (${JSON.stringify(authorized).slice(0, 60)}) is not in any message the user typed - quote the user's own words, or ask`;
       return r;
     }
