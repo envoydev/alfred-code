@@ -124,6 +124,27 @@ test('the typed word clears a stash drop only after the model proposed that entr
   assert.equal(runRm(dir, 'repeat 2 git stash drop', loop).status, 'ask', 'third review M2: zsh repeat');
   const listed = transcript(dir, [said('`stash@{0}` holds a stale copy. Drop it?'), typed('then drop'), call('Bash', { command: 'git stash list' })]);
   assert.equal(runRm(dir, 'git stash drop stash@{0}', listed).status, 0, 'a stash list moves no ref, so the word holds');
+  const own = call('Bash', { command: 'git stash drop stash@{0}' })[0];
+  const withOwnRow = transcript(dir, [said('`stash@{0}` holds a stale copy. Drop it?'), typed('then drop'), own]);
+  assert.equal(runRm(dir, 'git stash drop stash@{0}', withOwnRow, { tool_use_id: own.message.content[0].id }).status, 0, 'the judged call\'s own row is no other call');
+  const proposal = said('`stash@{0}` holds a stale copy. Drop it?');
+  const pushedAfter = transcript(dir, [proposal, call('Bash', { command: 'git stash push -m wip' }), typed('then drop')]);
+  assert.equal(runRm(dir, 'git stash drop stash@{0}', pushedAfter).status, 'ask', 'fourth review N1: a stash made after the proposal');
+  const autostash = transcript(dir, [proposal, typed('then drop'), call('Bash', { command: 'git pull --rebase --autostash' })]);
+  assert.equal(runRm(dir, 'git stash drop stash@{0}', autostash).status, 'ask', 'fourth review N2: an autostash after the word');
+  const refused = transcript(dir, [proposal, typed('then drop'), call('Bash', { command: 'git stash list' }, { isError: true })]);
+  assert.equal(runRm(dir, 'git stash drop stash@{0}', refused).status, 'ask', 'fourth review N3: a refused call carries newer words');
+  const askedAfter = transcript(dir, [proposal, typed('then drop'), call('AskUserQuestion', { questions: [] })]);
+  assert.equal(runRm(dir, 'git stash drop stash@{0}', askedAfter).status, 'ask', 'fourth review N3: an ask after the word');
+  const readFirst = transcript(dir, [proposal, typed('then drop'), call('ToolSearch', { query: 'x' }), call('Read', { file_path: 'x' }), call('Bash', { command: 'git --no-pager stash list' })]);
+  assert.equal(runRm(dir, 'git stash drop stash@{0}', readFirst).status, 0, 'fifth review R5-4: calls that change nothing keep the word');
+  for (const between of [call('Skill', { skill: 'tidy' }), call('Bash', { command: 'cd ../other && git stash list' })])
+    assert.equal(runRm(dir, 'git stash drop stash@{0}', transcript(dir, [proposal, typed('then drop'), between])).status, 'ask', 'sixth review R6-2, R6-3');
+  const seat = transcript(dir, [proposal, typed('then drop'), call('Agent', { prompt: 'tidy up' })]);
+  assert.equal(runRm(dir, 'git stash drop stash@{0}', seat).status, 'ask', 'fourth review N5: a seat after the word');
+  for (const cmd of ['{ for i in 1 2; do git stash drop; done; }', 'time for i in 1 2; do git stash drop; done', '! for i in 1; do git stash drop; done',
+    'for((i=0;i<2;i++)); do git stash drop; done', 'foreach i (1 2) git stash drop; end'])
+    assert.equal(runRm(dir, cmd, listed).status, 'ask', `fourth review N7: ${cmd}`);
 });
 
 test('a typed revert of a file is no consent: the typed route is for one stash', () => {
@@ -133,12 +154,13 @@ test('a typed revert of a file is no consent: the typed route is for one stash',
   assert.equal(runRm(dir, 'git checkout -- app.js', t).status, 'ask', 're-review N3');
 });
 
-test('a loop word in an echo is no loop', () => {
+test('a loop word in an echo reads as a loop: the false ask is the safe side', () => {
   const { dir } = repo();
   const file = path.join(dir, 'app.js');
   fs.writeFileSync(file, 'const a = 1;\nconsole.log("P");\nconst b = 2;\n');
   const t = transcript(dir, [typed('fix it'), edit(file, 'const a = 1;', 'const a = 1;\nconsole.log("P");')]);
-  assert.equal(runRm(dir, 'git checkout -- app.js && echo "reverted for good"', t).status, 0, 'third review M2');
+  assert.equal(runRm(dir, 'git checkout -- app.js && echo "reverted for good"', t).status, 'ask', 'fourth review N7 over third review M2');
+  assert.equal(runRm(dir, 'git checkout -- app.js', t).status, 0, 'the same revert alone runs');
 });
 
 test("an own stash of a file the run created is the run's", () => {
