@@ -98,7 +98,17 @@ const SQLITE_READ_ONLY_OPTION = /^--?readonly$/;
 const SQLITE_MEMORY_DATABASE = /^(?::memory:|)$/;
 const SQLITE_URI_PREFIX = /^file:/i;
 const SQLITE_READ_ONLY_QUERY = /(?:^|&)(?:mode=ro|immutable=1)(?:&|$)/;
-const INTERPRETER_CODE_OPTIONS = new Set(['-c', '-e', '-E', '-m', '-r', '-p', '-W', '-X', '--eval', '--print', '--require', '--import', '--input-type']);
+const INTERPRETER_FAMILY = Object.freeze({ python: /^python/, node: /^node$/, ruby: /^ruby$/, perl: /^perl$/ });
+const INTERPRETER_SHELL_FAMILY = 'shell';
+// The options that take the next word as their value, per interpreter: `-e` is code to node, ruby and perl but errexit
+// to a shell, and `-E` ignores the environment in python. A word after a switch is then still a script.
+const INTERPRETER_VALUE_OPTIONS = Object.freeze({
+  python: new Set(['-c', '-m', '-W', '-X']),
+  node: new Set(['-e', '-p', '-r', '--eval', '--print', '--require', '--import', '--input-type']),
+  ruby: new Set(['-e', '-r', '-I']),
+  perl: new Set(['-e', '-E', '-m', '-M', '-I']),
+  [INTERPRETER_SHELL_FAMILY]: new Set(['-c', '-o']),
+});
 const SYSTEM_TOOL_ROOTS = Object.freeze(['/usr', '/bin', '/sbin', '/opt', '/etc', '/dev', '/System', '/Library', '/Applications', '/private/etc']);
 const SQLITE_WRITE_WHAT = 'a sqlite3 database';
 const INTERPRETER_PATH_WHAT = 'call on a path';
@@ -1050,17 +1060,18 @@ function databaseOf(word, readOnly) {
   return { path: decoded, readOnly: readOnly || SQLITE_READ_ONLY_QUERY.test(query) };
 }
 // The words of an interpreter call that name an existing path, read from `cwd` where a word is relative. An option is no
-// path and a code option (`-c`, `-e`) takes the next word as code; no script body is read. `exists` is injected so the
-// decision stays a pure function.
-function interpreterPaths(argv, cwd, exists = fs.existsSync) {
+// path and a value option of that interpreter (`-c`, `-e`: code) takes the next word; no script body is read. `exists` is
+// injected so the decision stays a pure function.
+function interpreterPaths(argv, cwd, valueOptions = new Set(), exists = fs.existsSync) {
   const paths = [];
   for (let at = 0; at < argv.length; at++) {
     const word = argv[at];
-    if (word.startsWith('-')) { if (INTERPRETER_CODE_OPTIONS.has(word)) at++; continue; }
-    if (word && exists(resolveTarget(expandTilde(word), cwd))) paths.push(word);
+    if (word.startsWith('-')) { if (valueOptions.has(word)) at++; continue; }
+    if (word && exists(resolveTarget(nativePath(expandTilde(word)), cwd))) paths.push(word);
   }
   return paths;
 }
+const interpreterFamily = (name) => Object.keys(INTERPRETER_FAMILY).find((family) => INTERPRETER_FAMILY[family].test(name)) || INTERPRETER_SHELL_FAMILY;
 // A tool's own folder is no project: a system folder, and a dot-folder or toolchain folder under the home folder (the read
 // half's zone test says which folders under HOME hold projects).
 function toolOwnedPath(abs) {
@@ -1099,7 +1110,7 @@ function judgeDatabaseAndInterpreterCalls() {
       }
       const base = anchorAt(index);
       if (!base) continue;
-      for (const word of interpreterPaths(argv, base)) {
+      for (const word of interpreterPaths(argv, base, INTERPRETER_VALUE_OPTIONS[interpreterFamily(cand.name)])) {
         const abs = resolveTarget(nativePath(expandTilde(word)), base);
         if (allowed(abs) || toolOwnedPath(abs) || readAsked(word, index)) continue;
         judge(word, index, `a ${cand.name} ${INTERPRETER_PATH_WHAT}`, cand.name);

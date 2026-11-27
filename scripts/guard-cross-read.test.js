@@ -672,6 +672,24 @@ test('an interpreter call that names an existing path past the workspace asks fi
   asks(fx, bash(`python3 erase.py "${db}"`), {}, 'a quoted outside path');
 }));
 
+test('a flag one interpreter reads as a switch does not hide a script past the workspace from another', { skip: WINDOWS && 'POSIX paths' }, withFixture((fx) => {
+  const { db, relative } = outsideDb(fx);
+  asks(fx, bash(`sh -e ${relative}`), {}, 'sh -e is errexit, so the word after it is the script');
+  asks(fx, bash(`bash -e -u ${relative}`), {}, 'bash -e -u then the script');
+  asks(fx, bash(`python3 -E ${relative}`), {}, 'python3 -E ignores the environment, so the next word is the script');
+  asks(fx, bash(`python3 -I -B ${db}`), {}, 'python3 switches then the file');
+  asks(fx, bash(`bash -o pipefail ${db}`), {}, 'bash -o takes pipefail, then the script');
+  asks(fx, bash(`ruby -w ${db}`), {}, 'ruby -w then the script');
+  asks(fx, bash(`perl -w ${db}`), {}, 'perl -w then the script');
+  asks(fx, bash(`node --no-warnings ${db}`), {}, 'node --no-warnings then the script');
+  passes(fx, bash(`bash -c 'echo hi'`), {}, 'bash -c takes code');
+  passes(fx, bash('node -e "1"'), {}, 'node -e takes code');
+  passes(fx, bash('python3 -m pytest'), {}, 'python3 -m takes a module');
+  passes(fx, bash(`bash -o pipefail -c 'echo ${relative}'`), {}, 'bash -o value then -c code');
+  passes(fx, bash(`ruby -e '1' -r json`), {}, 'ruby -e and -r take values');
+  passes(fx, bash(`perl -e 'print 1' -I lib`), {}, 'perl -e and -I take values');
+}));
+
 test('an interpreter call on a project path, a missing path, a system path or code with no path passes with no prompt', { skip: WINDOWS && 'POSIX paths' }, withFixture((fx) => {
   const { relative } = outsideDb(fx);
   fx.put('work/proj/scripts/x.py');
