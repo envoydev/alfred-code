@@ -602,7 +602,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     `agent_type` beside an `agent_id` - audit 2026-10-14 HK16, the user's ruling: its 85 runs made 143 of a week's 277
     range-cap blocks, the verifiers 9), whose size and sweep gates still do; the shell's literal spans (`sed -n a,bp`, `head`, `tail`, `awk 'NR>=a && NR<=b'`)
     printed to the terminal are rows on the same log; a file the working tree ADDS completes past the cap, and a
-    changed one's denial names `git diff HEAD -- <file>`; an inverted grep (`grep -v`, or a pipe into one) prints the
+    changed one's denial names `git diff HEAD -- <file>`; a range of 40 lines or fewer passes the cap whatever share of the file it is (`SMALL_RANGE_LINES`, session audit B9, 2026-11-27; it is still logged), and a Read of a harness file (`<config dir>/projects/<project>/<session>/tool-results/<file>` or `<tmp>/claude-<uid>/<project>/<session>/tasks/<id>.output`, judged on the real path) passes whole (`isHarnessFile`); an inverted grep (`grep -v`, or a pipe into one) prints the
     file minus its matches and is judged like `cat`; a loop whose `cat` reads its variable over literal paths or a
     one-folder glob is sized per file (no sweep while all of them print at most THRESHOLD lines and BIG_BYTES); a
     relative target with no file at any anchor prints nothing, after a `cd` the guard cannot follow too (it failed

@@ -127,6 +127,14 @@ const SWEEP_EXT_ANY = /\.(ts|tsx|js|jsx|mjs|cjs|cs|go|razor|cshtml|xaml|html|md)
 const THRESHOLD = 400;
 // The Read-tool half's size cap for a file with no line count to judge (below); the shell route's slice rule reads it too.
 const BIG_BYTES = 60 * 1024;
+// A range this short always passes the range cap, whatever share of the file it is (session audit B9): 40 lines cost
+// about what the navigation detour would. A range of 41 lines or more is judged as before.
+const SMALL_RANGE_LINES = 40;
+// The harness's own output files, read back by the model and never project code: tool results under
+// <config dir>/projects/<project>/<session>/tool-results/, and a session's background task output under
+// <tmp>/claude-<uid>/<project>/<session>/tasks/<id>.output.
+const HARNESS_TOOL_RESULTS_DIR = 'tool-results';
+const HARNESS_TASK_OUTPUT = /\/claude-\d+\/[^/]+\/[^/]+\/tasks\/[^/]+\.output$/;
 const lineCountOf = (p) => {
   // Lines, not newline-split pieces: a final newline ends the last line, it does not start another -
   // counted as one, a 200-line file sat one over the threshold it is on.
@@ -592,7 +600,7 @@ function rangeCap(abs, shown, lineCount, a, b) {
   } catch { /* no log - this range alone */ }
   if (!mine) { prior = merged; merged = mergeIn(merged, a, b); }
   const covered = coverOf(merged);
-  if (covered <= lineCount * CAP || rangeCapExempt()) return;
+  if (covered <= lineCount * CAP || b - a + 1 <= SMALL_RANGE_LINES || rangeCapExempt()) return;
   // A file the working tree ADDS is under review whole - a verifier seat left half of a new 251-line test file unread
   // behind this cap (audit 2026-10-10, session 05c925e9) - so its ranges complete it. A changed file names its diff.
   const state = treeState(fileKey);
@@ -1516,6 +1524,18 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
 
 // ---- Read matcher ----
 const path = input.file_path || '';
+// A harness tool-result or task-output file is the harness's own spill, not project code: the guard has nothing to steer
+// there. Judged on the real path, so a dot-dot or a link out of the harness folder is judged where it lands.
+const configDir = process.env.CLAUDE_CONFIG_DIR || pathMod.join(os.homedir() || '', '.claude');
+const realOrResolved = (p) => { const abs = pathMod.resolve(anchorDirs[0] || process.cwd(), p); try { return fs.realpathSync(abs); } catch { return abs; } };
+const isHarnessFile = (p) => {
+  if (!p) return false;
+  const real = realOrResolved(p);
+  if (HARNESS_TASK_OUTPUT.test(real.replace(/\\/g, '/'))) return true;
+  const parts = pathMod.relative(realOrResolved(pathMod.join(configDir, 'projects')), real).split(pathMod.sep);
+  return parts.length >= 4 && parts[0] !== '..' && parts[2] === HARNESS_TOOL_RESULTS_DIR && !pathMod.isAbsolute(parts[0]);
+};
+if (isHarnessFile(path)) process.exit(0);
 // Only gate source / markup files we navigate by symbol or read by range:
 // the symbol-navigable languages the stack's LSP plugins cover (TS/JS family,
 // C#, Go), plus large templates (Angular .html, Razor .razor/.cshtml, WPF
