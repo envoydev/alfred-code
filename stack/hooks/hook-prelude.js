@@ -1152,8 +1152,9 @@ function writeRunMarker(root, sessionId, skill, promptText, env = process.env, p
 // ('Another Claude session sent a message:' over an `<agent-message>` frame - its transcript row is `isMeta` with
 // `origin.kind: peer`, which the payload does not carry). One test for every hook that reads a prompt as someone typing
 // (audit 2026-10-14 HK14: a hand-back ended auto-mode, drew the answer budget - 351 of 960 injections in a week - and
-// reset the turn of the since-removed session monitor).
-const HARNESS_PROMPT_RE = /^\s*(?:<(?:task-notification|local-command-stdout|local-command-caveat|agent-message)\b|Another Claude session sent a message:)/;
+// reset the turn of the since-removed session monitor). A side agent's note opens 'Here is a note offered by a side agent'
+// (session audit 2026-11-27, C2): it is the harness's text too, at the start of the prompt only.
+const HARNESS_PROMPT_RE = /^\s*(?:<(?:task-notification|local-command-stdout|local-command-caveat|agent-message)\b|Another Claude session sent a message:|Here is a note offered by a side agent\b)/;
 function harnessPrompt(prompt)
 {
     return HARNESS_PROMPT_RE.test(String(prompt || ''));

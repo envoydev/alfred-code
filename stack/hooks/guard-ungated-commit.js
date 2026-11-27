@@ -988,7 +988,11 @@ function transcriptScan() {
         try { row = JSON.parse(line); } catch { return; }
         if (!row || row.type !== 'user' || row.isMeta || row.isCompactSummary) return;   // a compaction summary quotes old words: never a typed turn
         const text = textOf(row.message && row.message.content);
-        if (text && !/^\s*<(?:command-name|local-command|bash-|task-notification)/.test(text)) { _scan.typed.push(normQuote(text)); _scan.typedRaw.push({ text, ts: tsOf(row) }); }
+        // The row's typed text: a slash command's own words (its `<command-args>`), else the text itself unless the harness wrote
+        // it - the gate's own openers joined with the prelude's `harnessPrompt` (a side agent's note, a peer message). Both lists.
+        const commandArgs = /<command-name>/.test(text) ? ((/<command-args>([\s\S]*?)<\/command-args>/.exec(text) || [])[1] || '').trim() : null;
+        const said = commandArgs !== null ? commandArgs : (!/^\s*<(?:command-name|local-command|bash-|task-notification)/.test(text) && !harnessRow(text) ? text : '');
+        if (said) { _scan.typed.push(normQuote(said)); _scan.typedRaw.push({ text: said, ts: tsOf(row) }); }
         // a review the user TYPED as a slash command is a review run too, once its result line followed it
         const typedSkill = /<command-name>\/?([\w:-]+)<\/command-name>/.exec(text);
         if (typedSkill && REVIEW_SKILL.test(typedSkill[1])) {
@@ -1803,6 +1807,8 @@ function lineFinding(file, text, lineNo) {
   return '';
 }
 function prelude() { return require('./hook-prelude.js'); }
+// A prompt the harness wrote (hook-prelude.js harnessPrompt); an install without the prelude judges by the gate's own openers alone.
+function harnessRow(text) { try { return prelude().harnessPrompt(text) === true; } catch { return false; } }
 
 // What the commit takes in, read from the command: the commit's own flags and paths, and every `git add` before it.
 // Each path is placed where ITS git call runs and handed to git as a top-relative `:(top)` pathspec - read from the
