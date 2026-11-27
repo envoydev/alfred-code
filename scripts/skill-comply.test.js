@@ -1087,6 +1087,8 @@ test('task-solve-asked-push fixture: Push now marked first passes, Hold marked f
     const run = (labels) => sc.gradeRun(exp, sc.parseTranscript(jsonl([user('go'), ask(labels)])));
     assert.deepStrictEqual(failing(run(['Push now (Recommended)', 'Hold - push later'])), []);
     assert.deepStrictEqual(failing(run(['Hold - push later (Recommended)', 'Push now'])), ['push-marked-first', 'hold-not-marked']);
+    // Hold listed first with Push now marked second: the push is marked but not first
+    assert.deepStrictEqual(failing(run(['Hold - push later', 'Push now (Recommended)'])), ['push-marked-first']);
 });
 
 test('answer-budget-asked fixture: a section the question did not ask for fails, a plain answer passes (2026-11-20)', () => {

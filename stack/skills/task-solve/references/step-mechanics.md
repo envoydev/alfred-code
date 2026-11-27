@@ -165,6 +165,9 @@ another session waits for the commit / publish answer, so every id it quotes is 
 
 ## Doc-drift surfaces - the step-6 close line
 
+**Doc-drift awareness** - one line at most in the close report, never auto-run, by the surface list below.
+
+
 An architecture-critical surface, any one of which earns the close report's one-line pointer to
 the architecture capture: a schema / EF migration, a new module or project, a moved boundary or
 dependency direction, a changed cross-stack seam or eventing contract, a new external dependency.

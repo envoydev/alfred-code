@@ -551,8 +551,22 @@ test("issue-diagnoser: an unmarked ask is denied and a 'waits for you:' ask keep
 
 // N04 (session audit 2026-11-27): a line beside the push pair says which template to use.
 test('N04: task-solve and the commit checkpoint name when the asked push template applies', () => {
-    for (const name of ['task-solve', 'habits-commit-checkpoint']) {
-        const t = flat(skill(name));
-        assert.ok(t.includes("Where the user's typed words in this exchange asked for this push, a go-ahead to your own proposal included, ask"), `${name}: the line that picks the template`);
-    }
+    assert.ok(flat(skill('task-solve')).includes("Where the user's typed words in this exchange asked for this push, a go-ahead to your own push proposal included, ask:"), 'task-solve: the line that picks the template');
+    const cp = flat(skill('habits-commit-checkpoint'));
+    assert.ok(cp.includes("Where the user's typed words in this exchange (the latest prompt and the proposal it answers) only gave a go-ahead to your own publish proposal, ask:"), 'the checkpoint: the line that picks the template');
+    // the skip rule (words for THIS publish skip the ask) and the Hold mark must not contradict the asked template
+    assert.ok(cp.includes('Words the user already typed for THIS publish skip the ask'), 'the skip rule stays');
+    assert.ok(cp.includes('Holding takes the mark for a publish nobody asked for'), 'Hold is marked only for a publish nobody asked for');
+});
+
+// N04 fix round 1: task-solve's asked template carries a reason per option, like every other template; the doc-drift line lives with its surface list.
+test('N04: the asked push template in task-solve has a reason on each option, and the doc-drift line sits in step-mechanics', () => {
+    const solve = skill('task-solve');
+    const m = /^[ \t]*```ask\n[ \t]*(You asked for this push[^\n]*)\n([^\n]*)\n([^\n]*)\n/m.exec(solve);
+    assert.ok(m, 'the asked template');
+    assert.match(m[2], /^\s*- 'Push now \(Recommended\)' - the checkpoint's publish half takes this answer as its confirmation$/);
+    assert.match(m[3], /^\s*- 'Hold - push later' - nothing leaves this machine$/);
+    assert.ok(!solve.includes('Doc-drift awareness'), 'the line left the body');
+    assert.ok(read('stack/skills/task-solve/references/step-mechanics.md').includes('**Doc-drift awareness** - one line at most in the close report, never auto-run'), 'and sits in step-mechanics');
+    assert.strictEqual(shared()['flow-doc-drift-awareness'].owner.file, 'stack/skills/task-solve/references/step-mechanics.md');
 });

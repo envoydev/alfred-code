@@ -1646,7 +1646,7 @@
     "flow-doc-drift-awareness": {
       "_note": "The close-out doc-drift awareness rule (suggest the right capture, one line, user decides, never auto-run) in both solve flows; trigger lists are flow-specific by design.",
       "owner": {
-        "file": "stack/skills/task-solve/SKILL.md",
+        "file": "stack/skills/task-solve/references/step-mechanics.md",
         "marker": "Doc-drift awareness"
       },
       "sites": [

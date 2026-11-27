@@ -30,7 +30,7 @@ run-time load.
 
 A cycle mid-flight resumes at its cursor - never restart a passed step. A resume paste that lands in a chat still holding the earlier cycle's conversation (no
 `/clear` between) is answered with one line - `/clear first, then paste it again` - and nothing else.
-A NEW cycle after a finished one offers the fresh-session hand-off
+A NEW cycle after a finished one in this session offers the fresh-session hand-off
 in its first ask, after the in-session option. A cycle mid-build reads `Resume: step 4 BUILD - mode session - next task 2`.
 
 Invoked with no request and no plan to resume, the one reply is an ask for the task - nothing runs before its answer.
@@ -246,12 +246,13 @@ line names: a POINTER for the user to type, never a call.
    - 'Push now' - the checkpoint's publish half takes this answer as its confirmation
    ```
 
-   Where the user's typed words in this exchange asked for this push, a go-ahead to your own proposal included, ask:
+   Where the user's typed words in this exchange asked for this push, a go-ahead to your own push proposal included, ask:
 
    ```ask
    You asked for this push: <sha> to <remote>.
-   - 'Push now (Recommended)'
-   - 'Hold - push later'
+      - 'Push now (Recommended)' - the checkpoint's publish half takes this answer as its confirmation
+   - 'Hold - push later' - nothing leaves this machine
+
    ```
 
    New scope arriving in-chat after `Completed:` is a NEW cycle in a NEW plan folder (a completed plan takes no further write
@@ -259,8 +260,6 @@ line names: a POINTER for the user to type, never a call.
    work runs outside the cycle; never build it on a casual 'yes, add it'. A change a sibling repo must
    follow is handed off as a FILE in THIS repo - a task card under `<docs-path>/work/cross-project-tasks/`
    - and printed as a paste-ready block, by the step mechanics' hand-off rules.
-   **Doc-drift awareness** - one line at most in the close report, never auto-run, by the surface
-   list in `references/step-mechanics.md`.
 
 ## Do not
 

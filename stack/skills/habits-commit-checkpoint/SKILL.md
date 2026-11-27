@@ -176,7 +176,7 @@ receipt minted before the merge still reads the pre-merge tip, a different tree 
    option is the receipt's `answered: <the chosen label>` line. Words the user already typed for THIS
    publish skip the ask - they are the `authorized:` line. A red the receipt's `live-probe:` records
    on a check CI also runs is named in the question - 'CI runs <check>, red here' - and 'Hold - fix
-   the red first' replaces the plain Hold. Holding takes the mark, since a publish leaves the machine:
+   the red first' replaces the plain Hold. Holding takes the mark for a publish nobody asked for, since a publish leaves the machine:
 
    ```ask
    Publish <the commit set> to <remote>/<branch>? It leaves this machine for CI and everyone on the branch.
@@ -184,7 +184,7 @@ receipt minted before the merge still reads the pre-merge tip, a different tree 
    - 'Publish' - push or merge exactly the set named above
    ```
 
-   Where the user's typed words in this exchange asked for this push, a go-ahead to your own proposal included, ask:
+   Where the user's typed words in this exchange (the latest prompt and the proposal it answers) only gave a go-ahead to your own publish proposal, ask:
 
    ```ask
    You asked for this push: <the commit set> goes to <remote>/<branch>. It leaves this machine for CI and everyone on the branch.
