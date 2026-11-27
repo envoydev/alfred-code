@@ -1051,6 +1051,30 @@ test('auto-mode Stop: a run waiting on its own background work passes, an idle r
     assert.strictEqual(stop('w1', { background_tasks: [{ id: 'd', type: 'subagent', status: 'completed' }] }).status, 2, 'a settled seat wakes nothing');
 });
 
+// Session audit 2026-11-27 B11 (S02): a background `python3 tools/lanes.py run ... > log` was no live work, so the run waiting
+// on it was sent back; past its age limit (its timeout, else 60 min) the hold is unchanged.
+test('auto-mode Stop: a run waiting on a background script passes until its age limit (B11)', () =>
+{
+    const p = project();
+    const wait = 'Waiting on the lanes run this session started in the background.';
+    const launch = (id, minutesAgo, input = {}) => [
+        { type: 'assistant', timestamp: new Date(Date.now() - minutesAgo * 60000).toISOString(),
+            message: { id: `m-${id}`, role: 'assistant', content: [{ type: 'tool_use', id, name: 'Bash', input: { command: 'python3 tools/lanes.py run tab-cap --lanes 1 > lanes.log', run_in_background: true, ...input } }] } },
+        { type: 'user', timestamp: new Date(Date.now() - minutesAgo * 60000 + 1000).toISOString(),
+            message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: `Command running in background with ID: ${id}.` }] }, toolUseResult: { backgroundTaskId: id } },
+    ];
+    const stop = (sid, rowsOut) => run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: sid, cwd: p.root, transcript_path: transcript(rowsOut),
+        last_assistant_message: wait }, { CLAUDE_PROJECT_DIR: p.root });
+    autoStamp(p, 'b11');
+    openRun(p, 'b11');
+    const live = stop('b11', launch('toolu_b11a', 5));
+    assert.strictEqual(live.status, 0, `an unknown script out for 5 min wakes the run itself: ${live.stderr}`);
+    assert.ok(rows(p, 'b11').some((r) => r.kind === 'auto-wait'), 'one auto-wait row');
+    assert.strictEqual(stop('b11', launch('toolu_b11b', 61)).status, 2, 'out for 61 min with no timeout: sent back');
+    assert.strictEqual(stop('b11', launch('toolu_b11c', 6, { timeout: 300000 })).status, 2, 'out past its own 5 min timeout: sent back');
+    assert.strictEqual(stop('b11', launch('toolu_b11d', 5, { command: 'npm run dev' })).status, 2, 'a dev server never wakes the run');
+});
+
 test('auto-mode Stop: the auto-fields hold skips a progress note over running work, and still holds the idle done close (C02)', () =>
 {
     const p = project();

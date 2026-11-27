@@ -369,7 +369,8 @@ test('guard-stop-contract: 25 closes in 14 states - a hand-back blocks whatever 
   assert.equal(R2_HANDBACKS.length + R2_STATUS.length, 25);
   const wrong = [];
   for (const [state, rows] of Object.entries(R2_STATES)) {
-    const live = state === 'agent' || state === 'tests';
+    // `node app.js` names no server word, so since B11 (2026-11-27) it counts as live work until its age limit.
+    const live = state === 'agent' || state === 'tests' || state === 'node app.js';
     for (const [id, text] of R2_HANDBACKS) if (closeOver(`r2-${id}-${state.replace(/\W+/g, '-')}`, rows(), text).status !== 2) wrong.push(`${id}/${state} passed`);
     for (const [id, text] of R2_STATUS) {
       const status = closeOver(`r2-${id}-${state.replace(/\W+/g, '-')}`, rows(), text).status;
@@ -377,6 +378,34 @@ test('guard-stop-contract: 25 closes in 14 states - a hand-back blocks whatever 
     }
   }
   assert.deepStrictEqual(wrong, [], `${wrong.length} of 350 cells wrong`);
+});
+
+// Session audit 2026-11-27 B11 (S02, T18): a background run of a script no list names (`python3 tools/lanes.py run ...`) was no
+// live work, so a close waiting on it was held. Every background shell counts unless it serves or watches, and it stops
+// counting past its own `timeout` (else 60 min).
+const MINUTE_MS = 60 * 1000;
+const agedShell = (id, command, minutesAgo, extraInput) => launchRows(id, 'Bash', { command, run_in_background: true, ...(extraInput || {}) },
+  `Command running in background with ID: ${id}.`, { backgroundTaskId: id })
+  .map((row) => ({ ...row, timestamp: new Date(Date.now() - minutesAgo * MINUTE_MS).toISOString() }));
+const LANES = 'python3 tools/lanes.py run tab-cap --lanes 1 > lanes.log 2>&1';
+test('B11: a background run no list names is live work, and a server or watcher is not', () => {
+  for (const [id, text] of [['wait', WAITING_CLOSE], ['run', RUNNING_CLOSE]])
+    assert.equal(closeOver(`b11-lanes-${id}`, bgShell('b11l', LANES), text).status, 0, `an unknown script in the background, ${id} close`);
+  assert.equal(closeOver('b11-hand', bgShell('b11l2', LANES), 'Task 3 is done. Awaiting your approval to push.').status, 2, 'a hand-back still holds');
+  for (const command of ['npm run dev', 'vite preview', 'tail -f app.log', 'docker compose up', 'tsc --watch'])
+    assert.equal(closeOver(`b11-srv-${command.replace(/\W+/g, '-')}`, bgShell('b11s', command), RUNNING_CLOSE).status, 2, `a server or watcher: ${command}`);
+  assert.equal(closeOver('b11-up-d', bgShell('b11u', 'docker compose up -d --wait'), RUNNING_CLOSE).status, 0, 'up with -d exits when the services are up: live work');
+});
+test('B11: a background shell past its timeout, or 60 min with none, counts no more', () => {
+  const at = (name, minutesAgo, input) => closeOver(`b11-${name}`, agedShell('b11a', LANES, minutesAgo, input), WAITING_CLOSE).status;
+  assert.equal(at('fresh', 5), 0, 'started 5 min ago');
+  assert.equal(at('59', 59), 0, 'one under 60 min');
+  assert.equal(at('61', 61), 2, 'started 61 min ago, no timeout: the hold is unchanged');
+  assert.equal(at('t-over', 6, { timeout: 5 * MINUTE_MS }), 2, 'older than its own timeout of 5 min');
+  assert.equal(at('t-under', 4, { timeout: 5 * MINUTE_MS }), 0, 'inside its own timeout');
+  assert.equal(at('t-long', 90, { timeout: 120 * MINUTE_MS }), 0, 'its own timeout, not 60 min, is the limit');
+  assert.equal(at('t-long-over', 130, { timeout: 120 * MINUTE_MS }), 2, 'past its own long timeout');
+  assert.equal(at('ten-hours', 600), 2, 'a launch ten hours old');
 });
 
 // 2.1.6 re-verify 3 R3-M2: a done close that hands the next act back with no pending word ('Push when you approve.')

@@ -395,7 +395,17 @@ const TYPED_VALUE_RE = /^\s+(?:the |your |its |their )?(?:[\w-]+ ){0,3}?(?:ids?|
 // A report of what could not be confirmed ('I couldn't confirm whether the cache was warm') asks nothing: a confirm-ask
 // match with a negation earlier in its own clause is skipped (usage audit 2026-11-03 U06). The C15 offer shapes are not.
 const NEGATED_CONFIRM_RE = /\b(?:couldn['’]?t|can['’]?t|cannot|could not|did not|didn['’]?t|wasn['’]?t able to|not able to|unable to)\b/i;
+// Steps the user is to do, closing on 'then tell me', 'let me know when ...' or 'tell me when it is done' (session audit
+// 2026-11-27 B13, S05), are instructions, not a prose ask: the close line is read only as the LAST line of a reply that lists
+// steps (a numbered or bulleted line) before it. A decision, an offer or a 'say go' earlier in the reply still asks.
+const INSTRUCTION_CLOSE_RE = /(?:^|[.!?\n])[ \t]*(?:(?:and )?then,? (?:just )?(?:tell me|let me know)\b|(?:just )?(?:tell me|let me know) (?:when|once|as soon as)\b)[^.\n?]{0,60}[.!]?\s*$/i;
+const INSTRUCTION_STEP_RE = /^[ \t]*(?:\d+[.)]|[-*])[ \t]+\S/m;
+function userInstructions(text) {
+  const at = String(text || '').search(INSTRUCTION_CLOSE_RE);
+  return at > 0 && INSTRUCTION_STEP_RE.test(text.slice(0, at));
+}
 function proseAskMatch(text) {
+  if (userInstructions(text)) text = text.replace(INSTRUCTION_CLOSE_RE, ' ');
   let m = '';
   for (const mm of text.matchAll(new RegExp(PROSE_ASK_RE.source, 'gi'))) {
     if (/^confirm\b/i.test(mm[0]) && NEGATED_CONFIRM_RE.test(text.slice(0, mm.index).split(/[.!?;:\n]/).pop())) continue;
@@ -546,11 +556,13 @@ const nothingPending = (tail, closeTail) => NOTHING_PENDING_RE.test(tail) && !OW
 // server, and its live wait was blocked as a done-close (audit 2026-10-20 C02, a09fc7d6); `bin/dev` stays one.
 const NEVER_ENDS_RE = /\b(?:(?<!\/)dev|dev(?!\/)|serve|server|start|watch|preview)\b|--(?:watch|reload)\b|\btail\s+-[fF]\b|\bdotnet\s+(?:run|watch)\b|\bdocker(?:-compose|\s+compose)\s+up\b(?![^;&|]*\s(?:-d|--detach)\b)|\b(?:uvicorn|gunicorn|hypercorn|nodemon|live-server|http-server)\b|\bflask\s+run\b|\brails\s+s(?:erver)?\b|\bhttp\.server\b/;
 // ...and the list of servers is never complete (re-verify 2 R2-B1: `runserver`, `port-forward`, `ngrok`, `node app.js`,
-// `docker run -p` each held the exemption open), so a background shell counts as live work only when it names work that
-// FINISHES - a test, build, lint, install, migration, deploy - and no server or watch shape. An unknown command is no live
-// work: the close blocks and the model arms a Monitor or asks, the safe side.
-const FINITE_RE = /\b(?:tests?|build|lint|typecheck|tsc|check|checks|install|restore|ci|migrate|deploy|publish|pack|compile|e2e|coverage|bench|seed|sync|clone|fetch|pull|download|upload|sleep|wait|make|cargo|mvn|gradle|pytest|jest|vitest|mocha|playwright)\b/;
-const NEVER_ENDS_EXTRA_RE = /\s-w\b|--watch\w*|\bng\s+test\b(?![^;&|]*--watch=false)|\blogs?\s+-f\b|port-forward|\bngrok\b|runserver/;
+// `docker run -p` each held the exemption open), but the list of work that finishes is longer still: a script no list names
+// (`python3 tools/lanes.py run x > log`) held a wait blocked for 20 minutes (session audit 2026-11-27 B11, S02). So a
+// background shell counts as live work unless it serves or watches (`serverShell`), and it stops counting once it is older
+// than its own `timeout`, or than BACKGROUND_STALE_MS with none (`backgroundStale`): a server nobody listed, or a hung
+// command, then holds only until that limit. FINITE_RE, the old gate, is gone.
+const BACKGROUND_STALE_MS = 60 * 60 * 1000;
+const NEVER_ENDS_EXTRA_RE = /\s-w\b|--watch\w*|\bdocker\s+run\b[^;&|\n]*\s(?:-p|--publish)\b|\bvite\b(?!\s+build)|\bng\s+test\b(?![^;&|]*--watch=false)|\blogs?\s+-f\b|port-forward|\bngrok\b|runserver/;
 // A CI watch ENDS with the run it watches (`gh run watch`, `gh pr checks --watch`): read as a never-ending watcher, a close
 // waiting on an armed one was blocked while it ran for 9 more minutes (audit 2026-10-10 C15, bba03dad).
 // On any forge it is the concept (forge.js `pipeline.watch`: `gh run watch`, `glab ci status --live`, a CLI nobody
@@ -567,9 +579,30 @@ const SHELL_ARITH_RE = /\$\(\((?:[^()]|\([^()]*\))*\)\)/g;
 const SHELL_ASSIGN_RE = /(?:^|[;&|\s])[A-Za-z_]\w*=(?:\$\([^)]*\)|"[^"]*"|'[^']*'|\S+)/g;
 const SHELL_VAR_RE = /\$\{?[A-Za-z_]\w*\}?/g;
 const serverText = (c) => String(c || '').replace(SHELL_ARITH_RE, ' ').replace(SHELL_ASSIGN_RE, ' ').replace(SHELL_VAR_RE, ' ');
-const finiteShell = (c) => finiteWatch(c) || (!NEVER_ENDS_RE.test(serverText(c)) && !NEVER_ENDS_EXTRA_RE.test(c) && FINITE_RE.test(c));
+// A server or a watcher: it never ends, so no notice of its end will wake the session. A CI watch ends with its run.
+const serverShell = (c) => !finiteWatch(c) && (NEVER_ENDS_RE.test(serverText(c)) || NEVER_ENDS_EXTRA_RE.test(c));
+// A background shell launched at `launchedAtMs` is stale past its own `timeout` (ms), else BACKGROUND_STALE_MS; a launch
+// with no readable time is never stale.
+function backgroundStale(input, launchedAtMs, nowMs) {
+  if (!Number.isFinite(launchedAtMs)) return false;
+  const timeoutMs = input && Number.isFinite(input.timeout) && input.timeout > 0 ? input.timeout : BACKGROUND_STALE_MS;
+  return nowMs - launchedAtMs > timeoutMs;
+}
 // The user's own status or time question ('How much time is left?', 'Any ETA?') - read by the done-close's status-question release.
 const STATUS_QUESTION_RE = /\b(?:how (?:long|much (?:longer|time))|time (?:is )?left|eta|status|still (?:running|going|working)|done yet|how far)\b[^?\n]*\?\s*$/i;
+// The user's own typed QUESTION (session audit 2026-11-27 B12, S04: a done reply to 'What opened topics we have?' was held as a
+// done close with a pending step): it opens with a wh-word, or ends on '?' and opens with is/are/do/does/did/have/has. A request
+// in question form ('could you fix the build?', 'would you ...', 'will you ...', 'can you ...'), 'please ...' and 'do it' are
+// not one: the `communication` rule's section 3 reads them as the user's word for the work.
+const TYPED_WH_RE = /^\W*(?:what|why|how|where|when|which|who)\b/i;
+const TYPED_AUX_RE = /^\W*(?:is|are|do|does|did|have|has)\b/i;
+const TYPED_REQUEST_RE = /^\W*(?:please\b|(?:can|could|would|will)\s+you\b|do\s+it\b)/i;
+const DECISION_OFFER_RE = /\b(?:your call|up to you|over to you|say the word)\b/i;
+function typedQuestion(prompt) {
+  const text = String(prompt || '').trim();
+  if (!text || TYPED_REQUEST_RE.test(text)) return false;
+  return TYPED_WH_RE.test(text) || (TYPED_AUX_RE.test(text) && /\?[\W_]*$/.test(text));
+}
 // A forge READ - a change request's or a pipeline's state, through any CLI, API call or MCP tool - backs remote state.
 const FORGE_READ_RE = /\bgh\s+(?:pr|run|api|repo)\b/;
 const forgeRead = (block) => {
@@ -593,7 +626,7 @@ function registeredWork() {
   return payload.background_tasks.some((t) => {
     if (!t || typeof t !== 'object' || SETTLED_STATUS.test(String(t.status || ''))) return false;
     const type = String(t.type || '').toLowerCase();
-    if (type === 'shell') return finiteShell(String(t.command || ''));
+    if (type === 'shell') return !serverShell(String(t.command || ''));
     return /^(?:subagent|workflow|teammate|cloud session|mcp task|monitor)$/.test(type);
   });
 }
@@ -655,7 +688,7 @@ function readLaunches() {
       if (!Array.isArray(content)) continue;
       for (const b of content) {
         if (!b || b.type !== 'tool_use') continue;
-        if (/^(?:Agent|Task|Bash|PowerShell|Monitor|SendMessage)$/.test(b.name)) launched.set(b.id, { name: b.name, input: b.input || {} });
+        if (/^(?:Agent|Task|Bash|PowerShell|Monitor|SendMessage)$/.test(b.name)) launched.set(b.id, { name: b.name, input: b.input || {}, at: Date.parse(o.timestamp) });
         if (/^(?:TaskStop|KillShell|KillBash)$/.test(b.name)) {
           const named = JSON.stringify(b.input || {});
           for (let i = live.length - 1; i >= 0; i--) if ([...live[i].ids].some((id) => named.includes(id))) live.splice(i, 1);
@@ -666,7 +699,7 @@ function readLaunches() {
     if (o.type === 'user' && Array.isArray(content)) {
       for (const b of content) {
         if (!b || b.type !== 'tool_result' || !launched.has(b.tool_use_id) || b.is_error) continue;
-        const { name, input } = launched.get(b.tool_use_id);
+        const { name, input, at } = launched.get(b.tool_use_id);
         const r = resultText(b.content);
         const meta = o.toolUseResult && typeof o.toolUseResult === 'object' ? o.toolUseResult : {};
         let taskId = null;
@@ -682,10 +715,10 @@ function readLaunches() {
         } else {
           if (input.run_in_background !== true) continue;
           const command = String(input.command || '');
-          if (!finiteShell(command)) continue;
+          if (serverShell(command)) continue;
           taskId = meta.backgroundTaskId || (/running in background with ID:\s*([\w-]+)/i.exec(r) || [])[1];
         }
-        live.push({ ids: new Set([b.tool_use_id, taskId].filter(Boolean)), monitor: name === 'Monitor', name, input });
+        live.push({ ids: new Set([b.tool_use_id, taskId].filter(Boolean)), monitor: name === 'Monitor', name, input, at });
         for (const id of live[live.length - 1].ids) seen.add(id);
       }
     }
@@ -709,7 +742,8 @@ function readLaunches() {
       }
     }
   }
-  return { live, truncated, inherited };
+  const nowMs = Date.now();
+  return { live: live.filter((l) => !(/^(?:Bash|PowerShell)$/.test(l.name) && backgroundStale(l.input, l.at, nowMs))), truncated, inherited };
 }
 // The words a close uses for such work when the transcript cannot be read: an agent, a review or an
 // implementer as the running noun, or a waiter that wakes the session. Read ONLY when liveBackgroundWork()
@@ -2692,6 +2726,9 @@ if (payload.hook_event_name === 'Stop') {
     // ...and the answer to the user's own status or time question ('How much time is left?') while work this session
     // launched is still out in the registry: a report they asked for, not a stall (usage audit 2026-11-03 U10, 629719b3).
     ['status-question', () => STATUS_QUESTION_RE.test(newestTypedPrompt().trim()) && registeredWork() === true],
+    // ...and the answer to any typed question, with or without work out (session audit 2026-11-27 B12, S04). A DECISION put to
+    // the user in the reply ('Up to you if we push today', 'Your call') is no answer, and keeps the hold, as in `answersInfoRequest`.
+    ['typed-question', () => typedQuestion(newestTypedPrompt()) && !DECISION_OFFER_RE.test(closeTail)],
     // ...an answer to the user's question listing only other people's or deferred items (f450ea64), and the mandated
     // close after the user picked the fresh-session option this turn (69dbed46: 'Nothing is committed or pushed' read as
     // done + pending, and the resume block was forced out again at 132.4k) - audit 2026-10-10 C15.
