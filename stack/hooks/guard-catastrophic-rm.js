@@ -648,6 +648,9 @@ function runtimeWipe(rawCommand, read, payload, powershell)
 
 // The verbs `gitPlan` can find a loss in - any other git call has nothing to lose and spawns nothing.
 const LOSS_VERBS = new Set(['checkout', 'restore', 'reset', 'switch', 'clean', 'stash']);
+// A command that may run a call more than once: a shell loop (zsh's repeat too), xargs, find -exec, parallel or watch -
+// each read at a command position, so a word in an echo or a comment is none (third review M2).
+const LOOPED_RE = /(?:^|[;&|(`\n]\s*|\b(?:do|then|else)\s+)(?:for|while|until|select|repeat|xargs|parallel|watch)(?=\s|$)|\s-exec(?:dir)?\s/;
 
 // Per verb: the short letters and long names that take a VALUE, and the long names this guard reads. A
 // long option may be cut to any unique prefix, as git's own parser allows (`git reset --har` is --hard).
@@ -836,6 +839,38 @@ function readLoss(plan, run, opAborted = false)
         rows: lost.map((r) => `${r.xy} ${r.orig ? `${r.orig} -> ` : ''}${r.file}`),
         named: spec.length > 0,
     }];
+}
+
+// A discard the user's own typed word asked for, or one that loses only this session's own lines, runs unasked
+// (discard-consent.js, the user's request of 2026-11-27). No module, no transcript or a git that cannot answer: it asks.
+function discardConsented(payload, groups, losses, gitIn, single)
+{
+    let consent;
+    try { consent = require('./discard-consent.js'); } catch { return false; }
+    let isHarness = () => false;
+    try { isHarness = require('./hook-prelude.js').harnessPrompt; } catch { /* no prelude: every typed row reads as typed */ }
+    const diffOf = (loss, row) =>
+    {
+        if (!loss.cwd) return null;
+        try
+        {
+            const run = gitIn(loss.cwd);
+            const top = run(['rev-parse', '--show-toplevel']).trim();
+            if (loss.kind === 'stash')
+            {
+                const ref = consent.STASH_ROW_RE.exec(row)[1];
+                try { run(['rev-parse', '--verify', '--quiet', `${ref}^3`]); return null; } catch { /* no untracked part: judged */ }
+                // The index the stash saved is a third copy unless it equals the base or the tree (review F10).
+                const same = (a, b) => { try { run(['diff', '--quiet', a, b]); return true; } catch { return false; } };
+                if (!same(`${ref}^1`, `${ref}^2`) && !same(`${ref}^2`, ref)) return null;
+                return { top, diff: run(['stash', 'show', '-p', '--no-color', '--no-ext-diff', ref]) };
+            }
+            const file = consent.TREE_ROW_RE.exec(row)[3];
+            return { top, diff: run(['diff', '--no-color', '--no-ext-diff', 'HEAD', '--', `:(top)${file}`]) };
+        }
+        catch { return null; }
+    };
+    return Boolean(consent.discardCleared({ transcriptPath: payload.transcript_path, groups, losses, diffOf, isHarness, single, seat: Boolean(payload.agent_id) }));
 }
 
 // The one exit of a PreToolUse block (guards ask, D1): the prelude asks or denies; with no prelude, today's exit 2.
@@ -1048,7 +1083,7 @@ function main()
         const plan = gitPlan(verb, argvOf(call), isRev);
         if (!plan) continue;
         // A git that cannot answer (not a repo, git absent) is no loss - never block on our own failure.
-        try { losses.push(...readLoss(plan, run, aborted.size > 0 && aborted.has(topOf(gitCwd)))); }
+        try { losses.push(...readLoss(plan, run, aborted.size > 0 && aborted.has(topOf(gitCwd))).map((l) => ({ ...l, cwd: gitCwd }))); }
         catch { /* nothing read, nothing claimed */ }
     }
     // Past the cap each call is still read as one whole-tree discard where it runs - and now ALSO by its own plan when
@@ -1095,7 +1130,11 @@ function main()
         g.named = g.named && Boolean(l.named);
         groups.set(l.kind, g);
     }
-    if (groups.size)
+    // One discard or stash call alone, read whole: a ref the same command moves first is not the ref judged (review F4).
+    // A loop or xargs runs one call many times (re-review N4).
+    const single = overCap.length === 0 && read.unreadAt < 0 && !LOOPED_RE.test(read.command || rawCommand)
+        && read.calls.filter((c) => c.sub && (LOSS_VERBS.has(c.sub) || c.sub === 'stash')).length === 1;
+    if (groups.size && !discardConsented(payload, [...groups.values()], losses, gitIn, single))
     {
         const kinds = [...groups.values()];
         const entries = (n) => `entr${n === 1 ? 'y' : 'ies'}`;

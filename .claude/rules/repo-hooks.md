@@ -159,7 +159,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   echoed and an `answers` map in `updatedInput` (code.claude.com/docs/en/hooks, 'Tools that require user interaction'), a
   real answer the commit gate's `answered:` reads - taking the next option when the marked one is the fresh-session
   hand-off, and leaving to the user an ask with an unmarked question or a recommended OUTWARD act (`AUTO_OUTWARD_RE`:
-  push, merge, deploy, publish, release, ship, a PR, an issue or ticket filed, a story, task or epic raised, submitted, filed, created, opened or added with Jira, Linear, YouTrack, GitHub, GitLab, a backlog or a tracker named beside it (2026-11-19, bcb7d392; its wait row carries `clause: tracker-filing`), an ask naming its outward acts, a comment on or a page or ticket update aimed at a ticket, issue, PR, card, thread, Confluence, Notion, wiki, Jira, Linear or a ticket key, post, send, upload, a remote branch or tag
+  push, merge, deploy, publish, release, ship, a PR, an issue or ticket filed, a story, task or epic raised, submitted, filed, created, opened or added with Jira, Linear, YouTrack, GitHub, GitLab, a backlog or a tracker named beside it (2026-11-19, bcb7d392; its wait row carries `clause: tracker-filing`), an ask naming its outward acts, a comment on or a page or ticket update aimed at a ticket, issue, PR, card, thread, Confluence, Notion, wiki, Jira, Linear or a ticket key, post, send, upload ('uploads' is the files only after an age word - 'older HEIC uploads' - with no act verb before it in its clause and no 'to' after it, or before 'folder' - `AUTO_UPLOADS_VERB`; every other spelling stays the act), a remote branch or tag
   deleted, a hard reset, a database dropped, rotate (only where the ask names a credential - a key, keypair, token, secret, creds, password, passphrase or certificate, inside an `_` name too), revoke, pay; 'no' / 'never' / 'without' before an act negates it anywhere, and the pick's own 'not' / 'nothing is' scope line too (`AUTO_PICK_SCOPE_RE`) - never the question's, where 'not pushed yet. Do it now?' is a state the pick acts on; a pick whose WHOLE label is a hold (`AUTO_HOLD_ONLY_RE`: 'Hold', 'Hold - push later', 'Skip the publish', 'Leave them for later', 'Stop here') and whose description carries no act on (`AUTO_FORWARD_ACT_RE`: 'then push', 'push once CI is green') is answered whatever its question names, while a second act or a condition after the hold ('Skip the push, publish to npm', 'Hold - push when green') is judged as any pick (sessions f2de8d99 and eb8ad61b, 2026-11-25..27, replayed: 155 of 283 auto-run asks answered before, 196 after) - and a BILLED run, `autoBilled`: billed, a paid run, spend, a dollar amount, the pick's own words always, the question's unless the pick declines and its amount only in a forward frame, 45 of 2,457 local recommended questions held, 2026-11-04 - audit HK01: an auto-answered 'Open the PR' was push
   consent to the commit gate; 2026-10-16, the user's report: 'pay for seats' and the fresh-session cost line 're-sends
   about 401k tokens per message' read as outward and sent an approval ask to the user - over 2,656 recommended questions
@@ -431,7 +431,8 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   A block asks the user at Claude Code's own permission prompt and opens nothing by a chat yes (guards ask instead of block,
   2026-11-25; the paragraph before 'A MISSING HELPER'). The chat-yes openers are gone: no `DISCARD-ALLOW`,
   `CROSS-WRITE-ALLOW`, `GUARD-OFF-ALLOW` or `STAGED-SCAN-ALLOW` file, no typed path and no discard pick in an answered
-  AskUserQuestion opens a block, and no hook reads them; the user's Yes at the prompt opens that one call, asked each time. No hook reads a file an older
+  AskUserQuestion opens a block, and no hook reads them (the rm guard's typed discard word of 2026-11-27 is its own
+  narrow rule, above); the user's Yes at the prompt opens that one call, asked each time. No hook reads a file an older
   release left under `<data root>/state/approvals/`, and none deletes it: delete it by hand if you like. The receipts that stay are PROOF, not consent -
   COMMIT-GATE and PUSH-GATE (the commit guard's own `readReceipt`: under 8h, written after the session began) and the dispatch
   guard's APPROVAL stamp - and where their block fires it asks. The stop contract's rotation read takes no receipt since swap 1: an exposure is consented when
@@ -499,8 +500,18 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     leading `cd` moved the shell to and through `shellVars` (`$H` after `H=$HOME`, `$(echo ~)`, `%USERPROFILE%`); and a
     runtime's recursive delete (`shutil.rmtree`, `fs.rmSync` recursive, `File::Path` rmtree, `rimraf`,
     `[IO.Directory]::Delete` with `true`) of the home, project or cwd blocks - of a build folder it passes. A discard of uncommitted work or a stash
-    asks the user, every time (guards ask, 2026-11-25): no receipt and no answer to a question the model put opens it, and the
-    reason says an Edit or Write revert of the same files is the same discard.
+    asks the user (guards ask, 2026-11-25): no receipt and no answer to a question the model put opens it, and the
+    reason says an Edit or Write revert of the same files is the same discard. Two discards run unasked
+    (`discard-consent.js`, a `HOOK_MODULES` module, the user's request of 2026-11-27), each only when the command holds that one
+    discard or stash call read whole and never for a seat: the user's newest TYPED prompt is a bare imperative ('then drop',
+    'yes, discard it' - an opener, the verb, at most an object word, nothing after) with no row queued, no newer turn and no `git stash` call after it, and in the
+    model's text since the typed prompt before it each lost row (`stash@{N}` exactly, a file by its full path) is named on
+    a line beside a discard verb with no keep and no negation; or every line the discard loses was added, and every line it
+    puts back was taken out, by this session's own Edit, MultiEdit or Write - counted, net, each with a result that is no
+    error, a Write only when it created the file - at most 5 files and 40 lines (a tracked file changed in the tree with
+    nothing staged, `git diff HEAD`; a stash with no untracked part whose index equals its base or its tree, `git stash
+    show -p`; 32MB of transcript tail). A shell-made or seat-made line, a staged version, an added, deleted or renamed
+    file and a missing transcript still ask (review 2026-11-27: 14 findings, each fixed).
   - `guard-read-whole-file.js` (PreToolUse `Read` + the shell route) - blocks whole-file dumps (also through the
     shell, any oversized file, a sweep over `.md` files). THRESHOLD is 400 lines, and the range cap and every shell span
     rule bind only above it (200 before the deep hooks review 2026-10-16, the user's ruling: 485 of 590 sized blocks in

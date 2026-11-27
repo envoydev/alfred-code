@@ -542,7 +542,10 @@ test('auto-mode asks: a holding pick, a negated act and a photo rotation are ans
         ['Commit 3 local commits on develop (no push)?', 'Commit now (Recommended)'],
         ['Commit 6 files on develop?', 'Commit now (Recommended)', 'Stage the 6 paths and commit them; nothing is pushed'],
         ['A token leaked last week. Rotate the photo thumbnails?', 'Skip it (Recommended)'],
-        ['A memory failure while the server rotates, shrinks or saves a photo is never marked. Fix?', 'Fix it in this run (Recommended)']].map(([a, b, c]) => [a, b, c]))
+        ['A memory failure while the server rotates, shrinks or saves a photo is never marked. Fix?', 'Fix it in this run (Recommended)'],
+        // 2026-11-27: 'uploads' as the files, not the act
+        ['Resize the older HEIC uploads too?', 'Resize them (Recommended)'], ['The uploads folder holds 40 files. Clean it?', 'Clean it (Recommended)'],
+        ['Fix the existing photo uploads?', 'Fix them (Recommended)']].map(([a, b, c]) => [a, b, c]))
     {
         const one = q(question, [label, 'Publish now']);
         if (description) one.options[0].description = description;
@@ -563,7 +566,17 @@ test('auto-mode asks: a holding pick, a negated act and a photo rotation are ans
         ['Nothing is deployed yet to staging. Proceed?', 'Proceed (Recommended)'], ['The fix branch is not merged yet. Finish it?', 'Finish it (Recommended)'],
         ['Next?', 'Rotate the creds (Recommended)'], ['Rotate the SSH keypair?', 'Yes (Recommended)'],
         ['The CI log for job 4812 printed the full value of the npm token in step 3 of the release lane. Next?', 'Rotate it (Recommended)'],
-        ['NPM_TOKEN showed in the log. Next?', 'Rotate it (Recommended)']])
+        ['NPM_TOKEN showed in the log. Next?', 'Rotate it (Recommended)'],
+        ['Next?', 'The script uploads the build to S3 (Recommended)'], ['Next?', 'Upload the build (Recommended)'],
+        // review 2026-11-27 F13: an article or 'all' before 'uploads' leaves it the act
+        ['Run the uploads to the CDN now?', 'Run them (Recommended)'], ['Retry the uploads to S3?', 'Retry (Recommended)'],
+        ['Resume all uploads?', 'Resume (Recommended)'], ['The CLI uploads in batches. Go?', 'Go (Recommended)'],
+        ['The new uploads go to the bucket. Send the new uploads to S3?', 'Yes (Recommended)'],
+        ['Next?', 'Retry the photo uploads (Recommended)'], ['Resume the image uploads?', 'Resume (Recommended)'], ['Re-run the recent uploads?', 'Yes (Recommended)'],
+        // third review H3: an act verb far back, a launch, 'uploads' as the verb after a noun
+        ['Next?', 'Retry the 12 failed large HEIC photo uploads (Recommended)'], ['Next?', 'Kick off the image uploads (Recommended)'],
+        ['Next?', 'Launch the image uploads (Recommended)'], ['The image uploads directly to S3. Run it?', 'Run it (Recommended)'],
+        ['Next?', 'Retry the older photo uploads (Recommended)']])
         assert.strictEqual(answered(ask(p, 'hold1', [q(question, [label, 'Not now'])])), null, `waits: ${question} ${label}`);
     const holdThen = q('Push develop?', ['Hold (Recommended)', 'Push now']);
     holdThen.options[0].description = 'then push develop and merge to main';

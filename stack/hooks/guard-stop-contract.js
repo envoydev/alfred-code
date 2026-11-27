@@ -3164,6 +3164,11 @@ const AUTO_SECRET_WORD = String.raw`(?<![A-Za-z])(?:keys?|keypairs?|tokens?|secr
 // anything after the hold ('Skip the push, publish to npm', 'Hold - push when green', 'Wait for green') is judged as any
 // pick, since a condition reads as approval once it holds (review 2026-11-27). Its description still waits on a forward
 // act ('then push develop', 'push once CI is green').
+// 'uploads' is the files, not the act, only after an age word ('older HEIC uploads', 'existing photo uploads'), with no
+// act verb before it in its clause ('Run the resize on the older uploads' still waits) and no 'to' after it - every
+// other spelling stays the act, the safe side (session f2de8d99, 2026-11-26: a photo-resize ask waited on 'older HEIC
+// uploads'; three reviews of 2026-11-27 found the wider readings answered real uploads).
+const AUTO_UPLOADS_VERB = String.raw`(?:(?<!\b(?:older|old|existing|earlier|past|previous)\s+(?:(?:heic|jpe?g|png|webp|photos?|images?|media|files?)\s+)?)uploads|(?<=\b(?:retry|retries|resume|re-?run|run|launch|kick\s+off|start|restart|continue|queue|redo|finish|trigger|send|push|re-?upload|upload)\b[^.;?\n]*)uploads|uploads(?=\s+(?:to|into|onto)\b))(?!\s+(?:folder|dir(?:ectory)?)\b)`;
 const AUTO_DEFER_ACT = String.raw`(?:push(?:es|ed|ing)?|merg(?:e|es|ed|ing)|deploy(?:s|ed|ing|ment)?|publish(?:es|ed|ing)?|releases?|ship(?:s|ping)?|send(?:s|ing)?|post(?:s|ing)?|upload(?:s|ing)?)`;
 const AUTO_HOLD_ONLY_RE = new RegExp(String.raw`^\s*(?:hold|skip|defer|don'?t|do\s+not|not\s+now|leave|postpone|park|later|keep\s+holding|stop\s+here)\b(?:[\s,:-]+(?:(?:the|a|any|both|all|this|that|it|them)\s+)?${AUTO_DEFER_ACT}(?:\s*(?:and|\/|\+)\s*${AUTO_DEFER_ACT})*(?:\s+(?:it|them|both|all|branch(?:es)?|commits?))?)?(?:[\s,:-]+(?:it|them))?(?:[\s,:-]+(?:(?:for\s+)?later|for\s+now|here))?\s*(?:\(Recommended\))?\s*$`, 'i');
 const AUTO_FORWARD_ACT_RE = new RegExp(String.raw`\b(?:then|and\s+then|after\s+that|afterwards?)\b[^.;\n]{0,40}\b${AUTO_DEFER_ACT}\b|\b${AUTO_DEFER_ACT}\b[^.;\n]{0,40}\b(?:when|once|after|as\s+soon\s+as|if)\b`, 'i');
@@ -3193,7 +3198,7 @@ const AUTO_OUTWARD_RE = new RegExp([
   // per message'), so auto-mode can step past a fresh-session ask. Measured over the 2,656 real recommended questions to
   // 2026-10-16: this and the money-word narrowing below drop 91 of 955 hits, every one a cost line, the pay idiom or a URL
   // path, and add none.
-  String.raw`(?<!\btokens\s(?:re-)?)\b(?:post(?:s|ed|ing)?|send(?:s|ing)?|sent|e-?mail(?:s|ed|ing)?|upload(?:s|ed|ing)?|announc(?:e|es|ed|ing)|notif(?:y|ies|ied))\b(?!-)(?!\s+(?:about\s+|roughly\s+|~)?\d[\d.,]*\s?k?\s+tokens\b)`,
+  String.raw`(?<!\btokens\s(?:re-)?)\b(?:post(?:s|ed|ing)?|send(?:s|ing)?|sent|e-?mail(?:s|ed|ing)?|upload(?:ed|ing)?|${AUTO_UPLOADS_VERB}|announc(?:e|es|ed|ing)|notif(?:y|ies|ied))\b(?!-)(?!\s+(?:about\s+|roughly\s+|~)?\d[\d.,]*\s?k?\s+tokens\b)`,
   String.raw`\b(?:delet(?:e|es|ed|ing)|remov(?:e|es|ed|ing)|prun(?:e|es|ed|ing))\b[^.;?\n]{0,40}\b(?:remote|origin|upstream|branch(?:es)?|tags?|releases?|repo(?:sitor(?:y|ies))?|environments?)\b`,
   String.raw`\breset\b[^.;?\n]{0,40}(?:--hard|\bhard\b|\borigin\b|\bupstream\b|\bbranch\b)`,
   String.raw`\b(?:drop(?:s|ped|ping)?|truncat(?:e|es|ed|ing)|wip(?:e|es|ed|ing))\b[^.;?\n]{0,40}\b(?:database|db|tables?|schemas?|collections?|data)\b`,
