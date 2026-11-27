@@ -466,16 +466,77 @@ test('auto-mode asks: an ask inside a typed plugin walk goes to the user; anothe
         assert.strictEqual(r.status, 0, r.stderr);
         assert.strictEqual(answered(r), null, `/alfred-code:${walk}: the ask waits for the user`);
     }
-    assert.ok(rows(p, 'w1').some((x) => x.kind === 'auto-walk-asks' && /alfred-code:update/.test(x.reason)), 'the wait is ledgered');
+    assert.ok(rows(p, 'w1').some((x) => x.kind === 'auto-walk-asks' && /update walk/.test(x.reason)), 'the wait is ledgered');
     assert.ok(!rows(p, 'w1').some((x) => x.kind === 'auto-answer'), 'nothing was answered');
     const midWalk = transcript([walkCommand('update'), walkRow([{ type: 'text', text: 'keep going' }]), walkRow('<bash-input>ls</bash-input>')]);
     assert.strictEqual(answered(ask(p, 'w1', one, { transcript_path: midWalk })), null, 'a reply typed mid-walk keeps the walk');
     const after = transcript([walkCommand('update'), walkRow('<command-message>task-solve</command-message>\n<command-name>/task-solve</command-name>')]);
     assert.deepStrictEqual(answered(ask(p, 'w1', one, { transcript_path: after })), { 'Apply the update?': 'Apply it (Recommended)' }, 'another command ends the walk');
-    const other = transcript([walkRow('<command-message>other:update</command-message>\n<command-name>/other:update</command-name>')]);
-    assert.ok(answered(ask(p, 'w1', one, { transcript_path: other })), 'another plugin\'s update is no walk of ours');
     const status = transcript([walkRow('<command-message>alfred-code:status</command-message>\n<command-name>/alfred-code:status</command-name>')]);
     assert.ok(answered(ask(p, 'w1', one, { transcript_path: status })), 'the read-only status command is no walk');
+});
+
+// B3 (R4, session b9e1a400): the walk commands of every plugin are the user's, not only alfred-code's. A namespaced skill typed as a
+// command, and a mode switch, are no walk.
+const pluginCommand = (plugin, name, args = '') => walkRow(`<command-message>${plugin}:${name}</command-message>\n<command-name>/${plugin}:${name}</command-name>${args ? `\n<command-args>${args}</command-args>` : ''}`);
+test('auto-mode asks: the walk of another plugin (alfred-tools update, install) is the user\'s, a namespaced skill and a mode switch are not', () =>
+{
+    const p = project();
+    autoStamp(p, 'w2');
+    const one = [q('Apply the update?', ['Apply it (Recommended)', 'Not now'])];
+    for (const [plugin, name] of [['alfred-tools', 'update'], ['alfred-tools', 'install'], ['alfred-mods', 'setup'], ['acme-kit', 'init'], ['acme-kit', 'configure'], ['acme-kit', 'validate']])
+    {
+        const r = ask(p, 'w2', one, { transcript_path: transcript([pluginCommand(plugin, name)]) });
+        assert.strictEqual(r.status, 0, r.stderr);
+        assert.strictEqual(answered(r), null, `/${plugin}:${name}: the ask waits for the user`);
+    }
+    assert.ok(rows(p, 'w2').some((x) => x.kind === 'auto-walk-asks'), 'the wait is ledgered');
+    const typed = transcript([walkRow('/alfred-tools:update')]);
+    assert.strictEqual(answered(ask(p, 'w2', one, { transcript_path: typed })), null, 'the typed spelling waits too');
+    assert.ok(answered(ask(p, 'w2', one, { transcript_path: transcript([pluginCommand('superpowers', 'brainstorming')]) })), 'a namespaced skill typed as a command is no walk');
+    assert.ok(answered(ask(p, 'w2', one, { transcript_path: transcript([pluginCommand('alfred-code', 'mode:auto-run', 'on')]) })), 'a mode switch is no walk');
+    assert.ok(answered(ask(p, 'w2', one, { transcript_path: transcript([pluginCommand('acme-kit', 'updates')]) })), 'a longer name is another command');
+    const ended = transcript([pluginCommand('alfred-tools', 'update'), walkRow('<command-message>task-solve</command-message>\n<command-name>/task-solve</command-name>')]);
+    assert.ok(answered(ask(p, 'w2', one, { transcript_path: ended })), 'another typed command ends the walk');
+});
+
+test('pluginWalkOf: another plugin\'s walk is read, and a compaction summary naming it keeps it open', () =>
+{
+    const { pluginWalkOf } = require('../stack/hooks/hook-prelude.js');
+    const summary = (t) => ({ type: 'user', isCompactSummary: true, message: { role: 'user', content: t } });
+    assert.strictEqual(pluginWalkOf([pluginCommand('alfred-tools', 'update')]), 'update', 'a typed alfred-tools command');
+    assert.strictEqual(pluginWalkOf([walkRow('/acme-kit:setup acme-app')]), 'setup', 'the typed spelling');
+    assert.strictEqual(pluginWalkOf([pluginCommand('superpowers', 'brainstorming')]), '', 'a namespaced skill');
+    assert.strictEqual(pluginWalkOf([pluginCommand('alfred-code', 'mode:auto-run', 'on')]), null, 'a mode switch decides nothing');
+    assert.strictEqual(pluginWalkOf([pluginCommand('alfred-tools', 'update'), summary('The user ran /alfred-tools:update; two fixes are left.')]), 'update', 'a summary naming the walk');
+    assert.strictEqual(pluginWalkOf([pluginCommand('alfred-tools', 'update'), summary('The user fixed a bug in /Users/x/acme-app/src:install.')]), '', 'a path is no command');
+});
+
+// B3 (R4 b9e1a400 rows 211-222): Claude Code's auto-mode classifier refused a call - a tool_result with is_error true and 'denied by the
+// Claude Code auto mode classifier' in its text, the row carrying toolDenialKind 'automode-blocked' - and the ask that followed was
+// auto-answered 'Apply (Recommended)'. An ask after such a denial in the same turn waits; an ask answered since it does not.
+const classifierDenial = (id = 'tool-denied') => ({ type: 'user', entrypoint: 'cli', timestamp: new Date().toISOString(), toolDenialKind: 'automode-blocked',
+    message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, is_error: true, content: 'Permission for this action was denied by the Claude Code auto mode classifier. Reason: [Destructive or Unwanted Actions]. You should only try to work around this restriction in reasonable ways.' }] } });
+const bashCall = (id) => ({ type: 'assistant', entrypoint: 'cli', message: { role: 'assistant', content: [{ type: 'tool_use', id, name: 'Bash', input: { command: 'node apply.mjs plan.json' } }] } });
+const askAnswered = (id) => ({ type: 'user', entrypoint: 'cli', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: 'Your questions have been answered: "Next?"="Go (Recommended)". You can now continue with these answers in mind.' }] } });
+test('auto-mode asks: an ask after a classifier denial in the same turn waits for the user', () =>
+{
+    const p = project();
+    autoStamp(p, 'c1');
+    const one = [q('Apply this plan?', ['Apply (Recommended)', 'Change something', 'Cancel'])];
+    const denied = transcript([bashCall('tool-denied'), classifierDenial()]);
+    const r = ask(p, 'c1', one, { transcript_path: denied });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.strictEqual(answered(r), null, 'the ask after the denial waits');
+    assert.ok(rows(p, 'c1').some((x) => x.kind === 'auto-ask-waits' && /classifier/.test(x.reason)), 'the wait names the denial');
+    const plainError = transcript([bashCall('e1'), { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'e1', is_error: true, content: 'Exit code 1' }] } }]);
+    assert.ok(answered(ask(p, 'c1', one, { transcript_path: plainError })), 'an ordinary failed call does not hold the ask');
+    const quoted = transcript([bashCall('q1'), { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'q1', content: 'denied by the Claude Code auto mode classifier' }] } }]);
+    assert.ok(answered(ask(p, 'c1', one, { transcript_path: quoted })), 'text that is no error result holds nothing');
+    const settled = transcript([bashCall('tool-denied'), classifierDenial(), askAnswered('a-prev')]);
+    assert.ok(answered(ask(p, 'c1', one, { transcript_path: settled })), 'an ask answered after the denial settles it');
+    const newTurn = transcript([bashCall('tool-denied'), classifierDenial(), walkRow([{ type: 'text', text: 'carry on' }])]);
+    assert.ok(answered(ask(p, 'c1', one, { transcript_path: newTurn })), 'a new typed turn ends the denial\'s turn');
 });
 
 test('auto-mode asks: every question marking one Recommended option is answered with it; anything else waits for the user', () =>

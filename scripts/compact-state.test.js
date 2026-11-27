@@ -1915,3 +1915,24 @@ test('PF1: the hold passes every plan call on its three routes, and still holds 
         assert.strictEqual(s.via(SHELL, 'Bash', { command: `${ENGINE} resume --plan csv > out.txt` }).status, 'ask', `${route}: a call that also writes a file`);
     }
 });
+
+// B3: the one flow-end rule reads another plugin's walk command as it reads alfred-code's. A walk is no slash command that merely ends
+// the flow before it: the walk row leaves `track.slash` false (it is a boolean, `walkOfPrompt(prompt) === ''`), and the next typed
+// slash command ends the walk. `flowEndStep` itself does not change.
+test('flowEndStep: /alfred-tools:update opens a walk as /alfred-code:update does, and the next typed slash command ends it', () =>
+{
+    const { flowEndStep } = require('../stack/hooks/hook-prelude.js');
+    const typed = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+    for (const walk of ['/alfred-code:update', '/alfred-tools:update', '/alfred-tools:install', '/acme-kit:setup acme-app'])
+    {
+        const track = {};
+        assert.strictEqual(flowEndStep(track, typed(walk)), 'end', `${walk}: a typed command ends the flow before it`);
+        assert.strictEqual(track.slash, false, `${walk}: a walk is no slash command that ends one`);
+        assert.strictEqual(flowEndStep(track, typed('/task-solve x')), 'end', `${walk}: the next typed slash command ends the walk`);
+        assert.strictEqual(track.slash, true, 'an ordinary slash command ends one');
+    }
+    const track = {};
+    flowEndStep(track, typed('/alfred-tools:update'));
+    assert.strictEqual(flowEndStep(track, typed('/alfred-code:mode:auto-run on')), '', 'a mode switch leaves the walk');
+    assert.strictEqual(flowEndStep(track, typed('/superpowers:brainstorming')), 'end', 'a namespaced skill ends it');
+});

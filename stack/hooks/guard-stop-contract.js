@@ -44,7 +44,7 @@ let autoLive = () => false;   // hook-prelude.js autoStampLive - a live AUTO wai
 let stampOf = () => null;     // hook-prelude.js approvalStamp - the stamp's state, an auto-run's named session included
 // hook-prelude.js runMarkerFile - this session's auto-run marker, open while a run goes; null without the prelude (no hold)
 let runMarkerOf = () => null;
-// hook-prelude.js pluginWalkNow - the plugin walk (init, update, configure, validate) this call runs inside, else ''
+// hook-prelude.js pluginWalkNow - the plugin walk (init, update, configure, validate, install, setup) this call runs inside, else ''
 let pluginWalk = () => '';
 // hook-prelude.js modeFlags - a typed line's mode flags and request; without the prelude no line arms the solve-flow mark
 let modeFlagsOf = () => ({ request: '' });
@@ -3142,6 +3142,39 @@ const REMOTE_READ_RE = /\bgh\s+(?:repo\s+view|api\s+user)\b|\bgit\s+(?:fetch|pul
 // A money word counts outside a path segment ('/purchases/' in a URL) and not as the cost idiom 'too small to pay for
 // seats' - a task-solve approval in auto-mode waited for the user on it (2026-10-16, the user's bug report).
 const AUTO_FRESH_RE = /\bfresh session\b|\bresume (?:it |this |the run )?(?:in|from) a (?:new|fresh)\b/i;
+// AN ASK AFTER A CLASSIFIER DENIAL WAITS (B3, R4 session b9e1a400 rows 211-222): Claude Code's auto-mode classifier refused a Bash call
+// - a user row whose tool_result has is_error true and 'denied by the Claude Code auto mode classifier' in its text, the row carrying
+// toolDenialKind 'automode-blocked' - and the next ask, 'Apply this plan?', was auto-answered 'Apply (Recommended)': the user's check
+// was taken as the run's go-ahead. The scan runs back from the newest row and stops at the turn's typed prompt, or at an ask answered
+// since the denial (it settled the matter), so one early denial never holds the rest of a long run.
+const CLASSIFIER_DENIAL_RE = /denied by the Claude Code auto mode classifier/i;
+const CLASSIFIER_DENIAL_KIND = 'automode-blocked';
+const CLASSIFIER_TAIL_BYTES = 1024 * 1024;
+function classifierDeniedThisTurn(transcriptPath) {
+  try {
+    if (!transcriptPath) return false;
+    const size = fs.statSync(transcriptPath).size;
+    const start = Math.max(0, size - CLASSIFIER_TAIL_BYTES);
+    const fd = fs.openSync(transcriptPath, 'r');
+    let text = '';
+    try { const buf = Buffer.alloc(size - start); fs.readSync(fd, buf, 0, buf.length, start); text = buf.toString('utf8'); } finally { fs.closeSync(fd); }
+    const lines = text.split('\n');
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (!lines[i].trim()) continue;
+      let row;
+      try { row = JSON.parse(lines[i]); } catch { continue; }
+      if (!row || row.type !== 'user' || row.isSidechain || !row.message) continue;
+      if (isTypedTurn(row)) return false;
+      for (const block of Array.isArray(row.message.content) ? row.message.content : []) {
+        if (!block || block.type !== 'tool_result') continue;
+        const body = resultText(block);
+        if (block.is_error === true && (row.toolDenialKind === CLASSIFIER_DENIAL_KIND || CLASSIFIER_DENIAL_RE.test(body))) return true;
+        if (block.is_error !== true && ANSWER_RESULT_RE.test(body)) return false;
+      }
+    }
+    return false;
+  } catch { return false; }
+}
 // THE MARKED WAIT (session audit 2026-11-27, B8): an ask that must wait for the user opens its question 'waits for you: <why>'
 // and still marks one safe option '(Recommended)', so the user sees a default. Auto-run never answers it. It replaces the old
 // unmarked escape ('no option is recommended: <why>'), which showed the user no pick. Only an opener with a reason counts: the
@@ -3374,12 +3407,12 @@ const askStamp = payload.tool_name === 'AskUserQuestion' && !payload.agent_id ? 
 // A live auto-mode run of this session takes no fresh-session offer at all - the run's own contract says so (nobody is
 // there to paste the resume block), and demanding the option made an approval the run could have answered wait for the
 // user (2026-10-16, the user's bug report: task-solve's second cycle in one session). The shape checks below read it.
-// The plugin's own walks are never auto-run's (the user's ruling, 2026-11-20): inside a typed /alfred-code:init, update,
-// configure or validate the ask goes to the user, the stamp live or not.
+// A plugin's walks are never auto-run's (the user's ruling, 2026-11-20, widened to every plugin by B3): inside a typed
+// /<plugin>:init, update, configure, validate, install or setup the ask goes to the user, the stamp live or not.
 const autoStampHere = !!(askStamp && askStamp.live && askStamp.session && /^AUTO\b/.test(askStamp.first));
 const walkHere = autoStampHere ? pluginWalk(payload) : '';
 const autoRun = autoStampHere && !walkHere;
-if (walkHere) ledgerRow({ tool: 'AskUserQuestion', mode: 'auto', kind: 'auto-walk-asks', reason: `auto-run answers no ask of /alfred-code:${walkHere} - it goes to the user` });
+if (walkHere) ledgerRow({ tool: 'AskUserQuestion', mode: 'auto', kind: 'auto-walk-asks', reason: `auto-run answers no ask inside a plugin's ${walkHere} walk - it goes to the user` });
 // A2b runs first: the deny comes before any auto-answer. A throw while judging fails open; the denial's own exit stays outside the try.
 if (payload.tool_name === 'AskUserQuestion') {
   let userStepHit = null;
@@ -3399,7 +3432,9 @@ if (payload.tool_name === 'AskUserQuestion') {
 if (autoRun) {
   const input = payload.tool_input || {};
   const waited = {};
-  const answers = autoAnswers(input.questions, waited);
+  const denied = classifierDeniedThisTurn(payload.transcript_path);
+  if (denied) waited.text = 'an ask after the auto-mode classifier denied a call - the denial is the user\'s to settle';
+  const answers = denied ? null : autoAnswers(input.questions, waited);
   if (answers) {
     const picked = Object.entries(answers).map(([q, a]) => `'${q}' -> '${a}'`).join('; ');
     // The flow stop-field check runs BEFORE this return (audit 2026-10-20 C04): a waived stop still prints its fields.
