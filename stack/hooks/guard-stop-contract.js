@@ -563,7 +563,7 @@ const NEVER_ENDS_RE = /\b(?:(?<!\/)dev|dev(?!\/)|serve|server|start|watch|previe
 // `docker run -p` each held the exemption open), but the list of work that finishes is longer still: a script no list names
 // (`python3 tools/lanes.py run x > log`) held a wait blocked for 20 minutes (session audit 2026-11-27 B11, S02). So a
 // background shell counts as live work unless it serves or watches (`serverShell`), and it stops counting once it is older
-// than its own `timeout`, or than BACKGROUND_STALE_MS with none (`backgroundStale`): a server nobody listed, or a hung
+// than BACKGROUND_STALE_MS (`backgroundStale`; the call's `timeout` is no bound for it): a server nobody listed, or a hung
 // command, then holds only until that limit. FINITE_RE, the old gate, is gone.
 const BACKGROUND_STALE_MS = 60 * 60 * 1000;
 const NEVER_ENDS_EXTRA_RE = /\s-w\b|--watch\w*|\bdocker\s+run\b[^;&|\n]*\s(?:-p|--publish)\b|\bvite\b(?!\s+build)|(?<!build-)\bstorybook\b(?!\s+build)|\bjupyter\s+(?:notebook|lab)\b|\bkubectl\s+proxy\b|\bssh\b[^;&|\n]*\s-N\b|\bng\s+test\b(?![^;&|]*--watch=false)|\blogs?\s+-f\b|port-forward|\bngrok\b|runserver/;
@@ -585,12 +585,13 @@ const SHELL_VAR_RE = /\$\{?[A-Za-z_]\w*\}?/g;
 const serverText = (c) => String(c || '').replace(SHELL_ARITH_RE, ' ').replace(SHELL_ASSIGN_RE, ' ').replace(SHELL_VAR_RE, ' ');
 // A server or a watcher: it never ends, so no notice of its end will wake the session. A CI watch ends with its run.
 const serverShell = (c) => !finiteWatch(c) && (NEVER_ENDS_RE.test(serverText(c)) || NEVER_ENDS_EXTRA_RE.test(c));
-// A background shell launched at `launchedAtMs` is stale past its own `timeout` (ms), else BACKGROUND_STALE_MS; a launch
-// with no readable time is never stale.
+// A background shell launched at `launchedAtMs` is stale past BACKGROUND_STALE_MS; a launch with no readable time is never
+// stale. The call's `timeout` bounds a foreground call and no background shell (a 600000 ms ceiling at 15 min is no end), so a
+// background launch ignores it; a launch that is no background one keeps its own timeout.
 function backgroundStale(input, launchedAtMs, nowMs) {
   if (!Number.isFinite(launchedAtMs)) return false;
-  const timeoutMs = input && Number.isFinite(input.timeout) && input.timeout > 0 ? input.timeout : BACKGROUND_STALE_MS;
-  return nowMs - launchedAtMs > timeoutMs;
+  const own = input && input.run_in_background !== true && Number.isFinite(input.timeout) && input.timeout > 0;
+  return nowMs - launchedAtMs > (own ? input.timeout : BACKGROUND_STALE_MS);
 }
 // The user's own status or time question ('How much time is left?', 'Any ETA?') - read by the done-close's status-question release.
 const STATUS_QUESTION_RE = /\b(?:how (?:long|much (?:longer|time))|time (?:is )?left|eta|status|still (?:running|going|working)|done yet|how far)\b[^?\n]*\?\s*$/i;
@@ -2919,7 +2920,7 @@ if (payload.hook_event_name === 'Stop') {
       + 'not a question to the user: go on with the run\'s next step now, taking each stop\'s (Recommended) option, or close the run. If the run is finished,\n'
       + `print its close with its \`Done:\` and \`Left for you:\` lines (or \`Result:\` and \`Leftovers:\`) - the hook then removes ${autoMarker}, which ends this run; never delete it yourself and never ask the user to; ${(() => { try { return require('./hook-prelude.js').autoLasts(process.env.CLAUDE_PROJECT_DIR || payload.cwd); } catch { return 'auto-run stays on for the session until'; } })()}\n`
       + '/alfred-code:mode:auto-run off. If it waits on work this session started, end the turn with one line saying so; if the next\n'
-      + 'step needs the user - an ask with no Recommended option, or an outward act (push, publish, post, send) they have not approved, whether its ask is open or was answered in words - put that ask once now (for a series, one ask covering the rest of it) and end the turn on it; never restate it in prose.');
+      + 'step needs the user - an ask that must wait (open it \'waits for you: <why>\' and mark the safe option), or an outward act (push, publish, post, send) they have not approved, whether its ask is open or was answered in words - put that ask once now (for a series, one ask covering the rest of it) and end the turn on it; never restate it in prose.');
     process.exit(2); // guard-ask: Stop hold
   }
   // Every branch below asks a PERSON something - a decision, a pending step, a fresh session - and
@@ -3220,9 +3221,9 @@ const REMOTE_READ_RE = /\bgh\s+(?:repo\s+view|api\s+user)\b|\bgit\s+(?:fetch|pul
 // seats' - a task-solve approval in auto-mode waited for the user on it (2026-10-16, the user's bug report).
 const AUTO_FRESH_RE = /\bfresh session\b|\bresume (?:it |this |the run )?(?:in|from) a (?:new|fresh)\b/i;
 // A typed stop since the AUTO stamp (A2d): a typed prompt newer than the stamp file that stopsRun matches. The stamp's own
-// start is the run's start, so a stop typed before it belongs to an earlier run, and a typed /task-solve writes a newer
-// stamp that starts the answers again. A row with no timestamp cannot be shown older, so it reads as current. Pure: rows are
-// parsed objects.
+// start is the run's start, so a stop typed before it belongs to an earlier run, and a typed /task-solve writes a newer run
+// marker (never a newer stamp, see `stampCutoffMs`) that starts the answers again. A row with no timestamp cannot be shown
+// older, so it reads as current. Pure: rows are parsed objects.
 function stoppedSinceStamp(transcriptRows, stampMtimeMs) {
   return (transcriptRows || []).some((o) => {
     if (!o || o.type !== 'user' || !o.message || o.isCompactSummary || o.isSidechain || !isTypedTurn(o)) return false;
@@ -3249,27 +3250,35 @@ function typedStopSinceStamp(stampMtimeMs) {
     return decided === null ? stoppedSinceStamp(seen, stampMtimeMs) : decided;
   } catch { return false; }
 }
-// The time a typed stop is judged against: the stamp FILE's mtime. The standing switch's stamp is made in memory with no file
-// and a time of now (hook-prelude.js approvalStamp), which no typed prompt is newer than, so it reads 0 where no file is
-// there: a stop typed in this session holds the answers, and a real stamp the mode command writes later is newer and resumes.
-function stampCutoffMs(stamp) {
-  try { return fs.statSync(stamp.file).mtimeMs; } catch { return 0; }
+// The time a typed stop is judged against: the later of the stamp FILE's mtime and this session's run marker's (a typed run start
+// writes its marker, never a newer stamp, so a stop typed before it ends there: 'stop', then '/task-solve next', answers again).
+// The standing switch's stamp is made in memory with no file and a time of now (hook-prelude.js approvalStamp), which no typed
+// prompt is newer than, so it reads 0 where no file is there: a stop typed in this session holds the answers, and a real stamp the
+// mode command writes later, or a run marker, is newer and resumes.
+function mtimeOf(file) {
+  try { return file ? fs.statSync(file).mtimeMs : 0; } catch { return 0; }
+}
+function stampCutoffMs(stamp, input) {
+  let markerFile = null;
+  try { markerFile = input ? runMarkerOf(input) : null; } catch { markerFile = null; }
+  return Math.max(mtimeOf(stamp.file), mtimeOf(markerFile));
 }
 // True when the user typed a stop since this session's AUTO stamp: the auto-fields Stop hold reads it, so a stopped run is not held.
 function runStoppedNow(input) {
   const stamp = input.agent_id ? null : stampOf(input);
-  return !!stamp && typedStopSinceStamp(stampCutoffMs(stamp));
+  return !!stamp && typedStopSinceStamp(stampCutoffMs(stamp, input));
 }
 // AN ASK AFTER A CLASSIFIER DENIAL WAITS (B3, R4 session b9e1a400 rows 211-222): Claude Code's auto-mode classifier refused a Bash call
 // - a user row whose tool_result has is_error true and 'denied by the Claude Code auto mode classifier' in its text, the row carrying
 // toolDenialKind 'automode-blocked' - and the next ask, 'Apply this plan?', was auto-answered 'Apply (Recommended)': the user's check
 // was taken as the run's go-ahead. The text counts only when the result OPENS with the classifier's message: a failing test or grep that
-// quotes the phrase mid-output is no denial. The scan runs back from the newest row and stops at the turn's typed prompt, or at an ask answered
-// since the denial (it settled the matter), so one early denial never holds the rest of a long run.
+// quotes the phrase mid-output is no denial. The scan runs back from the newest row and stops at the turn's typed prompt, or at the first ask sent
+// since the denial, answered or not (the user saw it, so it settled the matter), so one early denial holds the next ask only.
+// The call being judged may already be in the transcript: its own id is no earlier ask.
 const CLASSIFIER_DENIAL_RE = /^\s*(?:Error:\s*)?Permission for this action was denied by the Claude Code auto mode classifier/i;
 const CLASSIFIER_DENIAL_KIND = 'automode-blocked';
 const CLASSIFIER_TAIL_BYTES = 1024 * 1024;
-function classifierDeniedThisTurn(transcriptPath) {
+function classifierDeniedThisTurn(transcriptPath, ownCallId = '') {
   try {
     if (!transcriptPath) return false;
     const size = fs.statSync(transcriptPath).size;
@@ -3282,6 +3291,8 @@ function classifierDeniedThisTurn(transcriptPath) {
       if (!lines[i].trim()) continue;
       let row;
       try { row = JSON.parse(lines[i]); } catch { continue; }
+      if (row && row.type === 'assistant' && !row.isSidechain && row.message
+        && (Array.isArray(row.message.content) ? row.message.content : []).some((block) => block && block.type === 'tool_use' && block.name === 'AskUserQuestion' && block.id !== ownCallId)) return false;
       if (!row || row.type !== 'user' || row.isSidechain || !row.message) continue;
       if (isTypedTurn(row)) return false;
       for (const block of Array.isArray(row.message.content) ? row.message.content : []) {
@@ -3370,7 +3381,8 @@ const AUTO_FORWARD_ACT_RE = new RegExp(String.raw`\b(?:then|and\s+then|after\s+t
 // A pick's own scope statement ('nothing is pushed', 'it is not merged') says what it leaves undone; in the question the
 // same words describe a state the pick may act on ('not pushed yet. Do it now?'), so only 'no' / 'never' / 'without'
 // negate an act there (review 2026-11-27).
-const AUTO_PICK_SCOPE_RE = /\b(?:not|nothing(?:\s+(?:is|gets|was))?)\s+(?:yet\s+|been\s+)?(?:push|merg|deploy|publish|releas|ship)\w*/gi;
+// Its tail is the verb first: 'pushes nothing', 'publishes nothing', 'sends nothing'.
+const AUTO_PICK_SCOPE_RE = /\b(?:not|nothing(?:\s+(?:is|gets|was))?)\s+(?:yet\s+|been\s+)?(?:push|merg|deploy|publish|releas|ship)\w*|\b(?:push|merg|deploy|publish|releas|ship|send)\w*\s+nothing\b/gi;
 const AUTO_SERIES_ACTS = String.raw`(?<!\b(?:no|not|without)\s+)\boutward acts?\b`;
 const AUTO_SERIES_RE = new RegExp(AUTO_SERIES_ACTS, 'i');
 const AUTO_OUTWARD_RE = new RegExp([
@@ -3458,6 +3470,26 @@ function actsOnQuestion(label)
 // are empty'). A clause opening with 'then' is the next act and is kept.
 const HOLD_ALONE_RE = /^(?:(?:it|them|both|all)\s*)?(?:(?:for\s+)?now|here)?$/i;
 const cutAtDeferral = (text) => { const at = text.search(AUTO_DEFERRAL_RE); return at < 0 ? text : text.slice(0, at); };
+// A pick's DESCRIPTION may say the outward act is held (session audit 2026-11-27 B14, replayed over session eb8ad61b: 7 asks whose
+// pick said 'the publish stays your word' waited for an away user). A held clause is cut before the description is read: an act
+// that waits, stays held, stays the user's word or asks them later ('the push gate asks you later'); 'for you to <act>'; a
+// 'publish ask', which is the ask and not the publish; an act that 'then needs' something else first; and a 'tell me when ...'
+// sentence, which hands the go-ahead to the user. What is left is cut at each deferral, clause by clause ('CI stays red until the
+// next push'). An act outside such a clause stays the pick's ('publish now, the push waits for your word' publishes).
+const AUTO_ACT_WORD = String.raw`\b${AUTO_DEFER_ACT}\b`;
+const AUTO_ACT_SERIES = String.raw`${AUTO_ACT_WORD}(?:\s*(?:,|and|or)\s*(?:the\s+)?${AUTO_ACT_WORD})*`;
+const AUTO_HELD_TAIL = String.raw`(?:\s+(?:gate|step|half|part))?\s+(?:still\s+)?(?:waits?\b|stays?\s+(?:held|your\s+word|with\s+you|yours?)\b|asks?\s+you\b(?:\s+later\b)?)`;
+const AUTO_HELD_CLAUSE_RE = new RegExp([
+  String.raw`${AUTO_ACT_SERIES}${AUTO_HELD_TAIL}`,
+  String.raw`\bfor\s+you\s+to\s+${AUTO_ACT_WORD}`,
+  String.raw`${AUTO_ACT_WORD}\s+ask\b`,
+  String.raw`${AUTO_ACT_WORD}[^.;,()\n]{0,40}\bthen\s+needs\b`,
+  String.raw`\b(?:(?:tell|ping)\s+me|let\s+me\s+know)\s+(?:when|once|after|as\s+soon\s+as)\b[^.;\n]*`,
+].join('|'), 'gi');
+const AUTO_DESCRIPTION_CLAUSE_RE = /(\s+-\s+|[,;:.!?\n])/;
+const withoutHeldClauses = (description) => String(description || '').replace(AUTO_HELD_CLAUSE_RE, ' ');
+const cutDescriptionDeferrals = (description) => withoutHeldClauses(description).split(AUTO_DESCRIPTION_CLAUSE_RE)
+    .map((part, at) => (at % 2 ? part : cutAtDeferral(part))).join('');
 function holdLabel(label)
 {
     const plain = String(label || '').replace(MARK_TAIL_RE, '');
@@ -3509,8 +3541,8 @@ function autoAnswers(questions, why = {}) {
     const pick = AUTO_FRESH_RE.test(marked[0].label)
       ? q.options.find((o) => o && typeof o.label === 'string' && o !== marked[0] && !AUTO_FRESH_RE.test(o.label)) : marked[0];
     if (!pick) { why.text = 'no option left after the fresh-session hand-off'; return null; }
-    const holds = holdLabel(pick.label) && !AUTO_FORWARD_ACT_RE.test(pick.description || '');
-    const own = `${pick.label} ${pick.description || ''}`.replace(AUTO_PICK_SCOPE_RE, ' ');
+    const holds = holdLabel(pick.label) && !AUTO_FORWARD_ACT_RE.test(withoutHeldClauses(pick.description));
+    const own = `${pick.label} ${cutDescriptionDeferrals(pick.description)}`.replace(AUTO_PICK_SCOPE_RE, ' ');
     if (!holds && outwardAsk(q.question, own, pick.label)) { why.text = 'an outward pick'; return null; }
     if (autoBilled(q.question, pick)) { why.text = 'a billed run'; return null; }
     // an ask the English list cannot read waits for the user: a miss could push or post for them, a wait costs one click
@@ -3531,7 +3563,7 @@ const askStamp = payload.tool_name === 'AskUserQuestion' && !payload.agent_id ? 
 const autoStampHere = !!(askStamp && askStamp.live && askStamp.session && /^AUTO\b/.test(askStamp.first));
 const walkHere = autoStampHere ? pluginWalk(payload) : '';
 // A typed stop since the stamp ends the answers too (A2d): the user is back, and the next ask goes to them.
-const runStopped = autoStampHere && !walkHere && typedStopSinceStamp(stampCutoffMs(askStamp));
+const runStopped = autoStampHere && !walkHere && typedStopSinceStamp(stampCutoffMs(askStamp, payload));
 const autoRun = autoStampHere && !walkHere && !runStopped;
 if (runStopped) ledgerRow({ tool: 'AskUserQuestion', mode: 'auto', kind: 'auto-ask-stopped', reason: 'auto-run answers no ask after the user typed a stop - it goes to the user until the next run starts' });
 if (walkHere) ledgerRow({ tool: 'AskUserQuestion', mode: 'auto', kind: 'auto-walk-asks', reason: `auto-run answers no ask inside a plugin's ${walkHere} walk - it goes to the user` });
@@ -3554,7 +3586,7 @@ if (payload.tool_name === 'AskUserQuestion') {
 if (autoRun) {
   const input = payload.tool_input || {};
   const waited = {};
-  const denied = classifierDeniedThisTurn(payload.transcript_path);
+  const denied = classifierDeniedThisTurn(payload.transcript_path, payload.tool_use_id);
   if (denied) waited.text = 'an ask after the auto-mode classifier denied a call - the denial is the user\'s to settle';
   const answers = denied ? null : autoAnswers(input.questions, waited);
   if (answers) {

@@ -1190,12 +1190,13 @@ function scratchOnly(command, root, cwd) {
   if (!words.length || words.some((x) => x.includes('$'))) return false;   // a shell `$` word: its value is unknown here
   return words.map(real).every((p) => !under(p, project) && temps.some((d) => under(p, d)));
 }
-// B16 (session audit 2026-11-27, S13 and S15): the plugin's own state - everything under the data root, `.alfred/` - is no
-// project change. A write whose targets all sit there draws no docs hold, and no path rule attaches to it (rules-summary.js).
-// A target that is the unknown-write marker, or empty, is never state; a copy with no layout.js reads none as state.
+// B16 (session audit 2026-11-27, S13 and S15): the plugin's own state - the data root, `.alfred/`, apart from its docs root, which
+// holds the user's own docs (`layout.underStateOnly`, as rules-summary.js reads it) - is no project change. A write whose targets all
+// sit there draws no docs hold, and no path rule attaches to it. A target that is the unknown-write marker, or empty, is never
+// state; a copy with no layout.js, or an older one with no `underStateOnly`, reads none as state.
 function pluginStateOnly(targets, root) {
-  if (!layout || typeof layout.underDataRoot !== 'function' || !Array.isArray(targets) || !targets.length) return false;
-  return targets.every((target) => typeof target === 'string' && target && !isUnknown(target) && layout.underDataRoot(root, target.replace(/^['"]|['"]$/g, '')));
+  if (!layout || typeof layout.underStateOnly !== 'function' || !Array.isArray(targets) || !targets.length) return false;
+  return targets.every((target) => typeof target === 'string' && target && !isUnknown(target) && layout.underStateOnly(root, target.replace(/^['"]|['"]$/g, '')));
 }
 // The path words a stdin-script interpreter call names after its flags (`python3 -I - <path> <<'EOF'`): the heredoc body is
 // not an argument, so a 'tests/' inside it names no path. A call with an inline script (`-e`, `-c`) names none here.

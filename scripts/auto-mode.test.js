@@ -1053,7 +1053,7 @@ test('auto-mode Stop: a run waiting on its own background work passes, an idle r
 
 // Session audit 2026-11-27 B11 (S02): a background `python3 tools/lanes.py run ... > log` was no live work, so the run waiting
 // on it was sent back; past its age limit (its timeout, else 60 min) the hold is unchanged.
-test('auto-mode Stop: a run waiting on a background script passes until its age limit (B11)', () =>
+test('auto-mode Stop: a run waiting on a background script passes until its 60 min limit (B11)', () =>
 {
     const p = project();
     const wait = 'Waiting on the lanes run this session started in the background.';
@@ -1071,7 +1071,9 @@ test('auto-mode Stop: a run waiting on a background script passes until its age 
     assert.strictEqual(live.status, 0, `an unknown script out for 5 min wakes the run itself: ${live.stderr}`);
     assert.ok(rows(p, 'b11').some((r) => r.kind === 'auto-wait'), 'one auto-wait row');
     assert.strictEqual(stop('b11', launch('toolu_b11b', 61)).status, 2, 'out for 61 min with no timeout: sent back');
-    assert.strictEqual(stop('b11', launch('toolu_b11c', 6, { timeout: 300000 })).status, 2, 'out past its own 5 min timeout: sent back');
+    // the call's timeout bounds a foreground call, not a background shell (wave T16): 15 min with a 10 min timeout is still inside 60
+    assert.strictEqual(stop('b11', launch('toolu_b11c', 15, { timeout: 600000 })).status, 0, 'out past its own 10 min timeout, inside 60: the run still waits');
+    assert.strictEqual(stop('b11', launch('toolu_b11e', 61, { timeout: 7200000 })).status, 2, 'a long timeout does not stretch the 60 min limit');
     assert.strictEqual(stop('b11', launch('toolu_b11d', 5, { command: 'npm run dev' })).status, 2, 'a dev server never wakes the run');
 });
 

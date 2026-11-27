@@ -382,7 +382,7 @@ test('guard-stop-contract: 25 closes in 14 states - a hand-back blocks whatever 
 
 // Session audit 2026-11-27 B11 (S02, T18): a background run of a script no list names (`python3 tools/lanes.py run ...`) was no
 // live work, so a close waiting on it was held. Every background shell counts unless it serves or watches, and it stops
-// counting past its own `timeout` (else 60 min).
+// counting past 60 min (the call's own `timeout` is no bound for a background shell).
 const MINUTE_MS = 60 * 1000;
 const agedShell = (id, command, minutesAgo, extraInput) => launchRows(id, 'Bash', { command, run_in_background: true, ...(extraInput || {}) },
   `Command running in background with ID: ${id}.`, { backgroundTaskId: id })
@@ -399,15 +399,16 @@ test('B11: a background run no list names is live work, and a server or watcher 
   assert.equal(closeOver('b11-sb-build', bgShell('b11b', 'npx storybook build'), RUNNING_CLOSE).status, 0, 'a storybook build ends');
   assert.equal(closeOver('b11-up-d', bgShell('b11u', 'docker compose up -d --wait'), RUNNING_CLOSE).status, 0, 'up with -d exits when the services are up: live work');
 });
-test('B11: a background shell past its timeout, or 60 min with none, counts no more', () => {
+test('B11: a background shell past 60 min counts no more, whatever its timeout says', () => {
   const at = (name, minutesAgo, input) => closeOver(`b11-${name}`, agedShell('b11a', LANES, minutesAgo, input), WAITING_CLOSE).status;
   assert.equal(at('fresh', 5), 0, 'started 5 min ago');
   assert.equal(at('59', 59), 0, 'one under 60 min');
   assert.equal(at('61', 61), 2, 'started 61 min ago, no timeout: the hold is unchanged');
-  assert.equal(at('t-over', 6, { timeout: 5 * MINUTE_MS }), 2, 'older than its own timeout of 5 min');
-  assert.equal(at('t-under', 4, { timeout: 5 * MINUTE_MS }), 0, 'inside its own timeout');
-  assert.equal(at('t-long', 90, { timeout: 120 * MINUTE_MS }), 0, 'its own timeout, not 60 min, is the limit');
-  assert.equal(at('t-long-over', 130, { timeout: 120 * MINUTE_MS }), 2, 'past its own long timeout');
+  // the tool's `timeout` bounds a foreground call, never a background shell (wave T16): 60 min is the limit whatever it says
+  assert.equal(at('t-over', 6, { timeout: 5 * MINUTE_MS }), 0, 'a background shell older than its timeout of 5 min is still inside 60 min');
+  assert.equal(at('t-default-ceiling', 15, { timeout: 600000 }), 0, 'a background run with timeout 600000 at 15 min is not stale');
+  assert.equal(at('t-long', 90, { timeout: 120 * MINUTE_MS }), 2, 'a long timeout does not stretch the 60 min limit');
+  assert.equal(at('t-short-over-limit', 61, { timeout: 5 * MINUTE_MS }), 2, 'past 60 min with a short timeout');
   assert.equal(at('ten-hours', 600), 2, 'a launch ten hours old');
 });
 

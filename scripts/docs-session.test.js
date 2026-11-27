@@ -2648,6 +2648,19 @@ test('B16: a write under .alfred/ draws no docs hold, a stdin script naming test
   } finally { r.rm(); }
 });
 
+// Wave T16: `.alfred/docs/` holds the user's own docs, a project file in this respect (layout.underStateOnly); only the rest of
+// `.alfred/` is the plugin's state.
+test('B16: a write under .alfred/docs/ gets the docs hold, and one under .alfred/state/ still does not', () => {
+  const r = repo({ tracked: true, docsPath: '.alfred/docs', files: { '.alfred/docs/work/plan.md': 'plan\n', '.alfred/state/x.md': 'x\n' },
+    docs: { 'references/patterns.md': section('plans', '.alfred/docs/work/**', 'Plans name their tasks.') + section('state', '.alfred/state/**', 'State is never edited by hand.'),
+      'watch.json': JSON.stringify({ sourceRoots: ['.alfred'] }) } });
+  try {
+    assert.ok(denied(r.hook(pre('Edit', { file_path: '.alfred/docs/work/plan.md' }, sid()))), 'an Edit of the user\'s docs');
+    assert.ok(denied(r.hook(pre('Bash', { command: 'sed -i s/plan/PLAN/ .alfred/docs/work/plan.md' }, sid()))), 'a shell write of the user\'s docs');
+    assert.ok(!blocked(r.hook(pre('Edit', { file_path: '.alfred/state/x.md' }, sid()))), 'plugin state draws no hold');
+  } finally { r.rm(); }
+});
+
 // B17 (session audit 2026-11-27, K2): a docs-check excerpt skips a line holding only a list marker.
 test('B17: the docs check quotes the first line with text when a section opens on a bare list marker', () => {
   for (const marker of ['1.', '-', '*', '2)']) {
