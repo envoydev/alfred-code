@@ -20,7 +20,9 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-hooks-'));
 // a session where a review ran: every commit receipt needs one since 2026-10-22, so the commit gate's cases judging
 // another line of it run over this transcript unless they hand their own
 // and the user typed 'commit it': a trivial commit needs that word too (N01, 2026-11-27)
-const REVIEWED = reviewedTranscript(TMP, [JSON.stringify({ type: 'user', timestamp: '2026-11-27T09:00:00Z', message: { role: 'user', content: 'commit it' } })]);
+// and 'push it': a receipt's authorized: quote counts only as the user's own words (C3, 2026-11-27)
+const typedUser = (text, timestamp = '2000-01-01T00:00:00Z') => ({ type: 'user', timestamp, message: { role: 'user', content: text } });
+const REVIEWED = reviewedTranscript(TMP, [JSON.stringify(typedUser('push it')), JSON.stringify(typedUser('commit it', '2026-11-27T09:00:00Z'))]);
 const BIG = path.join(__dirname, 'lint-skills.js'); // a real, long source file in this repo
 
 // What the hook decided, as one word (hook-test-env.js verdictOf): 0 a pass, 'ask' or 'deny' a converted guard's block, 2 a
@@ -1063,7 +1065,7 @@ test('guard-ungated-commit: the receipt states', () => {
   // retried into the same block
   receipt(full({ probe: 'live_probe: `npm test` 12/12' })); assert.equal(gateIn(dir, 'git commit -am x'), 0, "'live_probe' is the third spelling the denial names");
   // the VERIFIED line names a verify skill and this transcript carries no Skill call
-  const tp = transcript('no-skill', [assistantRow('m1', 'reviewed')]);
+  const tp = transcript('no-skill', [typedUser('commit it'), assistantRow('m1', 'reviewed')]);
   const gateT = (cmd) => runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: cmd }, transcript_path: tp },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir }).status;
   receipt(full({ first: 'VERIFIED task-verify-code passed' })); assert.equal(gateT('git commit -am x'), 'ask', 'a verify skill named but never called');
@@ -1076,7 +1078,7 @@ test('guard-ungated-commit: the receipt states', () => {
   // ... while a loop the user TYPED is a run of it: a slash invocation writes no Skill call at all
   // (measured: 4 of 4 slash-run loops, zero Skill events), only the harness's command row
   // a loop counts once its final report's Outcome line follows (2026-10-22)
-  const slash = transcript('slash-loop', [{ type: 'user', message: { role: 'user', content: '<command-name>/alfred-code:loop-code-quality</command-name>' } }, assistantRow('m1', '**Outcome**: SATISFIED on round 2')]);
+  const slash = transcript('slash-loop', [typedUser('commit it'), { type: 'user', message: { role: 'user', content: '<command-name>/alfred-code:loop-code-quality</command-name>' } }, assistantRow('m1', '**Outcome**: SATISFIED on round 2')]);
   const gateS = (cmd) => runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: cmd }, transcript_path: slash },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir }).status;
   // a receipt is the session's own only when written after its transcript began (audit 2026-10-20 H4)
@@ -1090,7 +1092,7 @@ test('guard-ungated-commit: the receipt states', () => {
   const loopRenamed = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8')).renamed.skills;
   const oldLoop = Object.keys(loopRenamed).find((o) => loopRenamed[o] === 'loop-code-quality' && /^alfred-/.test(o));
   assert.ok(oldLoop, 'the map renames loop-code-quality from its alfred- spelling');
-  const slashOld = transcript('slash-loop-old', [{ type: 'user', message: { role: 'user', content: `<command-name>/${oldLoop}</command-name>` } }, assistantRow('m1', '**Outcome**: SATISFIED on round 2')]);
+  const slashOld = transcript('slash-loop-old', [typedUser('commit it'), { type: 'user', message: { role: 'user', content: `<command-name>/${oldLoop}</command-name>` } }, assistantRow('m1', '**Outcome**: SATISFIED on round 2')]);
   touch();
   assert.equal(runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: 'git commit -am x' }, transcript_path: slashOld },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir }).status, 0, 'the old spelling typed is a run too');
@@ -1123,6 +1125,7 @@ test('guard-ungated-commit: an option label THIS run wrote is not the user askin
   fs.mkdirSync(path.dirname(gate), { recursive: true });
   const tp = transcript('own-label', [
     JSON.parse(REVIEW_ROW),
+    typedUser('ok commit it and push'),
     { type: 'assistant', message: { id: 'q1', content: [{ type: 'tool_use', id: 'u1', name: 'AskUserQuestion', input: { questions: [{ question: 'Next?', options: [{ label: 'Commit now (Recommended)', description: 'land it' }, { label: 'Hold', description: 'wait' }] }] } }] } },
   ]);
   const body = (auth) => `VERIFIED the checkpoint\n${auth}\nhead: ${head}\nspec: 3 files\nlive-probe: npm test\nformat: npx prettier --check - clean over 3 staged files\nfindings: none\n`;

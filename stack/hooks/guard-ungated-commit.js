@@ -1121,6 +1121,14 @@ function isOwnOptionLabel(span) {
   if (!s.labels.has(want)) return false;
   return !s.typed.some((t) => t.includes(want));
 }
+// Is this quote the user's own words (C3, N02)? It sits inside a turn the user typed (a slash command's args included; a
+// side agent's note, a peer message and a compaction summary are no typed turn), or inside an ask answer a person gave -
+// an answer a hook gave (`user` false) is nobody's words.
+function quoteTyped(quote, scan) {
+  const want = normQuote(quote);
+  if (!want) return false;
+  return scan.typed.some((t) => t.includes(want)) || scan.answers.some((a) => a.user && normQuote(a.text).includes(want));
+}
 // The session's latest ask answer, for a denial that names what the receipt should carry: a receipt quoted the user's
 // typo ('commit and oush to develop') while the picked option sat in the transcript (audit 2026-10-10, session bda299a8).
 function answerHint() {
@@ -1367,6 +1375,10 @@ function judgeReceipt(body, opts) {
     }
     if (isOwnOptionLabel(authorized)) {
       r.problem = `the authorized: quote is character-identical to an option label THIS run wrote - that is the model's sentence, not the user's. Consent given by picking an option is spelled \`answered: <the chosen label>\` instead${answerHint()}`;
+      return r;
+    }
+    if (!quoteTyped(authorized, transcriptScan())) {
+      r.problem = `the authorized: quote (${JSON.stringify(authorized).slice(0, 60)}) is not in any message the user typed - quote the user's own words, or ask`;
       return r;
     }
   } else if (answered) {

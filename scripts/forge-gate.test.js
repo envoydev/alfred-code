@@ -15,7 +15,9 @@ const { spawnSync } = require('node:child_process');
 const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-gate-'));
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
-const REVIEWED = reviewedTranscript(TMP);
+// the user typed the quote the receipt carries: an authorized: quote counts only as the user's own words (C3)
+const typed = (text) => JSON.stringify({ type: 'user', timestamp: '2026-11-27T10:00:00Z', message: { role: 'user', content: text } });
+const REVIEWED = reviewedTranscript(TMP, [typed('merge it')]);
 
 function pushRepo() {
   const base = fs.mkdtempSync(path.join(TMP, 'push-'));

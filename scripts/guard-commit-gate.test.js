@@ -26,7 +26,8 @@ process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));
 // A session where a review ran: every commit receipt needs one since 2026-10-22, so a case judging another of its lines
 // runs the guard over this transcript unless it hands its own.
 // The user typed 'commit it': a trivial commit needs that word too (N01, 2026-11-27).
-const REVIEWED = reviewedTranscript(TMP, [JSON.stringify({ type: 'user', timestamp: '2026-11-27T09:00:00Z', message: { role: 'user', content: 'commit it' } })]);
+const REVIEWED_TYPED = JSON.stringify({ type: 'user', timestamp: '2026-11-27T09:00:00Z', message: { role: 'user', content: 'commit it' } });
+const REVIEWED = reviewedTranscript(TMP, [REVIEWED_TYPED]);
 
 // A block is an ask or a deny now (guards ask, D3); `legacyBlock` reads it as the exit 2 with the reason on stderr these cases were written for.
 const runIn = (hook, payload, opts) =>
@@ -80,16 +81,30 @@ function pushReceipt(head, over = {}) {
     over.scope === null ? null : over.scope,
   ].filter((l) => l != null).join('\n') + '\n';
 }
+// An authorized: quote counts only as the user's own words (C3, 2026-11-27), so the user typed each quote a receipt of this
+// suite carries. The rows open a transcript, dated before everything else in it, so no typed-turn order changes.
+const typedQuotes = new Set(['commit it', 'push it', 'commit and push']);
+const typedQuoteRows = () => [...typedQuotes].map((text) => JSON.stringify({ type: 'user', timestamp: '2000-01-01T00:00:00Z', message: { role: 'user', content: text } }));
+const typeQuoteOf = (body) => {
+  const quote = /^authorized:\s*"(.*)"\s*$/m.exec(String(body));
+  if (!quote || typedQuotes.has(quote[1])) return;
+  typedQuotes.add(quote[1]);
+  typeQuotes();
+};
+const typeQuotes = () => fs.writeFileSync(REVIEWED, `${[REVIEW_ROW, ...typedQuoteRows(), REVIEWED_TYPED].join('\n')}\n`);
+typeQuotes();
 const writeReceipt = (dir, name, body) => {
   const flow = path.join(dir, '.alfred', 'docs', 'flow');
   fs.mkdirSync(flow, { recursive: true });
   fs.writeFileSync(path.join(flow, name), body);
+  typeQuoteOf(body);
 };
 // 2.8.0 layout: where every hook writes a receipt now; the pre-2.8.0 flow/ above is still read for the 2.x line.
 const writeStateReceipt = (dir, name, body) => {
   const file = path.join(dir, '.alfred', 'state', 'approvals', name);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, body);
+  typeQuoteOf(body);
   return file;
 };
 
@@ -220,7 +235,7 @@ test('audit 2026-10-08: a publish receipt written before this session began is a
   const tp = path.join(dir, '..', `session-${process.pid}.jsonl`);
   fs.writeFileSync(tp, '');
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
-  fs.appendFileSync(tp, '{}\n'); // a live transcript has been written since its birth, so its ctime moved past it
+  fs.appendFileSync(tp, `${typedQuoteRows().join('\n')}\n`); // a live transcript has been written since its birth, so its ctime moved past it
   const st = fs.statSync(tp);
   if (process.platform === 'darwin') assert.ok(st.birthtimeMs && st.birthtimeMs !== st.ctimeMs, 'APFS reports a birthtime - the session case must run here');
   const push = (command) => runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command }, transcript_path: tp }, { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
@@ -1106,9 +1121,9 @@ test('guard-ungated-commit: git behind a runner the parser does not list is stil
 // ---------------------------------------------------------------------------------------------
 // audit 2026-10-10 (C01, C17, C18): the commit guard's whole-session reads and the receipt's batch, scope and format lines
 // ---------------------------------------------------------------------------------------------
-const writeTranscript = (dir, name, rows) => {
+const writeTranscript = (dir, name, rows, { quotesTyped = true } = {}) => {
   const tp = path.join(dir, `${name}.jsonl`);
-  fs.writeFileSync(tp, rows.map((r) => (typeof r === 'string' ? r : JSON.stringify(r))).join('\n') + '\n');
+  fs.writeFileSync(tp, [...(quotesTyped ? typedQuoteRows() : []), ...rows.map((r) => (typeof r === 'string' ? r : JSON.stringify(r)))].join('\n') + '\n');
   return tp;
 };
 const commitReceipt = (head, over = {}) => [
@@ -1168,14 +1183,14 @@ test('audit 2026-10-10 C17: the user\'s own typed words are their consent even w
   const picked = { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'u1', content: 'Commit to develop' }] } };
   const typed = { type: 'user', message: { role: 'user', content: 'commit and push' } };
   const withTyped = writeTranscript(dir, 'typed', [REVIEW_ROW, ask, picked, typed]);
-  const noTyped = writeTranscript(dir, 'label-only', [REVIEW_ROW, ask, picked]);
+  const noTyped = writeTranscript(dir, 'label-only', [REVIEW_ROW, ask, picked], { quotesTyped: false });
   writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: 'VERIFIED the checkpoint', auth: 'authorized: "commit and push"' }));
   assert.equal(gateWith(dir, 'git commit -am x', { transcript_path: withTyped }).status, 0, 'the user typed it in a turn of their own');
   const r = gateWith(dir, 'git commit -am x', { transcript_path: noTyped });
   assert.equal(r.status, 2, 'with no typed turn carrying it, the quote is still the model\'s own label');
   assert.match(r.stderr, /option label THIS run wrote/);
   // a meta row (a skill body) carrying the words is no typed turn
-  const meta = writeTranscript(dir, 'meta', [REVIEW_ROW, ask, picked, { type: 'user', isMeta: true, message: { role: 'user', content: 'commit and push' } }]);
+  const meta = writeTranscript(dir, 'meta', [REVIEW_ROW, ask, picked, { type: 'user', isMeta: true, message: { role: 'user', content: 'commit and push' } }], { quotesTyped: false });
   assert.equal(gateWith(dir, 'git commit -am x', { transcript_path: meta }).status, 2, 'a meta row is not the user typing');
 });
 
@@ -2113,7 +2128,7 @@ test('audit 2026-10-20 H4: a commit receipt written before this session began is
   fs.rmSync(tp, { force: true });
   fs.writeFileSync(tp, '');
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
-  fs.appendFileSync(tp, `${REVIEW_ROW}\n`); // the session ran the review: a fresh VERIFIED receipt needs one
+  fs.appendFileSync(tp, `${[REVIEW_ROW, ...typedQuoteRows()].join('\n')}\n`); // the session ran the review: a fresh VERIFIED receipt needs one
   const st = fs.statSync(tp);
   if (!(st.birthtimeMs && st.birthtimeMs !== st.ctimeMs)) return; // no birthtime here: the floor is unknown, as before
   const gate = path.join(dir, '.alfred', 'docs', 'flow', 'COMMIT-GATE');
