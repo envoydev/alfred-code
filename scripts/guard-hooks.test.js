@@ -19,7 +19,8 @@ const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-hooks-'));
 // a session where a review ran: every commit receipt needs one since 2026-10-22, so the commit gate's cases judging
 // another line of it run over this transcript unless they hand their own
-const REVIEWED = reviewedTranscript(TMP);
+// and the user typed 'commit it': a trivial commit needs that word too (N01, 2026-11-27)
+const REVIEWED = reviewedTranscript(TMP, [JSON.stringify({ type: 'user', timestamp: '2026-11-27T09:00:00Z', message: { role: 'user', content: 'commit it' } })]);
 const BIG = path.join(__dirname, 'lint-skills.js'); // a real, long source file in this repo
 
 // What the hook decided, as one word (hook-test-env.js verdictOf): 0 a pass, 'ask' or 'deny' a converted guard's block, 2 a

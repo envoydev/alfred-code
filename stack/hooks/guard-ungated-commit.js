@@ -735,6 +735,8 @@ const CLASS_COMMIT = /^(?:commit|land)/i;
 const CLASS_PUSH = /^(?:push|publish|release|ship|merge|land)|\bPR\b|pull|^(?:open|create|raise|submit)/i;
 const GENERIC_CONSENT = /^(?:go ahead|do it|approve[ds]?|yes)/i;
 const CONSENT_QUOTE_CAP = 1000;
+// A typed turn is judged one sentence at a time, so the cap above bounds a sentence and not a long message (N01, 2026-11-27).
+const SENTENCE_END = /[.!?\n]+/;
 // The first bound past `i` in the sorted bounds, by binary search.
 function boundAfter(bounds, i) {
   let lo = 0;
@@ -816,7 +818,7 @@ function transcriptScan() {
   // started (the plan review left out) and what it covered (null: the whole change); answers: each AskUserQuestion
   // answer, its labels and when it landed; done: the tool_use ids of the review calls that counted; typedDone: when each
   // typed review that counted started.
-  _scan = { ran: new Set(), labels: new Set(), typed: [], reviews: [], reviewSeat: false, codeReviews: [], answers: [], refused: new Set(),
+  _scan = { ran: new Set(), labels: new Set(), typed: [], typedRaw: [], reviews: [], reviewSeat: false, codeReviews: [], answers: [], refused: new Set(),
     done: new Set(), typedDone: [], unprovenFindings: [] };
   const tp = payload.transcript_path;
   if (!tp) return _scan;
@@ -986,7 +988,7 @@ function transcriptScan() {
         try { row = JSON.parse(line); } catch { return; }
         if (!row || row.type !== 'user' || row.isMeta) return;
         const text = textOf(row.message && row.message.content);
-        if (text && !/^\s*<(?:command-name|local-command|bash-|task-notification)/.test(text)) _scan.typed.push(normQuote(text));
+        if (text && !/^\s*<(?:command-name|local-command|bash-|task-notification)/.test(text)) { _scan.typed.push(normQuote(text)); _scan.typedRaw.push({ text, ts: tsOf(row) }); }
         // a review the user TYPED as a slash command is a review run too, once its result line followed it
         const typedSkill = /<command-name>\/?([\w:-]+)<\/command-name>/.exec(text);
         if (typedSkill && REVIEW_SKILL.test(typedSkill[1])) {
@@ -1076,6 +1078,21 @@ function transcriptScan() {
   for (const k of open) if (k.seen && k.ts > 0) _scan.reviews.push(k.ts);
   _scan.unprovenFindings = [...new Set(open.filter((k) => reviewProof(k.review) === 'findings' && k.review !== 'verify-plan').map((k) => k.review))];
   return _scan;
+}
+// The trivial-diff exit skips the verify receipt only, never the user's word (N01, 2026-11-27: a one-line commit went through
+// with none). Consent is read from the LATEST typed turn alone - a sentence the commit reading takes - or from a picked
+// option label it takes that landed after that turn (the controller's ruling: an old 'commit it' never covers a later change).
+// The raw text is split at sentence ends, since normQuote joins the lines of a message into one.
+function trivialConsent(scan) {
+  const last = scan.typedRaw[scan.typedRaw.length - 1];
+  if (last) {
+    for (const part of last.text.split(SENTENCE_END)) {
+      const sentence = normQuote(part);
+      if (sentence && consentIn(sentence, 'COMMIT-GATE')) return true;
+    }
+  }
+  const since = last ? last.ts : -1;
+  return scan.answers.some((a) => a.ts > since && a.labels.some((label) => consentIn(label, 'COMMIT-GATE')));
 }
 // Is this exact string one of the assistant's own AskUserQuestion option labels? Compared with the
 // `(Recommended)` marker STRIPPED, because the harness stores the marked label as the user's answer
@@ -2219,7 +2236,15 @@ try {
     try { lines += fs.readFileSync(path.join(set.top, f), 'utf8').split('\n').filter(Boolean).length; } catch { /* unreadable - the row alone counts */ }
   }
   if (files === 0) process.exit(0); // nothing to commit - let git say so
-  if (files <= 2 && lines <= 15) { recordTrivial(set); process.exit(0); }
+  if (files <= 2 && lines <= 15) {
+    if (!trivialConsent(transcriptScan())) {
+      blockCall(payload,
+        'Blocked: git commit - no word from the user asks for this commit in this session. A small change skips the gate receipt, not the user\'s consent.\n' +
+          'Ask the user with AskUserQuestion, the recommended option first: \'Commit now (Recommended)\'. A typed \'commit it\' or a picked \'Commit now\' lets it through. ' +
+          'The gate reads English only: a word in another language gives no consent, so ask with English labels.');
+    }
+    recordTrivial(set); process.exit(0);
+  }
 } catch {
   process.exit(0); // not a git repo / git unavailable - never block on our own failure
 }
