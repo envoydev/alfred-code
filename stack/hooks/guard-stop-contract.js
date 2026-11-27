@@ -398,10 +398,11 @@ const NEGATED_CONFIRM_RE = /\b(?:couldn['’]?t|can['’]?t|cannot|could not|did
 // Steps the user is to do, closing on 'then tell me', 'let me know when ...' or 'tell me when it is done' (session audit
 // 2026-11-27 B13, S05), are instructions, not a prose ask: the close line is read only as the LAST line of a reply that lists
 // steps (a numbered or bulleted line) before it. A decision, an offer or a 'say go' earlier in the reply still asks.
-const INSTRUCTION_DONE_TAIL = String.raw`(?:[ \t]+(?:you(?:'re| are| have|'ve)|it(?:'s| is| has)|that(?:'s| is)|they(?:'re| are|'ve| have)|everything(?:'s| is))(?:[ \t]+(?:all|now))?[ \t]+(?:done|finished|ready|set|in))?`;
-// Only the three closings the audit named: 'then tell me', 'let me know when', 'tell me when it is done' - the phrase alone,
-// or 'when/once/after' with a done-shaped tail. Any other tail ('which one you want', 'if I should push', 'when you want me to') asks.
-const INSTRUCTION_CLOSE_RE = new RegExp(String.raw`(?:^|[.!?\n])[ \t]*(?:(?:and )?then,? (?:just )?(?:tell me|let me know)(?:[ \t]+(?:when|once|after)${INSTRUCTION_DONE_TAIL})?|(?:just )?(?:tell me|let me know)[ \t]+(?:when|once|after|as soon as)${INSTRUCTION_DONE_TAIL})[ \t]*[.!]?\s*$`, 'i');
+// Only the three closings the audit named: 'then tell me' (bare), and 'tell me' / 'let me know' + when/once/after with a short
+// tail ('when it is deployed', 'once it is in'). A tail that asks ('when you want me to', 'when to push', 'which', 'if I should',
+// 'I can') is a decision put to the user, and holds.
+const INSTRUCTION_ASK_TAIL = String.raw`(?![^.\n?]*\b(?:you (?:want|would like|need|prefer|wish)|would you|need me|i (?:should|shall|can)|we (?:should|shall|can)|which|whether|if)\b)(?![ \t]+to\b)[^.\n?]{0,60}`;
+const INSTRUCTION_CLOSE_RE = new RegExp(String.raw`(?:^|[.!?\n])[ \t]*(?:(?:and )?then,? (?:just )?(?:tell me|let me know)(?:[ \t]+(?:when|once|after)${INSTRUCTION_ASK_TAIL})?|(?:just )?(?:tell me|let me know)[ \t]+(?:when|once|after|as soon as)${INSTRUCTION_ASK_TAIL})[ \t]*[.!]?\s*$`, 'i');
 const INSTRUCTION_STEP_RE = /^[ \t]*(?:\d+[.)]|[-*])[ \t]+\S/m;
 function userInstructions(text) {
   const at = String(text || '').search(INSTRUCTION_CLOSE_RE);

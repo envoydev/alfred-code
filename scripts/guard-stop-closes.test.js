@@ -1211,4 +1211,8 @@ test("B13: steps for the user that end on 'then tell me' are instructions, not a
     assert.strictEqual(close(text).status, 2, `a decision put to the user after steps still holds: ${text.split('\n').pop()}`);
   assert.strictEqual(close(steps + 'Then let me know when it is done.').status, 0, 'the done-shaped tail');
   assert.strictEqual(close(steps + 'Then tell me when you are all set.').status, 0, 'the done-shaped tail, set');
+  for (const closing of ['Let me know when it is deployed.', 'Let me know when it works.', 'Then let me know when it is live.', 'Tell me once it is in.', 'Let me know after the page loads.'])
+    assert.strictEqual(close(steps + closing).status, 0, `an ordinary instruction close: ${closing}`);
+  for (const closing of ['Tell me when you want me to push it.', 'Then tell me which one you want.', 'Then tell me if I should push.', 'Let me know when you would like it pushed.', 'Let me know when to push.'])
+    assert.strictEqual(close(steps + closing).status, 2, `an ask-shaped close still holds: ${closing}`);
 });
