@@ -105,6 +105,59 @@ test('the refusal tells the model to quote the user or ask', () => {
   assert.match(r.stderr, /quote the user's own words, or ask/);
 });
 
+// A quote is the user's words when it matches a typed turn by whole words, punctuation aside (fix round 1).
+test('a curly apostrophe typed and a straight one quoted match as the same words', () => {
+  passes([typedRow('yes it’s fine, push it', '10:00:00')], "yes it's fine, push it");
+});
+
+test('a straight apostrophe typed and a curly one quoted match as the same words', () => {
+  passes([typedRow("yes it's fine, push it", '10:00:00')], 'yes it’s fine, push it');
+});
+
+test("typed 'push it' and quoted 'push it.' match: end punctuation is no part of the words", () => {
+  passes([typedRow('push it', '10:00:00')], 'push it.');
+});
+
+test("typed 'push it!' and quoted 'push it.' match", () => {
+  passes([typedRow('push it!', '10:00:00')], 'push it.');
+});
+
+test("typed 'ok… push it' with the ellipsis sign and quoted 'ok... push it' match", () => {
+  passes([typedRow('ok… push it', '10:00:00')], 'ok... push it');
+});
+
+test("a quote cut with '...' matches a longer typed turn whose parts come in the same order", () => {
+  passes([typedRow('ok, the tests look fine to me so push it', '10:00:00')], 'ok ... push it');
+});
+
+test("a cut quote whose parts come in the other order in the typed turn meets the ask", () => {
+  refused([typedRow('push it, ok', '10:00:00')], 'ok ... push it', NOT_TYPED);
+});
+
+test("a quote 'yes' is not in a typed 'yesterday': whole words only", () => {
+  refused([typedRow('yesterday it was red', '10:00:00')], 'yes', NOT_TYPED);
+});
+
+test("a quote 'push' is not in a typed 'pushover': whole words only", () => {
+  refused([typedRow('the pushover app is fine', '10:00:00')], 'push', NOT_TYPED);
+});
+
+test("typed 'Push it.' and quoted 'push it' match: case is no part of the words", () => {
+  passes([typedRow('Push it.', '10:00:00')], 'push it');
+});
+
+test("a quote cut out of a refusing sentence meets the ask: typed 'don't push it', quoted 'push it'", () => {
+  refused([typedRow("don't push it", '10:00:00')], 'push it', NOT_TYPED);
+});
+
+test("a quote from the consenting sentence of a longer turn passes: typed 'ok, push it. don't merge yet'", () => {
+  passes([typedRow("ok, push it. don't merge yet", '10:00:00')], 'push it');
+});
+
+test("a refusing sentence earlier in the turn does not hide a later one that consents", () => {
+  passes([typedRow("don't push it yet. ok, push it now", '10:00:00')], 'push it now');
+});
+
 // The COMMIT-GATE receipt reads the same quote: a change past the trivial bar needs the receipt.
 function commitGateWith(rows, quote) {
   const dir = fs.mkdtempSync(path.join(TMP, 'c-'));

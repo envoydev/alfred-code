@@ -737,6 +737,15 @@ const GENERIC_CONSENT = /^(?:go ahead|do it|approve[ds]?|yes)/i;
 const CONSENT_QUOTE_CAP = 1000;
 // A typed turn is judged one sentence at a time, so the cap above bounds a sentence and not a long message (N01, 2026-11-27).
 const SENTENCE_END = /[.!?\n]+/;
+// The match key of a quote and of a typed turn (C3): curly quotes straight, the ellipsis sign as three dots, every non-word
+// character a space. A quote cut at '...' is held when each part is, in order, whole words of one typed turn.
+const CURLY_APOSTROPHE = /[\u2018\u2019\u201B]/g;
+const CURLY_QUOTE = /[\u201C\u201D]/g;
+const ELLIPSIS_SIGN = /\u2026/g;
+const ELLIPSIS_GAP = /\.{3,}/;
+const NON_WORD = /[^\p{L}\p{N}]+/gu;
+const straightText = (text) => normQuote(text).replace(CURLY_APOSTROPHE, "'").replace(CURLY_QUOTE, '"').replace(ELLIPSIS_SIGN, '...');
+const matchKey = (text) => straightText(text).replace(NON_WORD, ' ').trim();
 // The first bound past `i` in the sorted bounds, by binary search.
 function boundAfter(bounds, i) {
   let lo = 0;
@@ -1121,13 +1130,42 @@ function isOwnOptionLabel(span) {
   if (!s.labels.has(want)) return false;
   return !s.typed.some((t) => t.includes(want));
 }
-// Is this quote the user's own words (C3, N02)? It sits inside a turn the user typed (a slash command's args included; a
-// side agent's note, a peer message and a compaction summary are no typed turn), or inside an ask answer a person gave -
-// an answer a hook gave (`user` false) is nobody's words.
-function quoteTyped(quote, scan) {
-  const want = normQuote(quote);
-  if (!want) return false;
-  return scan.typed.some((t) => t.includes(want)) || scan.answers.some((a) => a.user && normQuote(a.text).includes(want));
+// Is this quote the user's own words (C3, N02)? Its parts (the quote cut at '...') are whole words of one turn the user typed
+// (a slash command's args included; a side agent's note, a peer message and a compaction summary are no typed turn) or of
+// an ask answer a person gave - an answer a hook gave (`user` false) is nobody's words - and the sentences that hold them
+// pass the consent reading of the gate, so a quote cut out of 'do not push it' is refused.
+function quoteTyped(quote, scan, gate) {
+  const parts = straightText(quote).split(ELLIPSIS_GAP).map(matchKey).filter(Boolean);
+  if (!parts.length) return false;
+  const turns = [...scan.typedRaw.map((t) => t.text), ...scan.answers.filter((a) => a.user).map((a) => a.text)];
+  return turns.some((text) => turnHolds(String(text), parts, gate));
+}
+function turnHolds(text, parts, gate) {
+  const sentences = text.split(SENTENCE_END);
+  let joined = ' ';
+  const spans = [];
+  sentences.forEach((sentence, index) => {
+    const key = matchKey(sentence);
+    if (!key) return;
+    spans.push({ index, from: joined.length, to: joined.length + key.length });
+    joined += `${key} `;
+  });
+  // every occurrence of each part is tried in order: the sentences that hold one placement must consent
+  const place = (step, from, held) => {
+    if (step === parts.length) {
+      const said = [...held].sort((a, b) => a - b).map((index) => normQuote(sentences[index])).join('. ');
+      return consentIn(said, gate);
+    }
+    for (let at = joined.indexOf(` ${parts[step]} `, from); at !== -1; at = joined.indexOf(` ${parts[step]} `, at + 1)) {
+      const start = at + 1;
+      const end = start + parts[step].length;
+      const next = new Set(held);
+      for (const span of spans) if (span.from < end && span.to > start) next.add(span.index);
+      if (place(step + 1, end, next)) return true;
+    }
+    return false;
+  };
+  return place(0, 0, new Set());
 }
 // The session's latest ask answer, for a denial that names what the receipt should carry: a receipt quoted the user's
 // typo ('commit and oush to develop') while the picked option sat in the transcript (audit 2026-10-10, session bda299a8).
@@ -1377,7 +1415,7 @@ function judgeReceipt(body, opts) {
       r.problem = `the authorized: quote is character-identical to an option label THIS run wrote - that is the model's sentence, not the user's. Consent given by picking an option is spelled \`answered: <the chosen label>\` instead${answerHint()}`;
       return r;
     }
-    if (!quoteTyped(authorized, transcriptScan())) {
+    if (!quoteTyped(authorized, transcriptScan(), opts && opts.gate)) {
       r.problem = `the authorized: quote (${JSON.stringify(authorized).slice(0, 60)}) is not in any message the user typed - quote the user's own words, or ask`;
       return r;
     }
