@@ -133,17 +133,26 @@ test('a task notice, a command output, a side-agent note and a peer message quot
   meetsAsk([row(`${PEER_OPENER}\n<agent-message from="a1b2">${quoted}</agent-message>`, '10:00:00')]);
 });
 
-test("a local command typed after 'commit it' is no newer typed turn: the commit passes", () => {
-  passes([row('commit it', '10:00:00'), row(tagged('opus', 'model'), '10:01:00')]);
-  passes([row('commit it', '10:00:00'), row(bare('high', 'effort'), '10:01:00')]);
+// N01: the latest typed turn decides, and a slash command the user types is a typed turn - its args are its words, empty with none.
+test("a slash command typed after 'commit it' ends that consent: the commit meets the ask", () => {
+  meetsAsk([row('commit it', '10:00:00'), row(tagged('fix Y'), '10:05:00')]);
+});
+
+test("a command typed with no args after 'commit it' ends that consent too", () => {
+  meetsAsk([row('commit it', '10:00:00'), row('<command-message>solve-task</command-message>\n<command-name>/solve-task</command-name>', '10:05:00')]);
+});
+
+test("one extra commit ask follows a local command like '/model opus' - the safe side of the trade-off, never a pass", () => {
+  meetsAsk([row('commit it', '10:00:00'), row(tagged('opus', 'model'), '10:01:00')]);
+  meetsAsk([row('commit it', '10:00:00'), row(bare('high', 'effort'), '10:01:00')]);
+});
+
+test("a refusal, then a slash command whose args say 'commit it', lets the commit through", () => {
+  passes([row('do not commit yet', '10:00:00'), row(tagged('fix X and commit it'), '10:05:00')]);
 });
 
 test("a typed prompt that mentions '<command-name>' in prose stays a typed turn", () => {
   passes([row('commit it - and why is the <command-name> row skipped?', '10:00:00')]);
-});
-
-test("a slash command's args give the trivial exit no consent of their own: the latest typed turn decides", () => {
-  meetsAsk([row(tagged('fix X and commit it'), '10:00:00')]);
 });
 
 test('the stop contract keeps a fallback copy of the harness regex that reads the side-agent opener', () => {

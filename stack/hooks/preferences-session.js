@@ -986,7 +986,7 @@ function recordRun(marks, run, input) {
 // A row the user typed: not the harness's (a skill body, a summary, a command's output, a notification, a seat's hand-back
 // frame - hook-prelude.js harnessPrompt's list - a `!` shell command and its output, an Esc's interrupt marker, which
 // carries no isMeta), not a tool result.
-const HARNESS_ROW = /^\s*(?:<(?:local-command-stdout|local-command-caveat|task-notification|agent-message|bash-input|bash-stdout|bash-stderr)\b|Another Claude session sent a message:|\[Request interrupted by user)/;
+const HARNESS_ROW = /^\s*(?:<(?:local-command-stdout|local-command-caveat|task-notification|agent-message|bash-input|bash-stdout|bash-stderr)\b|Another Claude session sent a message:|Here is a note offered by a side agent\b|\[Request interrupted by user)/;
 // A typed reply that only says go on keeps the run (the user's answer of 2026-10-22, 'Keep go-on replies'): a typed
 // 'continue' after an Esc ended it, so the helpers after it lost the hand-over. English only, as the other hooks read.
 const GO_ON = /^\s*(?:continue|go on|proceed|carry on|resume|keep going|yes|ok|okay)[\s.!]*$/i;

@@ -1486,7 +1486,8 @@ test('a run ends at the user\'s next typed turn: the analyzer and a reviewing ma
         fs.appendFileSync(T, human('<bash-input>git status</bash-input>'));
         fs.appendFileSync(T, human('<bash-stdout>clean</bash-stdout><bash-stderr></bash-stderr>'));
         fs.appendFileSync(T, human('Another Claude session sent a message:\n<agent-message>report</agent-message>'));
-        assert.ok(analyzer(s), 'an interrupt, a ! shell command and a hand-back frame keep the run');
+        fs.appendFileSync(T, human('Here is a note offered by a side agent:\nthe build is red'));
+        assert.ok(analyzer(s), 'an interrupt, a ! shell command, a hand-back frame and a side agent\'s note keep the run');
         // A reply that only says go on is no new turn (the user's answer 'Keep go-on replies').
         for (const word of ['continue', '  Go on. ', 'proceed!', 'carry on', 'resume', 'keep going', 'yes', 'OK', 'okay']) fs.appendFileSync(T, human(word));
         fs.appendFileSync(T, human([{ type: 'text', text: 'Continue' }]));
