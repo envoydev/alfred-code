@@ -46,17 +46,57 @@ const run = (p, command) => {
 const noteOf = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext || ''; } catch { return ''; } };
 const ON = { [CORE]: true };
 
+// Claude Code's precedence is local > project > user: a disable writes false at its scope, and a false there beats a true below it.
+const RANK = { local: 3, project: 2, user: 1 };
 for (const [keeper, removed] of [['user', 'project'], ['user', 'local'], ['project', 'user'], ['project', 'local'], ['local', 'user'], ['local', 'project']]) {
   test(`B1: removing the core at ${removed} scope passes with a note when ${keeper} scope still enables it`, () => {
     const p = project(`keep-${keeper}-${removed}`, { [keeper]: ON, [removed]: ON });
-    for (const verb of ['uninstall', 'disable']) {
+    for (const verb of ['uninstall', 'remove']) {
       const r = run(p, `claude plugin ${verb} ${CORE} --scope ${removed}`);
-      assert.equal(r.ask, false, `${verb} at ${removed}, ${keeper} keeps it: ${r.text}`);
+      assert.equal(r.ask, false, `${verb} at ${removed} drops its key, ${keeper} keeps it: ${r.text}`);
       assert.match(noteOf(r), new RegExp(`${keeper} scope`), `the note names the ${keeper} scope that keeps it`);
       assert.match(noteOf(r), /guards stay up/, 'the note says what stays');
     }
   });
+  test(`B1: disable at ${removed} scope while ${keeper} scope enables it ${RANK[keeper] > RANK[removed] ? 'passes' : 'asks: its false outranks the lower scope'}`, () => {
+    const p = project(`disable-${keeper}-${removed}`, { [keeper]: ON, [removed]: ON });
+    const r = run(p, `claude plugin disable ${CORE} --scope ${removed}`);
+    if (RANK[keeper] > RANK[removed]) {
+      assert.equal(r.ask, false, `${keeper} outranks ${removed}: ${r.text}`);
+      assert.match(noteOf(r), new RegExp(`${keeper} scope`));
+    } else {
+      assert.equal(r.ask, true, `the false written at ${removed} decides over ${keeper}`);
+      assert.match(r.text, /every Alfred Code guard/);
+    }
+  });
 }
+
+test('B1: a false at a higher scope decides over a true below it, for uninstall as for disable', () => {
+  const projectFalse = project('prec-project-false', { user: ON, project: { [CORE]: false }, local: ON });
+  assert.equal(run(projectFalse, `claude plugin uninstall ${CORE} --scope local`).ask, true, 'local drops, project false now decides');
+  const localFalse = project('prec-local-false', { user: ON, project: ON, local: { [CORE]: false } });
+  assert.equal(run(localFalse, `claude plugin uninstall ${CORE} --scope project`).ask, true, 'local false outranks the project and user trues');
+  assert.equal(run(localFalse, `claude plugin uninstall ${CORE} --scope user`).ask, true, 'local false outranks user too');
+  const projectTrue = project('prec-project-true', { user: ON, project: ON, local: { [CORE]: false } });
+  assert.equal(run(projectTrue, `claude plugin uninstall ${CORE} --scope local`).ask, false, 'the false is dropped, project true decides');
+  assert.match(noteOf(run(projectTrue, `claude plugin uninstall ${CORE} --scope local`)), /project scope/);
+});
+
+test('B1: a settings file that does not parse at the scope being removed asks', () => {
+  const p = project('malformed-removed', { user: ON, project: '{ not json' });
+  assert.equal(run(p, `claude plugin uninstall ${CORE} --scope project`).ask, true);
+});
+
+test('B1: a scope name that is an Object.prototype key is no scope, and no account folder means no user scope file', () => {
+  const p = project('proto-scope', { user: ON, project: ON });
+  for (const scope of ['constructor', 'toString', '__proto__']) assert.equal(run(p, `claude plugin uninstall ${CORE} --scope ${scope}`).ask, true, scope);
+  const bare = project('no-account', { project: ON });
+  fs.writeFileSync(path.join(bare.root, 'settings.json'), settings(ON));
+  const env = { ...bare.env, CLAUDE_CONFIG_DIR: '', HOME: '', USERPROFILE: '' };
+  const r = runHook('guard-config-protection.js', { session_id: 'scopes-sess', cwd: bare.root, hook_event_name: 'PreToolUse', tool_name: 'Bash',
+    tool_input: { command: `claude plugin uninstall ${CORE} --scope project` } }, { env, cwd: bare.root });
+  assert.ok(blockText(r), 'a cwd-relative settings.json is never the user scope: the last scope asks');
+});
 
 test('B1: the user scope that keeps the core is read from the account folder, and the default scope is user', () => {
   const p = project('default-user', { project: ON });
@@ -100,7 +140,8 @@ test('B1: a keeper that holds the core false, another plugin only, or a file tha
 
 test('B1: disable --all at one scope passes while another scope keeps the core, a bare name is the same core', () => {
   const p = project('all-bare', { user: ON, project: ON });
-  assert.equal(run(p, 'claude plugin disable --all --scope project').ask, false, 'disable --all');
+  assert.equal(run(p, 'claude plugin disable --all --scope user').ask, false, 'disable --all at user, project keeps it');
+  assert.equal(run(p, 'claude plugin disable --all --scope project').ask, true, 'disable --all at project writes false over the user true');
   assert.equal(run(p, 'claude plugin uninstall alfred-code --scope project').ask, false, 'the bare name');
   const other = project('other-market', { user: { 'alfred-code@elsewhere': true }, project: ON });
   assert.equal(run(other, `claude plugin uninstall ${CORE} --scope project`).ask, true, 'another marketplace\'s core is not the named one');

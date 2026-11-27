@@ -316,7 +316,7 @@ function offState(text) {
   const plugins = data.enabledPlugins && typeof data.enabledPlugins === 'object' && !Array.isArray(data.enabledPlugins) ? data.enabledPlugins : {};
   const coreKeys = Object.keys(plugins).filter(isCoreId);
   return { off: new Set(csv.split(',').map(offEntry).filter((n) => PROTECTIVE_GUARDS.includes(n))), all: data.disableAllHooks === true, twins: wiredTwins(data),
-    core: coreKeys.some((k) => plugins[k] === false), coreOn: new Set(coreKeys.filter((k) => plugins[k] === true)),
+    core: coreKeys.some((k) => plugins[k] === false), coreOn: new Set(coreKeys.filter((k) => plugins[k] === true)), coreOff: new Set(coreKeys.filter((k) => plugins[k] === false)),
     autoRun: env[AUTO_RUN_KEY] != null && String(env[AUTO_RUN_KEY]).trim() === '1' };
 }
 // A text that is no settings object (a fragment, a command, a script) by what it names: a guard's name as a word,
@@ -694,11 +694,13 @@ const DOWNLOADS = new Set(['curl', 'wget']);
 const CLAUDE_BIN = /^claude(?:\.exe|\.cmd)?$/i;
 const PLUGIN_OFF_VERBS = new Set(['disable', 'uninstall', 'remove']);
 const PLUGIN_ON_VERBS = new Set(['install', 'i', 'enable']);
-// B1 (session audit 2026-11-27): a removal at one `--scope` leaves the core on where another scope's `enabledPlugins` still
-// holds it true, so the guards stay up and the act passes with a note. The scopes read are the settings files the guard
-// already watches, each from the folder the CLI names for it.
+// B1 (session audit 2026-11-27): a removal at one `--scope` leaves the core on when, with the act applied to the settings
+// files the guard already reads, the highest scope (local, then project, then user: Claude Code's precedence) that still
+// names the core holds it true. An uninstall or remove drops the core key at its scope, a disable sets it false there, so
+// a disable at a scope beats a true below it. The act then passes with a note. The managed settings file is not read.
+const PLUGIN_SCOPE_ORDER = Object.freeze(['local', 'project', 'user']);
 const PLUGIN_SCOPE_FILES = Object.freeze({
-  user: () => path.join(accountDir(), 'settings.json'),
+  user: () => { const dir = accountDir(); return dir ? path.join(dir, 'settings.json') : null; },
   project: () => path.join(ROOT, '.claude', 'settings.json'),
   local: () => path.join(ROOT, '.claude', 'settings.local.json'),
 });
@@ -742,15 +744,33 @@ function pluginActs(text) {
 }
 // The same plugin: one id, or a bare name beside any core id.
 const sameCore = (a, b) => a.toLowerCase() === b.toLowerCase() || !a.includes('@') || !b.includes('@');
-// The scopes outside `offScopes` whose settings hold the core named by `id` (or any core for `--all`) at true.
-function scopesKeepingCore(id, offScopes) {
-  return Object.keys(PLUGIN_SCOPE_FILES).filter((scope) => {
-    if (offScopes.has(scope)) return false;
-    let file;
-    try { file = PLUGIN_SCOPE_FILES[scope](); } catch { return false; }
-    const kept = stateOf(readOr(file)).coreOn;
-    return Boolean(kept) && [...kept].some((key) => id === '--all' || sameCore(id, key));
-  });
+// What one scope's settings file says of the core named by `id` (any core for `--all`): true, false, undefined when it
+// names none or the file is absent, null when the file is there and is no settings object.
+function coreValueAt(scope, id) {
+  const file = PLUGIN_SCOPE_FILES[scope]();
+  const text = file ? readOr(file) : null;
+  if (text == null) return undefined;
+  const state = offState(text);
+  if (!state) return null;
+  const names = (keys) => [...keys].some((key) => id === '--all' || sameCore(id, key));
+  if (names(state.coreOn)) return true;
+  return names(state.coreOff) ? false : undefined;
+}
+// The scope whose true value decides once every removal of the command is applied, or null where the core ends off, or
+// where a removed scope's file cannot be read.
+function scopeKeepingCore(act, removals) {
+  const applied = new Map();
+  for (const r of removals) if (Object.hasOwn(PLUGIN_SCOPE_FILES, r.scope) && applied.get(r.scope) !== 'off') applied.set(r.scope, r.verb === 'disable' ? 'off' : 'dropped');
+  for (const scope of PLUGIN_SCOPE_ORDER) {
+    let value;
+    try { value = coreValueAt(scope, act.id); } catch { value = null; }
+    if (applied.has(scope)) {
+      if (value === null) return null;
+      value = applied.get(scope) === 'off' ? false : undefined;
+    } else if (value === null) value = undefined;
+    if (value !== undefined) return value ? scope : null;
+  }
+  return null;
 }
 function pluginCliOff(texts) {
   const removals = [];
@@ -766,11 +786,10 @@ function pluginCliOff(texts) {
       if (!back) removals.push(a);
     }
   }
-  const offScopes = new Set(removals.map((a) => a.scope));
   for (const a of removals) {
     const line = `claude plugin ${a.verb} ${a.id}`;
-    const keepers = PLUGIN_SCOPE_FILES[a.scope] ? scopesKeepingCore(a.id, offScopes) : [];
-    if (keepers.length) { coreKeptNote = coreKeptNote || `alfred-code: \`${line} --scope ${a.scope}\` leaves the core on at ${keepers.join(' and ')} scope, so the guards stay up.`; continue; }
+    const keeper = Object.hasOwn(PLUGIN_SCOPE_FILES, a.scope) ? scopeKeepingCore(a, removals) : null;
+    if (keeper) { coreKeptNote = coreKeptNote || `alfred-code: \`${line} --scope ${a.scope}\` leaves the core on at ${keeper} scope, so the guards stay up.`; continue; }
     return { abs: line, shown: line, added: [], twins: [], all: false, core: true, cli: true };
   }
   return null;
