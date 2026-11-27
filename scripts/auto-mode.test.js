@@ -531,6 +531,9 @@ test('auto-mode asks: an ask after a classifier denial in the same turn waits fo
     assert.ok(rows(p, 'c1').some((x) => x.kind === 'auto-ask-waits' && /classifier/.test(x.reason)), 'the wait names the denial');
     const plainError = transcript([bashCall('e1'), { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'e1', is_error: true, content: 'Exit code 1' }] } }]);
     assert.ok(answered(ask(p, 'c1', one, { transcript_path: plainError })), 'an ordinary failed call does not hold the ask');
+    const quotedInError = transcript([bashCall('t1'), { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', is_error: true,
+        content: 'not ok 1 - the ask after a denial waits\n  AssertionError: expected text matching /denied by the Claude Code auto mode classifier/' }] } }]);
+    assert.ok(answered(ask(p, 'c1', one, { transcript_path: quotedInError })), 'a failing test whose output quotes the denial phrase holds nothing');
     const quoted = transcript([bashCall('q1'), { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'q1', content: 'denied by the Claude Code auto mode classifier' }] } }]);
     assert.ok(answered(ask(p, 'c1', one, { transcript_path: quoted })), 'text that is no error result holds nothing');
     const settled = transcript([bashCall('tool-denied'), classifierDenial(), askAnswered('a-prev')]);

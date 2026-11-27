@@ -3210,9 +3210,10 @@ function runStoppedNow(input) {
 // AN ASK AFTER A CLASSIFIER DENIAL WAITS (B3, R4 session b9e1a400 rows 211-222): Claude Code's auto-mode classifier refused a Bash call
 // - a user row whose tool_result has is_error true and 'denied by the Claude Code auto mode classifier' in its text, the row carrying
 // toolDenialKind 'automode-blocked' - and the next ask, 'Apply this plan?', was auto-answered 'Apply (Recommended)': the user's check
-// was taken as the run's go-ahead. The scan runs back from the newest row and stops at the turn's typed prompt, or at an ask answered
+// was taken as the run's go-ahead. The text counts only when the result OPENS with the classifier's message: a failing test or grep that
+// quotes the phrase mid-output is no denial. The scan runs back from the newest row and stops at the turn's typed prompt, or at an ask answered
 // since the denial (it settled the matter), so one early denial never holds the rest of a long run.
-const CLASSIFIER_DENIAL_RE = /denied by the Claude Code auto mode classifier/i;
+const CLASSIFIER_DENIAL_RE = /^\s*(?:Error:\s*)?Permission for this action was denied by the Claude Code auto mode classifier/i;
 const CLASSIFIER_DENIAL_KIND = 'automode-blocked';
 const CLASSIFIER_TAIL_BYTES = 1024 * 1024;
 function classifierDeniedThisTurn(transcriptPath) {
