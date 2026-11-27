@@ -56,13 +56,21 @@ const SECRET_KEY_RE = new RegExp(SECRET_KEY_SOURCE, 'i');
 // more also counts at the key's end (GITHUBTOKEN), a shorter one never does (KEY is no part of MONKEY). Read by the
 // masker only: SECRET_KEY_SOURCE above stays the input guard's, and lint holds it equal to meta/environment.json.
 const OUTPUT_CREDENTIAL_WORDS = Object.freeze(['TOKEN', 'SECRET', 'KEY', 'APIKEY', 'PASSWORD', 'PASSWD', 'PASS', 'PWD', 'PIN', 'OTP', 'CODE', 'LOGIN', 'DSN',
-  'CREDENTIAL', 'CREDENTIALS', 'CRED', 'AUTH', 'CERT', 'PRIVATE', 'SIGNING', 'SALT', 'HASH', 'COOKIE', 'SESSION']);
+  'CREDENTIAL', 'CREDENTIALS', 'CRED', 'AUTH', 'CERT', 'PRIVATE', 'SIGNING', 'SALT', 'HASH', 'COOKIE', 'SESSION', 'PASSPHRASE']);
+// A value of 2 or 3 characters is masked only under one of these (a weak word such as CODE or KEY would mask every `src`
+// or `30` in the output); under any listed word a value of WEAK_VALUE_MIN characters or more is masked.
+const STRONG_CREDENTIAL_WORDS = Object.freeze(['PASSWORD', 'PASSWD', 'PASS', 'PWD', 'PIN', 'OTP', 'SECRET', 'TOKEN', 'PASSPHRASE']);
+const WEAK_VALUE_MIN = 4;
+// A short word also ends a joined key (MASTERKEY, DBPASS, ADMINPWD) - except an ordinary word that happens to end in one.
+const JOINED_END_WORDS = Object.freeze(['KEY', 'PASS', 'PWD']);
+const NOT_CREDENTIAL_WORDS = Object.freeze(['MONKEY', 'TURKEY', 'DONKEY', 'HOCKEY', 'JOCKEY', 'WHISKEY', 'BYPASS', 'COMPASS', 'TRESPASS', 'SURPASS', 'UNDERPASS', 'OVERPASS']);
 const KEY_WORD_SPLIT = /[_.-]+|(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/;
 const END_WORD_MIN = 5;
 // A value the line-shape redactor never takes for a credential: a type word (`originKey: string,`) or a value of 1-3
 // characters, which no output line gives away. A capitalised identifier counts when a `,` `;` `)` or `>` follows it.
 const TYPE_WORDS = Object.freeze(['string', 'number', 'boolean', 'unknown', 'any', 'never', 'void', 'null', 'undefined', 'object', 'true', 'false']);
 const TYPE_NAME_END = /^[A-Z][A-Za-z0-9_]*[,;)>]$/;
+const TYPE_NAME_MAX = 16;
 const SHORT_VALUE_MAX = 3;
 // A store value of one character is never masked, whatever its key (`PIN=7` would hide every standalone 7); two or more are.
 const STORE_VALUE_MIN = 2;
@@ -147,19 +155,27 @@ const isSampleValue = (key, v) => {
 };
 const holdsCredential = (key, v) => isLive(v) && !isSampleValue(key, v);
 // A3: does the key name a credential (OUTPUT_CREDENTIAL_WORDS)? Pure: the key alone decides.
-const credentialKey = (key) => {
-  const upper = String(key).toUpperCase();
+// Each word of OUTPUT_CREDENTIAL_WORDS the key names: as a part (a trailing S is allowed: TOKENS), a 5-letter word or more at
+// a part's start or end (SECRETKEY, GITHUBTOKEN), or KEY / PASS / PWD at the end of a joined part (DBPASS).
+const credentialWords = (key) => {
   const parts = String(key).split(KEY_WORD_SPLIT).filter(Boolean).map((part) => part.toUpperCase());
-  return parts.some((part) => OUTPUT_CREDENTIAL_WORDS.includes(part))
-    || OUTPUT_CREDENTIAL_WORDS.some((word) => word.length >= END_WORD_MIN && upper.endsWith(word));
+  return OUTPUT_CREDENTIAL_WORDS.filter((word) => parts.some((part) => {
+    if (part === word || part === `${word}S`) return true;
+    if (word.length >= END_WORD_MIN) return part.startsWith(word) || part.endsWith(word) || part.endsWith(`${word}S`);
+    return JOINED_END_WORDS.includes(word) && !NOT_CREDENTIAL_WORDS.includes(part) && (part.endsWith(word) || part.endsWith(`${word}S`));
+  }));
 };
+const credentialKey = (key) => credentialWords(key).length > 0;
+const strongCredentialKey = (key) => credentialWords(key).some((word) => STRONG_CREDENTIAL_WORDS.includes(word));
 // A3: a type word or a capitalised type name, as `string,` or `ApiKey;` - never a credential value.
 const typeWord = (value) => {
   const text = String(value).trim();
-  return TYPE_WORDS.includes(text.replace(/[,;)>]+$/, '')) || TYPE_NAME_END.test(text);
+  // a capitalised name counts only with no digit and under TYPE_NAME_MAX characters: `Summer2024x;` is a password
+  return TYPE_WORDS.includes(text.replace(/[,;)>]+$/, '')) || (TYPE_NAME_END.test(text) && !/\d/.test(text) && text.length < TYPE_NAME_MAX);
 };
 // A3: is this live store value hidden in output - its key names a credential (and the value is 2 characters or more), or the value has a credential shape.
-const storeValueMasked = (key, value) => isLive(value) && ((credentialKey(key) && value.length >= STORE_VALUE_MIN) || credentialLike(value) || PEM_PRIVATE.test(value));
+const keyHidesValue = (key, value) => (value.length >= WEAK_VALUE_MIN && credentialKey(key)) || (value.length >= STORE_VALUE_MIN && strongCredentialKey(key));
+const storeValueMasked = (key, value) => isLive(value) && (keyHidesValue(key, value) || credentialLike(value) || PEM_PRIVATE.test(value));
 // A credential INSIDE a larger value: a connection string's `Password=` / `Pwd=` (`;` pairs, or Redis's `,`
 // pairs) and a URL's userinfo (`postgres://user:<pw>@host`). The key names the CONNECTION (`Postgres`,
 // `DATABASE_URL`), so the key test never saw it. Measured: a Staging Postgres and Redis password printed raw
@@ -1587,7 +1603,7 @@ function valuesOf(file, { every = false } = {}) {
       if (!m) continue;
       const v = unquote(m[2]);
       // A3: the store gives a value only when its key names a credential (2 characters or more) or the value looks like one
-      if (store) { if (storeValueMasked(m[1], v)) put(m[1], v, credentialKey(m[1])); else maskEmbedded(v, (x) => put(m[1], x)); continue; }
+      if (store) { if (storeValueMasked(m[1], v)) put(m[1], v, keyHidesValue(m[1], v)); else maskEmbedded(v, (x) => put(m[1], x, true)); continue; }
       if (all ? isLive(v) : maskable(m[1], v)) put(m[1], v); else maskEmbedded(v, (x) => put(m[1], x));
     }
     return out;
@@ -1628,7 +1644,7 @@ function collectValues(p, every = true) {
   const add = (key, value, source, file, all, any = false) => {
     // an every-value read (a named dotenv or config) keeps a value whatever it looks like; a store value under a
     // credential-named key (A3) keeps 2 characters or more
-    if ((value.length < OUTPUT_MASK_MIN && !any) || isPlaceholder(value) || (!all && isSampleValue(key, value))) return;
+    if ((value.length < (any ? STORE_VALUE_MIN : OUTPUT_MASK_MIN)) || isPlaceholder(value) || (!all && isSampleValue(key, value))) return;
     for (const v of new Set([value, JSON.stringify(value).slice(1, -1)])) if (!values.has(v)) values.set(v, { key, source, file: file ? baseOf(file) : null });
   };
   const take = (file, all, source) => {

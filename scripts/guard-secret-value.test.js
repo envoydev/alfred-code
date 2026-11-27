@@ -1243,6 +1243,38 @@ test('A3: a credential-keyed store value of 1 character shows (PIN=7); 2 or more
     assert.strictEqual(answer(r).updatedToolOutput.stdout, `took 7 s, ${SET('123')} rows, ${SET('x9')} ms, code ${SET('4821')}\n`);
   }, 'PIN=7\nOTP=123\nSMTP_PWD=x9\nADMIN_CODE=4821\n');
 });
+test('A3 round 3: a capitalised value holding a digit, or 16 characters or more, is no type name', () => {
+  const out = (text) => { const r = masked('node print-it.js', { response: said(text) }); return r.out ? answer(r).updatedToolOutput.stdout : text; };
+  const hidden = [['export DB_PASSWORD=', 'Summer2024x;'], ['password: ', 'Summer2024x,'], ['export API_TOKEN=', 'Xy9fakefakefake;']];
+  for (const [head, value] of hidden) assert.strictEqual(out(`${head}${value}\n`), `${head}${SET(value)}\n`, head);
+  for (const line of ['originKey: string,', 'foo: Promise<Bar>,', '  secretKey: SecretStore;']) assert.strictEqual(out(`${line}\n`), `${line}\n`, line);
+});
+test('A3 round 3: a joined or plural key name still names a credential (SECRETKEY, DBPASS, ADMINPWD, PASSPHRASE, TOKENS)', () => {
+  const store = ['SECRETKEY=sk-4821', 'MASTERKEY=mk-4821', 'ACCESSKEY=ak-7731', 'DBPASS=zz9', 'ADMINPWD=q7', 'PASSPHRASE=ph-1234', 'SSH_PASSPHRASE=sp-1234',
+    'SECRETS=sc-1234', 'TOKENS=tk-1234', 'PASSWORDS=pw-1234', 'MONKEY=banana-split', 'KEYBOARD_LAYOUT=us-intl', ''].join('\n');
+  const values = ['sk-4821', 'mk-4821', 'ak-7731', 'zz9', 'q7', 'ph-1234', 'sp-1234', 'sc-1234', 'tk-1234', 'pw-1234'];
+  withA3Store(() => {
+    const r = masked('node print-it.js', { response: said(`${values.join(' ')} banana-split us-intl\n`) });
+    assert.strictEqual(answer(r).updatedToolOutput.stdout, `${values.map((v) => SET(v)).join(' ')} banana-split us-intl\n`);
+  }, store);
+});
+test('A3 round 3: a value under 4 characters is masked only under a strong key word (KEY_PREFIX=app shows, SMTP_PWD=x9 is masked)', () => {
+  const store = 'KEY_PREFIX=app\nCODE_DIR=src\nSESSION_TIMEOUT=30\nSMTP_PWD=x9\nOTP=123\nADMIN_CODE=4821\n';
+  withA3Store((fx) => {
+    const r = masked('node print-it.js', { response: said('app src 30 x9 123 4821\n') });
+    assert.strictEqual(answer(r).updatedToolOutput.stdout, `app src 30 ${SET('x9')} ${SET('123')} ${SET('4821')}\n`);
+    const started = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'SessionStart', source: 'startup', cwd: fx.project, session_id: 'a3-short' }), encoding: 'utf8',
+      env: { ...process.env, CLAUDE_PROJECT_DIR: fx.project, HOME: fx.home, USERPROFILE: fx.home } });
+    const shown = JSON.parse(started.stdout).hookSpecificOutput.additionalContext.match(/Shown in output[^:]*: ([^.]*?) - /);
+    assert.deepStrictEqual(shown[1].split(', ').sort(), ['CODE_DIR', 'KEY_PREFIX', 'SESSION_TIMEOUT']);
+  }, store);
+});
+test('A3 round 3: a short password inside a store connection string with spaces is still masked', () => {
+  withA3Store(() => {
+    const r = masked('node print-it.js', { response: said('login ab12x ok\n') });
+    assert.strictEqual(answer(r).updatedToolOutput.stdout, `login ${SET('ab12x')} ok\n`);
+  }, 'CONN=Server=db host;User Id=app;Password=ab12x;Trust=yes\n');
+});
 test('A3: a long word counts at the end of a key (GITHUBTOKEN), a short one only as a part of it (MYPIN)', () => {
   withA3Store(() => {
     const r = masked('node print-it.js', { response: said('tok ab12; pin 7731\n') });

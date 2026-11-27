@@ -760,16 +760,24 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     `projectRootOf`; the root is always `.alfred` - an absolute `ALFRED_CODE_DATA_PATH`, a harness's scratch, is the one value kept). Its kind is `sensitive` by
     NAME: a Read and a Grep of its content block and `--redacted` of it masks every value, whatever its key (`DB_HOST` too).
     THE OUTPUT MASKER shows a plain store value (A3, the user's pick 'Mask secret-shaped values only', 2026-11-27, its key words widened
-    to short secrets such as `ADMIN_CODE=4821` and `DB_LOGIN=hunter2`): a store value is masked only when `credentialKey` holds - a part
-    of its key, split on `_` `-` `.` and case changes, is one of `OUTPUT_CREDENTIAL_WORDS` (TOKEN, SECRET, KEY, APIKEY, PASSWORD, PASSWD,
-    PASS, PWD, PIN, OTP, CODE, LOGIN, DSN, CREDENTIAL, CREDENTIALS, CRED, AUTH, CERT, PRIVATE, SIGNING, SALT, HASH, COOKIE, SESSION; a word of
-    5 letters or more counts at the key's end too, `GITHUBTOKEN`, and KEY is no part of `MONKEY`) - and the value is 2 characters or more (`PIN=7` shows: a 1-character mask would hit every standalone `7` in the output; `SMTP_PWD=x9`, `OTP=123` and `ADMIN_CODE=4821` are masked) - or the value
-    has a credential shape (`credentialLike`, a PEM key, an embedded password). `ORG_SLUG=acme-app` and `KEYBOARD_LAYOUT=us` print as they are.
-    The line-shape redactor skips a value of 1-3 characters and a type word (`typeWord`: `originKey: string,`, `ApiKey;`), and a store pair
+    to short secrets such as `ADMIN_CODE=4821` and `DB_LOGIN=hunter2`): a store value is masked only when `keyHidesValue` or a value shape
+    holds. KEY: a part of the key, split on `_` `-` `.` and case changes, is one of `OUTPUT_CREDENTIAL_WORDS` (TOKEN, SECRET, KEY, APIKEY,
+    PASSWORD, PASSWD, PASS, PWD, PIN, OTP, CODE, LOGIN, DSN, CREDENTIAL, CREDENTIALS, CRED, AUTH, CERT, PRIVATE, SIGNING, SALT, HASH, COOKIE,
+    SESSION, PASSPHRASE; the controller's ruling added PASSPHRASE), a trailing S allowed (`TOKENS`, `PASSWORDS`). A word of 5 letters or more
+    also starts or ends a part (`SECRETKEY`, `GITHUBTOKEN`), and KEY, PASS and PWD end a joined part (`MASTERKEY`, `DBPASS`, `ADMINPWD`) unless
+    it is an ordinary word (`NOT_CREDENTIAL_WORDS`: `MONKEY`, `BYPASS`, ...); `KEYBOARD_LAYOUT` shows. LENGTH: a value of 4 characters or
+    more is masked under any of those words; a value of 2 or 3 only under a strong one (`STRONG_CREDENTIAL_WORDS`: PASSWORD, PASSWD, PASS, PWD,
+    PIN, OTP, SECRET, TOKEN, PASSPHRASE), since a weak word would mask every `src` or `30` in the output (`KEY_PREFIX=app`, `CODE_DIR=src`,
+    `SESSION_TIMEOUT=30` show; `SMTP_PWD=x9`, `OTP=123` and `ADMIN_CODE=4821` are masked); a 1-character value never (`PIN=7` shows: it would
+    hit every standalone `7`). SHAPE: `credentialLike`, a PEM key, or a password embedded in the value (a connection string; an embedded password
+    from the store skips the 6-character floor like a keyed one). `ORG_SLUG=acme-app` and `KEYBOARD_LAYOUT=us` print as they are.
+    The line-shape redactor skips a value of 1-3 characters and a type word (`typeWord`: `originKey: string,`; a capitalised name followed by `,`
+    `;` `)` or `>` only with no digit and under 16 characters, so `ApiKey;` shows and `Summer2024x;` is masked), and a store pair
     in a walk or a diff is judged by the same key and shape test (`storeValueMasked`); a line of the store that is no pair is still
     masked whole. The SessionStart note adds `Shown in output, not masked ...: <keys>` - names only - so the user can rename a key. The
     input guard's `SECRET_KEY_SOURCE` (lint holds it equal to `meta/environment.json`) is untouched: `OUTPUT_CREDENTIAL_WORDS` is the
-    masker's alone. Accepted: a short secret under a key that names no credential prints (the spec's risk row). The line pass
+    masker's alone. Accepted: a short secret under a key that names no credential prints (the spec's risk row). Known and pre-existing:
+    `${POSTGRES_PASSWORD:-acme}` (a placeholder with a default) prints unmasked. The line pass
     reads a line out of the store - a walk's `<path>/.secrets:N:` (either name)
     prefix, `git grep`'s, a diff header naming it - by the same rule (audit
     2026-10-20 H3: a walk through the store and a diff of a tracked store printed every value raw).
