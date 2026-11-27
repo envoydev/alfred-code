@@ -41,6 +41,7 @@ const skillHeadings = require('./skill-headings.js');
 const ruleOpenings = require('./rule-openings.js');
 const nativeRules = require('./native-rules.js');
 const { CANARY_RULE } = require('./native-rules-constants.js');
+const { nvmPathWarning } = require('./node-path.js');
 const { createReport } = require('./report.js');
 const { NEW_SESSION_LINE, TOP_REL } = require('./report-constants.js');
 const { shippedText } = require('./retired-rules.js');
@@ -867,6 +868,12 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         settings.dropEmptySharedSettings({ file: path.join(claudeDir, 'settings.json'), tracked: (at) => gitTracks(ctx, at), log, note });
 
         summarise(ctx, failures);
+        // A1 (R10): the same line the SessionStart hook says, from the same pure function - a node that one `nvm uninstall` removes.
+        if (args.action === 'install' || args.action === 'update')
+        {
+            const nvmLine = nvmPathWarning({ execPath: process.execPath, pathEnv: env.PATH, home, platform: process.platform, exists: fs.existsSync });
+            if (nvmLine) log(`  ${nvmLine}`);
+        }
         if (args.action === 'install' || args.action === 'update') for (const line of [ctx.report.line(TOP_REL), ...(ctx.report.changedSessionItems() ? [NEW_SESSION_LINE] : [])]) log(line);
         return failures ? 0 : 0;   // fail-soft by design: a step that failed is REPORTED, never fatal
     }

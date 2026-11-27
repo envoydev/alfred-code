@@ -289,6 +289,16 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   through), so a broken install blocks every Read, Edit, Write and Grep as well; the secret guard's own
   filesystem-server row carries it too (hooks audit 2026-11-19 B6-S3), and every other hook keeps the default
   `continue`.
+  THE REMAINING PRICE of `node` as the one hook launcher (audit R10, the user's pick 'Keep node, warn early', 2026-11-27: a
+  `sh` launcher would need Git Bash on Windows, and a plugin hook line is the same on every OS): a node that rests on one
+  `~/.nvm/versions/node/<version>/` folder is gone with `nvm uninstall` of that version, and every hook then fails to start, so
+  the dispatchers' `onFailure: "block"` refuses every shell and file call. The core's `library-stamp.js` says so once, on a
+  `startup` SessionStart only (not a resume, compact or clear), and init and update print the same line, both from
+  `scripts/install/node-path.js` (`nvmPathWarning`, pure, read from the plugin's own tree and failing open to no line where an
+  older layout lacks it). It reads `process.execPath` and the PATH at that start: no `~/.nvm/current/bin/node` that exists on
+  the PATH (a dangling link does not count) is the whole test. What it does not cover: Windows, fnm, Volta, asdf and a node
+  moved by hand, and a user who sees the line and keeps the versioned node - the hooks then fail as before, and the fix stays the
+  user's shell profile (`export NVM_SYMLINK_CURRENT=true`, `nvm alias default <version>`, `nvm use default`).
   A GUARD ASKS BEFORE IT BLOCKS (guards ask instead of block, 2026-11-25): every PreToolUse block goes through
   `askOrBlock(input, reason, { env, guard })` in `hook-prelude.js`, the one place a block decides - with `canAsk(input, env)`,
   `blockVerdict` and `blockExitCode` beside it - and each guard's own `blockCall` is one call to it. Where a person can answer, the hook

@@ -20,6 +20,9 @@ const path = require('node:path');
 // reads below already say nothing in a repo never set up.
 const PRELUDE = path.join(__dirname, '..', '..', 'stack', 'hooks', 'hook-prelude.js');
 
+const NODE_PATH_MODULE = path.join(__dirname, '..', '..', 'scripts', 'install', 'node-path.js');
+const SESSION_START_SOURCE = Object.freeze({ startup: 'startup' });
+
 function main()
 {
     let off = false;
@@ -30,8 +33,33 @@ function main()
     let cursorOff = false;
     try { cursorOff = require(PRELUDE).cursorStandDown(input, __filename); } catch { /* no prelude: run */ }
     if (cursorOff) return;
+    const lines = [];
+    const nvmLine = nvmWarning(input);
+    if (nvmLine) lines.push(nvmLine);
     const root = process.env.CLAUDE_PLUGIN_ROOT;
-    if (!root) return;
+    const libraryLine = root ? libraryWarning(input, root) : '';
+    if (libraryLine) lines.push(libraryLine);
+    if (!lines.length) return;
+    const line = lines.join(' ');
+    process.stdout.write(JSON.stringify({ systemMessage: line, hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: line } }));
+}
+
+// A1 (R10): node from one nvm version folder is lost with that version. Said once per session, on a startup only.
+// The module is read from the plugin's own tree: a layout without it gives no line.
+function nvmWarning(input)
+{
+    if (input.source !== SESSION_START_SOURCE.startup) return '';
+    try
+    {
+        const { nvmPathWarning } = require(NODE_PATH_MODULE);
+        return nvmPathWarning({ execPath: process.execPath, pathEnv: process.env.PATH, home: os.homedir(), platform: process.platform, exists: fs.existsSync }) || '';
+    }
+    catch { return ''; }
+}
+
+// The stale-copy and shadowed-skill line, or '' for silence.
+function libraryWarning(input, root)
+{
     const project = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
     let readLibrary, validItemName, stampFile, readSeatsRoute;
     try
@@ -39,17 +67,17 @@ function main()
         ({ readLibrary, validItemName, readSeatsRoute } = require(path.join(root, 'scripts', 'install', 'stamp.js')));
         ({ stampFile } = require(path.join(root, 'scripts', 'install', 'brand.js')));
     }
-    catch { return; }
+    catch { return ''; }
     const account = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
     const projectStampFile = stampFile(path.join(project, '.claude')).read;
     const lib = readLibrary(projectStampFile);
-    if (!lib || !lib.version) return;
+    if (!lib || !lib.version) return '';
     let stack = '';
-    try { stack = JSON.parse(fs.readFileSync(path.join(root, 'setup-plugin', '.claude-plugin', 'plugin.json'), 'utf8')).version || ''; } catch { return; }
+    try { stack = JSON.parse(fs.readFileSync(path.join(root, 'setup-plugin', '.claude-plugin', 'plugin.json'), 'utf8')).version || ''; } catch { return ''; }
     // Both are echoed into the session, and the stamp is a project file a clone can fill with any
     // text: only a plain release number is ever read as one.
     const release = /^\d+\.\d+\.\d+$/;
-    if (!release.test(String(lib.version)) || !release.test(String(stack))) return;
+    if (!release.test(String(lib.version)) || !release.test(String(stack))) return '';
     const n = (v) => String(v).split('.').map((x) => parseInt(x, 10) || 0);
     const newer = (x, y) => (x[0] !== y[0] ? x[0] > y[0] : x[1] !== y[1] ? x[1] > y[1] : (x[2] || 0) > (y[2] || 0));
     const [a, b] = [n(stack), n(lib.version)];
@@ -70,13 +98,12 @@ function main()
         try { isDir = fs.statSync(path.join(acctSkillsDir, name)).isDirectory(); } catch { isDir = false; }
         return isDir;
     });
-    if (!older && !shadowed.length) return;
+    if (!older && !shadowed.length) return '';
     const parts = [];
     if (moved) parts.push(`this project's skills and seats are from ${lib.version}, and 2.1.0 moved every skill into the project, and every seat is now a library copy linked per pick, the core carries none (the stack is ${stack}) - until /alfred-code:update runs here the house skills the rules name are not installed and no seat is linked: run /alfred-code:update now`);
     else if (older) parts.push(`this project's library copies are from ${lib.version}, the stack is ${stack} - run /alfred-code:update to take the newer skills and agents`);
     if (shadowed.length) parts.push(`an account skill overrides this project's own copy of the same name (Claude Code runs personal over project): ${shadowed.join(', ')} - remove the account copy once every project has updated`);
-    const line = `alfred-code: ${parts.join('; ')}.`;
-    process.stdout.write(JSON.stringify({ systemMessage: line, hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: line } }));
+    return `alfred-code: ${parts.join('; ')}.`;
 }
 
 try { main(); } catch { /* fail open: a session never breaks on this line */ }
