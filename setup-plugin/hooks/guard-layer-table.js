@@ -167,6 +167,8 @@ const TABLE_RE = /stack-select\.js\b(?:[^\n]|\\\r?\n)*?--table\s+["']?([a-z]+)/;
 // proof is the state word its rendered table is required to print verbatim.
 const AUDIT_RE = /stack-select\.js\b(?:[^\n]|\\\r?\n)*?--(redundant|missing|evidence-gaps|judgment)\b/;
 const AUDIT_PROOF = /\b(REDUNDANT|MISSING|DISABLED|JUDGMENT-DROP|JUDGMENT-ADD)\b/;
+// B2 (R2): an audit that printed nothing - or only the harness's placeholder - has no table to paste.
+const NO_OUTPUT = /^(?:\(Bash completed with no output\))?$/;
 // Reports proven by their LAST line in the assistant text. `skip` is the flag that makes the same
 // script print no table; `empty` is the all-clear line, which init's install phase and validate pass over silently.
 const NEVER = /(?!)/;
@@ -444,9 +446,9 @@ function tableSpec(cmd, text) {
   if (plan) return { name: 'workspace plan table', proof: WS_PLAN_PROOF, to: WS_PLAN_PROOF, from: WS_PLAN_HEADER };
   if (m) {
     const total = new RegExp(`total:\\s*\\d+\\s+${m[1]}\\b`);
-    return { name: `${m[1]} table`, proof: total, to: total };
+    return { name: `${m[1]} table`, proof: total, to: total, layerAsks: true };
   }
-  if (am) return { name: `${am[1]} audit`, proof: AUDIT_PROOF };
+  if (am) return { name: `${am[1]} audit`, proof: NO_OUTPUT.test(text.trim()) ? null : AUDIT_PROOF, layerAsks: true };
   if (report) {
     const last = text.split('\n').map((l) => l.trim()).filter(Boolean).pop();
     // no result read back (a truncated tail) - nothing to prove against, so nothing to void; and an
@@ -485,6 +487,7 @@ function unpasted(rows) {
   let stop = false;
   let output = '';    // the table's own output, printed for the user by a void
   let tableId = '';
+  let foreignAsk = false;
   for (let i = rows.length - 1; i >= 0 && !stop; i--) {
     let o;
     try { o = JSON.parse(rows[i]); } catch { continue; }
@@ -507,6 +510,10 @@ function unpasted(rows) {
         stop = true;   // an answered ask: a new decision point
         break;
       }
+      // B2: an earlier ask about something else (it errored or timed out, or the walk would have stopped above) ends a layer
+      // or audit table's judgment - that table belonged to a decision this ask is not part of.
+      if (o.type === 'assistant' && b.type === 'tool_use' && b.name === 'AskUserQuestion' && b.id !== ownId && !table
+          && b.id in results && !results[b.id].includes(MARKER) && !layersAsked(b.input).length) foreignAsk = true;
       if (o.type === 'assistant' && b.type === 'tool_use' && !table && !errored.has(b.id)) {
         table = tableSpec(String((b.input && b.input.command) || ''), results[b.id] || '');
         if (table) { output = tableAlone(results[b.id] || '', table); tableId = b.id; }
@@ -517,7 +524,10 @@ function unpasted(rows) {
   if (table && wasPrinted(payload.session_id, tableId)) return { printed: tableId };
   const ours = table ? [...denialTexts].filter(([id, t]) => askIds.has(id) && t.includes(`the ${table.name} ran`)).map(([, t]) => t) : [];
   // A void that printed this table put it on screen, so the re-ask is answered with it in view (F27).
-  if (!table || !table.proof || ours.length >= MAX_DENIALS || ours.some((t) => t.includes(PRINTED)) || table.proof.test(texts)) return null;
+  // B2 (R3): the ask's own question text is on screen too, so an ask that names its rows ('Rules: 2 MISSING (...)') shows them.
+  const questions = ((payload.tool_input && payload.tool_input.questions) || []).map((q) => String((q && q.question) || '')).join('\n');
+  if (!table || !table.proof || (foreignAsk && table.layerAsks) || ours.length >= MAX_DENIALS || ours.some((t) => t.includes(PRINTED))
+      || table.proof.test(`${texts}\n${questions}`)) return null;
   // F27: no text block at all since the table - the measured fact, so the model cannot read it as a paste it made. Six
   // re-asks after such a void held thinking only, whatever the line said, so the gate prints the table itself, in the
   // block reason the user sees in full; the line then asks for the same ask again and nothing else.

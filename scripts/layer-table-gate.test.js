@@ -24,6 +24,9 @@ const result = (id, content, is_error = false) => ({ type: 'user', message: { ro
 const table = (layer) => call('t1', 'Bash', { command: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --table ${layer} --recs r.json` });
 const ask = { questions: [{ question: 'Keep as shown?', header: 'Agents', multiSelect: false, options: [{ label: 'Recommended', description: 'x' }, { label: 'All', description: 'y' }] }] };
 
+// The same ask worded as the walk's layer template: an earlier one of these is the table's own decision (B2).
+const layerWorded = { questions: [{ ...ask.questions[0], question: 'Agents: keep the marked rows?' }] };
+
 function run(rows, input = ask, env = {}) {
   const p = path.join(TMP, `${Math.random().toString(36).slice(2)}.jsonl`);
   fs.writeFileSync(p, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
@@ -107,14 +110,14 @@ test('a table run with no output read back keeps the paste instruction and print
 
 // E-batch ws-1: an ask that errored or timed out decides nothing, so the walk-back goes on past it to the table.
 test('ws-1: an errored ask does not end the walk-back', () => {
-  const r = runPost([...UNPASTED(), call('e1', 'AskUserQuestion', ask), result('e1', 'No response after 300s - the user may be away', true)]);
+  const r = runPost([...UNPASTED(), call('e1', 'AskUserQuestion', layerWorded), result('e1', 'No response after 300s - the user may be away', true)]);
   assert.ok(voided(r), r.stdout);
   assert.match(r.out.reason, /agents table ran but its output is not in your message/);
 });
 // E-batch M5: the idle timeout closes an ask with no error flag - its text is the only sign (ruling S3) - so the paste
 // check walks past it too, as the next-step check already did.
 test('M5: an ask the idle timeout closed does not end the walk-back', () => {
-  const r = runPost([...UNPASTED(), call('e1', 'AskUserQuestion', ask), result('e1', 'No response after 300s - the user may be away from keyboard. Continue.', false)]);
+  const r = runPost([...UNPASTED(), call('e1', 'AskUserQuestion', layerWorded), result('e1', 'No response after 300s - the user may be away from keyboard. Continue.', false)]);
   assert.ok(voided(r), r.stdout);
   assert.match(r.out.reason, /agents table ran but its output is not in your message/);
 });
@@ -201,14 +204,14 @@ test('a Yes to the hold\'s ask is not voided at PostToolUse', () => {
 });
 
 test('a No to the hold\'s ask is not held forever: the re-send passes', () => {
-  const own = [say('[step 6/12 - agents] the agents step.'), call('a9', 'AskUserQuestion', ask)];
+  const own = [say('[step 6/12 - agents] the agents step.'), call('a9', 'AskUserQuestion', layerWorded)];
   const session = freshSession();
   try {
-    assert.strictEqual(runPre([...UNPASTED(), ...own], 'a9', ask, {}, session).out.hookSpecificOutput.permissionDecision, 'ask');
+    assert.strictEqual(runPre([...UNPASTED(), ...own], 'a9', layerWorded, {}, session).out.hookSpecificOutput.permissionDecision, 'ask');
     const declined = result('a9', "The user doesn't want to proceed with this tool use. The tool use was rejected.", true);
-    const resent = runPre([...UNPASTED(), ...own, declined, call('a10', 'AskUserQuestion', ask)], 'a10', ask, {}, session);
+    const resent = runPre([...UNPASTED(), ...own, declined, call('a10', 'AskUserQuestion', layerWorded)], 'a10', layerWorded, {}, session);
     assert.strictEqual(resent.out, null, 'the re-send after a No reaches the user');
-    assert.strictEqual(runPre([...UNPASTED(), ...own, declined, call('a10', 'AskUserQuestion', ask)], 'a10').out.hookSpecificOutput.permissionDecision, 'ask', 'control: another session is held');
+    assert.strictEqual(runPre([...UNPASTED(), ...own, declined, call('a10', 'AskUserQuestion', layerWorded)], 'a10').out.hookSpecificOutput.permissionDecision, 'ask', 'control: another session is held');
   } finally { fs.rmSync(markerOf(session, 't1'), { force: true }); }
 });
 
@@ -403,7 +406,7 @@ const audit = (flag) => call('t1', 'Bash', { command: `node "$TMP/repo/scripts/s
 
 test('validate audit flags gate their own ask too - denied with no state word pasted', () => {
   for (const flag of ['redundant', 'missing', 'evidence-gaps', 'judgment']) {
-    const r = runPost([audit(flag), result('t1', '')]);
+    const r = runPost([audit(flag), result('t1', `${flag}: agent x - owned by wpf, not detected`)]);
     assert.ok(voided(r), `--${flag} should void`);
     assert.match(r.out.reason, /audit ran/);
   }
@@ -415,6 +418,46 @@ test('validate audit flags pass once the layer table state word is pasted', () =
 
 test('the judgment audit passes on its own JUDGMENT-DROP/ADD words, not REDUNDANT/MISSING', () => {
   assert.strictEqual(runPost([audit('judgment'), result('t1', ''), say('```\n 1 | skill x | JUDGMENT-DROP | reason\n```')]).stdout, '');
+});
+
+// B2 (session audit R2, R3): an audit that printed nothing has no table to paste, an ask that names its own rows
+// shows them, and the paste check ends at an earlier ask about something else.
+const oneAsk = (question) => ({ questions: [{ question, header: 'Apply', multiSelect: false, options: [{ label: 'Yes (Recommended)', description: 'x' }, { label: 'No', description: 'y' }] }] });
+const PLACEHOLDER = '(Bash completed with no output)';
+const appliedAnswer = (q) => ({ questions: oneAsk(q).questions, answers: { [q]: 'Yes (Recommended)' }, annotations: {} });
+
+test('B2 R2: an empty --redundant output needs no table, so the AGENTS.md apply ask is not voided', () => {
+  const q = 'Apply the AGENTS.md changes?';
+  for (const empty of ['', PLACEHOLDER, `  ${PLACEHOLDER}\n`]) {
+    const r = runPost([typed('/alfred-code:validate'), audit('redundant'), result('t1', empty)], appliedAnswer(q), {}, oneAsk(q));
+    assert.strictEqual(r.stdout, '', `empty output ${JSON.stringify(empty)}`);
+  }
+  assert.strictEqual(run([typed('/alfred-code:validate'), audit('redundant'), result('t1', PLACEHOLDER)], oneAsk(q)).status, 0);
+});
+
+test('B2 R2: an audit that printed rows is still held to its state word', () => {
+  const q = 'Apply the AGENTS.md changes?';
+  const r = runPost([typed('/alfred-code:validate'), audit('redundant'), result('t1', 'redundant: agent wpf-implementer - owned by wpf, not detected')], appliedAnswer(q), {}, oneAsk(q));
+  assert.ok(voided(r), r.stdout);
+  assert.match(r.out.reason, /redundant audit ran/);
+});
+
+test('B2 R3: an ask that names the rows in its question counts as pasted', () => {
+  const q = 'Rules: 2 MISSING, 0 REDUNDANT - apply the reconcile?';
+  const rows = [typed('/alfred-code:validate'), audit('missing'), result('t1', 'missing: rule alfred-x - needed by baseline')];
+  assert.strictEqual(runPost(rows, appliedAnswer(q), {}, oneAsk(q)).stdout, '');
+  assert.strictEqual(run(rows, oneAsk(q)).status, 0);
+  const other = 'Rules: apply the reconcile?';
+  assert.ok(voided(runPost(rows, appliedAnswer(other), {}, oneAsk(other))), 'a question with no state word is still unpasted');
+});
+
+test('B2: an earlier ask that is no layer ask ends the walk back, so the table before it is not judged again', () => {
+  const foreign = oneAsk('Update AGENTS.md?');
+  const rows = [...UNPASTED(), call('f1', 'AskUserQuestion', foreign), result('f1', 'No response after 300s - the user may be away', true)];
+  assert.strictEqual(runPost(rows).stdout, '');
+  assert.strictEqual(run(rows).status, 0);
+  const own = [...UNPASTED(), call('e1', 'AskUserQuestion', layerAsk('Agents: keep the marked rows?')), result('e1', 'No response after 300s - the user may be away', true)];
+  assert.ok(voided(runPost(own)), 'an errored layer ask is the same decision, so the walk goes on past it');
 });
 
 test('an ask with no table call in the transcript is untouched', () => {
