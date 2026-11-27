@@ -62,7 +62,7 @@ let withoutShortLived = (text) => text; // hook-prelude.js withoutShortLived - a
 // hook-prelude.js unreadable - text the English lists cannot judge (30% or more of its letters outside ASCII)
 let unreadable = (text) => { const l = String(text || '').match(/\p{L}/gu) || []; return l.length > 0 && l.filter((c) => c > '\u007f').length / l.length >= 0.3; };
 // hook-prelude.js harnessPrompt - a row the harness wrote (a task notice, a command's output, a seat's hand-back)
-let harnessPrompt = (text) => /^\s*(?:<(?:task-notification|local-command-stdout|local-command-caveat|agent-message)\b|Another Claude session sent a message:)/.test(String(text || ''));
+let harnessPrompt = (text) => /^\s*(?:<(?:task-notification|local-command-stdout|local-command-caveat|agent-message)\b|Another Claude session sent a message:|Here is a note offered by a side agent\b)/.test(String(text || ''));
 if (require.main === module) {
   try {
     const prelude = require('./hook-prelude.js');

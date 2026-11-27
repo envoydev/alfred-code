@@ -988,11 +988,17 @@ function transcriptScan() {
         try { row = JSON.parse(line); } catch { return; }
         if (!row || row.type !== 'user' || row.isMeta || row.isCompactSummary) return;   // a compaction summary quotes old words: never a typed turn
         const text = textOf(row.message && row.message.content);
-        // The row's typed text: a slash command's own words (its `<command-args>`), else the text itself unless the harness wrote
-        // it - the gate's own openers joined with the prelude's `harnessPrompt` (a side agent's note, a peer message). Both lists.
-        const commandArgs = /<command-name>/.test(text) ? ((/<command-args>([\s\S]*?)<\/command-args>/.exec(text) || [])[1] || '').trim() : null;
-        const said = commandArgs !== null ? commandArgs : (!/^\s*<(?:command-name|local-command|bash-|task-notification)/.test(text) && !harnessRow(text) ? text : '');
-        if (said) { _scan.typed.push(normQuote(said)); _scan.typedRaw.push({ text: said, ts: tsOf(row) }); }
+        // A slash command the user typed opens with its tags: its own words (`<command-args>`) are typed text, but the command is
+        // no typed TURN - a `/model opus` after 'commit it' leaves 'commit it' the latest - so the args join `_scan.typed` alone.
+        // Any other row is a typed turn unless the harness wrote it: the gate's own openers joined with the prelude's
+        // `harnessPrompt` (a side agent's note, a peer message), and only a row that OPENS with the tags is a command.
+        if (/^\s*<(?:command-message|command-name)>/.test(text) && !harnessRow(text)) {
+          const args = ((/<command-args>([\s\S]*?)<\/command-args>/.exec(text) || [])[1] || '').trim();
+          if (args) _scan.typed.push(normQuote(args));
+        } else if (!/^\s*<(?:command-name|local-command|bash-|task-notification)/.test(text) && !harnessRow(text) && text) {
+          _scan.typed.push(normQuote(text));
+          _scan.typedRaw.push({ text, ts: tsOf(row) });
+        }
         // a review the user TYPED as a slash command is a review run too, once its result line followed it
         const typedSkill = /<command-name>\/?([\w:-]+)<\/command-name>/.exec(text);
         if (typedSkill && REVIEW_SKILL.test(typedSkill[1])) {
