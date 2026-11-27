@@ -3160,7 +3160,8 @@ function waitsForUser(question)
 // has the run or the user as subject ('Should the watcher stay paused?' is about the watcher).
 const USER_STATE_TAIL = String.raw`(?:\s+(?:yet|(?:right\s+)?now))?\s*(?:[?!.]|$)`;
 const USER_STATE_RE = new RegExp(String.raw`\bwhere (?:are|were) you${USER_STATE_TAIL}|\bare you (?:back|there|away|around)${USER_STATE_TAIL}`
-  + String.raw`|\bshould I wait for you\b|\b(?:should|shall|must) (?:I|we) (?:stay|remain|keep) paused\b|^\s*stay paused\s*[?!.]*\s*$`, 'i');
+  + String.raw`|\bshould I wait for you\b|\b(?:should|shall|must) (?:I|we) (?:(?:stay|remain) paused|keep (?:it|this|the run|us|me) paused)\b`
+  + String.raw`|^\s*stay paused\s*[?!.]*\s*$|^\s*stay paused\b[^?!.]*\buntil you\b`, 'i');
 const USER_STEP_VERBS = new Set(['type', 'run', 'do', 'push', 'commit', 'paste', 'send', 'click', 'open', 'start', 'restart', 'decide',
   'choose', 'pick', 'approve', 'fix', 'handle', 'enter', 'write', 'copy', 'log', 'sign', 'say', 'tell', 'merge', 'deploy', 'install',
   'edit', 'review', 'test', 'check']);
