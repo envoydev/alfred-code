@@ -54,7 +54,8 @@ test('an MCP merge needs the publish receipt', () => {
   const { dir } = pushRepo();
   const r = run(dir, mcp('accept_merge_request', { merge_request_iid: 4, sha: headOf(dir) }));
   assert.strictEqual(r.status, 2, r.stderr);
-  assert.match(r.stderr, /accept_merge_request/);
+  assert.match(r.stderr, /^Blocked: merge without the publish gate receipt/m, 'the denial names the verb (B7)');
+  assert.doesNotMatch(r.stderr, /accept_merge_request|merge_request_iid/, 'and no slice of the call');
   assert.match(r.stderr, /PUSH-GATE/);
 });
 
@@ -218,7 +219,7 @@ test('4b: a merge chained after a push is refused (R015: it runs after the push)
   const r = run(dir, bash('git push origin main && gh pr merge 7 --squash'));
   assert.strictEqual(r.status, 2, r.stderr);
   assert.match(r.stderr, /so it judges only a merge that runs first/);
-  assert.match(r.stderr, /gh pr merge 7/);
+  assert.match(r.stderr, /^Blocked: merge - /m, 'the denial names the verb (B7)');
   const alone = run(dir, bash('gh pr merge 7 --squash'));
   assert.strictEqual(alone.status, 2, alone.stderr);
   assert.match(alone.stderr, /never saw/);

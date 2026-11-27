@@ -235,7 +235,11 @@ function unopenedAt(gitNamed = false) {
     if (c === '$' && command[i + 1] === '(' && command[i + 2] !== '(') open = i + 2;
     else if (c === '`') { tick = !tick; if (tick) open = i + 1; }
     if (open < 0 || opened(open)) continue;
-    if (!gitNamed || /\bgit\b/.test(command.slice(open, closeOf(open, c === '`')))) return i;
+    if (!gitNamed) return i;
+    const end = closeOf(open, c === '`');
+    const closed = c === '`' || command[end - 1] === ')';
+    const body = command.slice(open, closed && c !== '`' ? end - 1 : end);
+    if (/\bgit\b/.test(body) && !(closed && gitReadSubstitution(body))) return i;
   }
   return -1;
 }
@@ -247,6 +251,16 @@ const xargsReplaces = (c) => {
   const before = k.words.filter((w) => w.s < c.at).map((w) => command.slice(w.s, w.e));
   const from = before.lastIndexOf('xargs');
   return before.slice(from + 1).some((w) => /^-(?!-)\S*[Ii]/.test(w) || /^--re/.test(w));
+};
+// B7 (session audit 2026-11-27): a substitution whose whole body is one git read - `$(git diff --name-only)`, `$(git ls-files)`,
+// `$(git status --porcelain)` - only prints text for the command around it, so it is no hidden publish. A plain test of the
+// body, never a shell reader: it starts with `git` and a read subcommand, and holds no separator, redirect, nesting or
+// `--output`, so `$(git log; git push)` and `$(git diff | xargs git push)` stay gated.
+const GIT_READ_SUBSTITUTION = /^git\s+(?:log|show|rev-parse|describe|diff|status|ls-files|branch\s+--show-current|config\s+--get)(?=\s|$)[^;&|<>`\n()]*$/;
+const GIT_OUTPUT_OPTION = /(?:^|\s)--output(?:[=\s]|$)/;
+const gitReadSubstitution = (text) => {
+  const body = String(text).trim();
+  return GIT_READ_SUBSTITUTION.test(body) && !GIT_OUTPUT_OPTION.test(body);
 };
 // The git subcommands that only read - no ref, config or index write - so a command made only of them may run before a push
 // the gate lets out ungated (audit 2026-10-08: `git status && git push` on a level branch moves nothing): a literal call
@@ -374,6 +388,24 @@ const PUSH_GATE_ON = !(() => { try { return require('./hook-prelude.js').partOff
 // MCP tool (`accept_merge_request`, `repo_pull_request_write {autoComplete: true}`, `push_files`) needs the same receipt.
 // A forge call whose verb the lexicon does not know is an ask - a deny where no prompt can show (dontAsk, bypassPermissions, print mode, an unattended run, ALFRED_CODE_GUARD_ASK=0, Cursor).
 // With the publish half off nothing is gated or asked.
+// The verb a publish block names (B7): a fixed word for the act, picked by what made it a publish.
+const PUBLISH_VERB = Object.freeze({
+  push: 'git push', unreadGit: 'a git call that may push', openRequest: 'open a change request', other: 'publish',
+  merge: 'merge', branch: 'branch write', release: 'release',
+});
+const forgeVerb = (found) => {
+  const concept = found && found.concept;
+  const names = forgeLib ? forgeLib.CONCEPTS : {};
+  if (concept && concept === names.MERGE) return PUBLISH_VERB.merge;
+  if (concept && concept === names.BRANCH) return PUBLISH_VERB.branch;
+  if (concept && concept === names.RELEASE) return PUBLISH_VERB.release;
+  if (concept && concept === names.CREATE) return PUBLISH_VERB.openRequest;
+  return PUBLISH_VERB.other;
+};
+const publishVerb = (match) => {
+  if (match.git) return match.hidden ? PUBLISH_VERB.unreadGit : PUBLISH_VERB.push;
+  return forgeVerb(match.forge);
+};
 let publishMatch = null;
 let askMatch = null;
 let forgeLib = null;
@@ -686,7 +718,7 @@ const STOP_BEFORE = /\b(?:stop|quit|hold off(?: on)?|hold|wait with|wait on)\s+(
 const BARE_NO_AFTER = /^[^\p{L}\p{N}]*(?:no|nope)[^\p{L}\p{N}]*$/iu;
 const NEGATION_AFTER = /^[^\p{L}\p{N}]*(?:[\p{L}'-]+\s+){0,2}?(?:is(?:n'?t| not)|are(?:n'?t| not)|was(?:n'?t| not)|not (?:needed|necessary|required|now|yet|today)|would be a mistake)(?!\p{L})/iu;
 const STATEMENT_AFTER = /^\s+(?:is|was|are|were|has been|looks|seems)\s+(?!(?:fine|ok|okay|good|allowed|approved|welcome|alright|all right|safe)\b)/i;
-const DEFERRAL_CLAUSE = /\b(?:not yet|not now|later|hold off|tomorrow|after (?:i|you|we)\b|once (?:i|you)\b|when i\b)/i;
+const DEFERRAL_CLAUSE = /\b(?:not yet|not now|later|hold off|tomorrow|after (?:i|you|we)\b|once (?:i|you)\b|when i\b|(?:waits?|waiting|awaits?|awaiting)\s+(?:for\s+)?(?:your|my|the user'?s?)\s+(?:word|go|ok|okay|approval|say|answer|green light))/i;
 // A wait on CI defers a push, a publish, a release or a ship, but not a MERGE: 'merge it once CI is green' is the ordinary
 // way to ask for the merge CI gates (2.1.6 re-verify 4 R4-m1).
 const CI_DEFERRAL = /\b(?:after|once|when|until|till|as soon as) (?:the )?(?:ci|checks?|pipeline)\b/i;
@@ -1133,6 +1165,10 @@ function lastCodeReviewMs() {
 // committed and its time is unknown (a staged removal commits no content and is skipped). A file a review's snapshot saw
 // with the content it holds now passes whatever its time says: a stash and pop or a branch round-trip moved the time,
 // not the code (a third side note; the user's ruling 'Snapshot at review' - hook-prelude.js snapshotReview).
+// B15 (session audit 2026-11-27): prose is a closed list of extensions. An edit to prose files only after the review, or after
+// the receipt, leaves the review standing - a README or a changelog holds no code to review. A code or test file still voids it.
+const PROSE_EXTENSIONS = Object.freeze(['.md', '.mdx', '.txt', '.rst', '.adoc']);
+const proseOnly = (files) => files.every((file) => PROSE_EXTENSIONS.includes(path.extname(String(file)).toLowerCase()));
 function editedAfterReview() {
   const set = commitSet();
   let top = set.top;
@@ -1140,6 +1176,7 @@ function editedAfterReview() {
   const reviews = timedCodeReviews();
   const late = [];
   for (const rel of [...set.tracked.keys(), ...set.untracked]) {
+    if (proseOnly([rel])) continue;
     const abs = path.join(top, rel);
     let changed;
     try { changed = fs.statSync(abs).mtimeMs; } catch {
@@ -1398,6 +1435,7 @@ function judgeReceipt(body, opts) {
       try {
         const set = commitSet();
         for (const f of [...set.tracked.keys(), ...set.untracked]) {
+          if (proseOnly([f])) continue;
           let m = 0;
           try { m = fs.statSync(path.resolve(set.top || gitTop || root, f)).mtimeMs; } catch { continue; }
           if (m > opts.receiptMtimeMs + 2000) later.push(f);
@@ -1589,9 +1627,9 @@ function sessionStartMs() {
   } catch { return 0; }
 }
 if (publishMatch) {
-  // The act is echoed into the denial and the ledger row: capped, and a credential in a remote URL masked - the secret
-  // guard runs first on the shell route, but not when it is switched off (audit 2026-10-08).
-  const act = publishMatch.act.replace(/(\/\/)[^@\s/]+@/g, '$1***@').slice(0, 200);
+  // The denial names the VERB that made the act a publish, never a slice of the command (B7, session audit 2026-11-27): a
+  // slice carried a substitution's text and, once, a credential in a remote URL.
+  const act = publishVerb(publishMatch);
   const isGitPush = publishMatch.git;
   // a dry run publishes nothing (the push's own argv), and neither does a push with nothing ahead of its upstream - each
   // only as the command's one act (pushAlone)
@@ -1634,7 +1672,7 @@ if (publishMatch) {
   const leadMoves = !dryRun && ahead;
   const leadPublishes = leadMoves || (isGitPush && !alone);
   const gated = leadPublishes || chainedPublish.length > 0;
-  const actOf = (a) => command.slice(a.at, a.end).trim().replace(/\s+/g, ' ').replace(/(\/\/)[^@\s/]+@/g, '$1***@').slice(0, 200);
+  const actOf = (a) => forgeVerb(a);
   const shown = leadPublishes || !chainedPublish.length ? act : actOf(chainedPublish[0]);
   if (gated && !carriesOwnReceipt('PUSH-GATE', publishMatch.index)) {
     const r = readReceipt('PUSH-GATE', sessionStartMs());

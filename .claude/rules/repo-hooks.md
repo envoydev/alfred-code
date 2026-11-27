@@ -933,7 +933,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     counts), and a file whose mtime is later is named, `review-code` on it asked for (`editedAfterReview`). A file gone
     from the tree whose index still stages a version of its own is late whatever the times say (that version is
     committed; a staged removal commits no content and is skipped). A review with no time on record judges nothing;
-    `carried:` skips it. A second side note and the user's ruling 'After the last edit', 2026-10-22: one review early in a
+    `carried:` skips it. A file with a PROSE extension (`PROSE_EXTENSIONS`: `.md`, `.mdx`, `.txt`, `.rst`, `.adoc`) is no file of the code: an edit to such files only, after the review or after the receipt was written, keeps both (`proseOnly`, B15, session audit 2026-11-27), while any other file still voids them. A block reason of the publish half names the VERB that made the act a publish (`git push`, `merge`, `release`, `open a change request`, `a git call that may push` - `PUBLISH_VERB`), never a slice of the command (B7); a `$(...)` whose whole body is one git read (`gitReadSubstitution`: `git` and `log`, `show`, `rev-parse`, `describe`, `diff`, `status`, `ls-files`, `branch --show-current` or `config --get`, with no separator, redirect, nesting or `--output`) is no hidden publish, and one that pushes still is. A second side note and the user's ruling 'After the last edit', 2026-10-22: one review early in a
     long session covered every later commit. A quality loop passes because its verifier seats return after its fixes.
     A file's time moves when its code does not too, so a review of the code that STARTS - the model's review skill or a
     verifier / reviewer seat (`guard-fresh-session-start.js` on PreToolUse `Skill` / `Agent`, before its early exits) or
@@ -1072,7 +1072,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     re-verify 4 R4-M2). Consent is read per clause
     and per gate (re-verify 2 R2-M3): a commit verb consents to the COMMIT-GATE and a publish verb (push, merge, release,
     open the PR) to the PUSH-GATE; a negation before or after the verb ('don't push', 'no need to commit', 'commit is
-    not needed'), a stop ('hold off on the push'), a deferral (a wait on CI defers a push, a release or a ship, never a
+    not needed'), a stop ('hold off on the push'), a hold ('waits for your word', B20 - a row pasted into the prompt counts as the user's word like typed text, which already held), a deferral (a wait on CI defers a push, a release or a ship, never a
     merge: 'merge it once CI is green' consents), the user keeping the act ('I'll push it myself') or a
     statement about the verb refuses it, and only its own gate; 'commit' leading a noun ('commit messages', 'at commit
     description') is the noun and neither consents nor refuses (E-batch U26b). Opening a pull request ('open the PR') is

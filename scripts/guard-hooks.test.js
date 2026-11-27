@@ -1157,7 +1157,7 @@ test('guard-ungated-commit: a first push denial opens on the gate, not on git\'s
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
   assert.equal(r.status, 'ask', 'still gated');
   assert.doesNotMatch(r.stderr, /^fatal:/m, 'no git noise in the reason');
-  assert.match(r.stderr, /If the user declined: Blocked: git push origin HEAD without the publish gate receipt/, 'the reason leads');
+  assert.match(r.stderr, /If the user declined: Blocked: git push without the publish gate receipt/, 'the reason leads, naming the verb');
 });
 
 // A clone with a real upstream, so `git log @{u}..HEAD` answers - the publish gate's

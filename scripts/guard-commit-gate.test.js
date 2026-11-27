@@ -38,15 +38,15 @@ const gateIn = (dir, command, env = {}) => gateFull(dir, command, env).status;
 function forty() { return Array.from({ length: 40 }, (_, i) => `line ${i}`).join('\n'); }
 
 // A dirty repo, no remote - for the COMMIT-GATE cases (mirrors guard-hooks.test.js's scratchRepo).
-function scratchRepo() {
+function scratchRepo(ext = 'txt') {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-repo-'));
   const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
   git('init', '-q');
   git('config', 'user.email', 't@example.com');
   git('config', 'user.name', 'test');
-  fs.writeFileSync(path.join(dir, 'a.txt'), 'seed\n');
+  fs.writeFileSync(path.join(dir, `a.${ext}`), 'seed\n');
   git('add', '-A'); git('commit', '-qm', 'seed');
-  for (const f of ['a.txt', 'b.txt', 'c.txt']) fs.writeFileSync(path.join(dir, f), forty());
+  for (const f of ['a', 'b', 'c']) fs.writeFileSync(path.join(dir, `${f}.${ext}`), forty());
   return dir;
 }
 
@@ -208,7 +208,7 @@ test('audit 2026-10-08: a WAIVED quote must waive the review, in the user\'s wor
   assert.equal(r.status, 2, 'an option label this run wrote is the model\'s sentence, not the user\'s waiver');
 });
 
-test('audit 2026-10-08: a publish receipt written before this session began is absent, and the act is capped and masked', () => {
+test('audit 2026-10-08: a publish receipt written before this session began is absent, and the denial names the verb, never the command', () => {
   const { dir } = pushRepo();
   fs.writeFileSync(path.join(dir, 'a.txt'), 'seed\nnext\n');
   spawnSync('git', ['-C', dir, 'commit', '-qam', 'next'], { encoding: 'utf8' });
@@ -232,7 +232,8 @@ test('audit 2026-10-08: a publish receipt written before this session began is a
   const masked = push('git push https://bob:tok3n-secret-value@example.invalid/x.git main');
   assert.equal(masked.status, 2);
   assert.doesNotMatch(masked.stderr, /tok3n-secret-value/, 'the denial never echoes a credential in a remote URL');
-  assert.match(masked.stderr, /\/\/\*\*\*@example\.invalid/);
+  assert.doesNotMatch(masked.stderr, /bob|example\.invalid/, 'and echoes no slice of the command at all (B7): the verb only');
+  assert.match(masked.stderr, /^Blocked: git push without the publish gate receipt/m);
 });
 
 test('guard-ungated-commit: plain top-level folders are not projects - only a folder with its own manifest is', () => {
@@ -1276,25 +1277,25 @@ test('audit 2026-10-10 C18: security: over <N> files is held to what the commit 
 });
 
 test('audit 2026-10-10 C17: a receipt written before a staged file last changed does not cover it', () => {
-  const dir = scratchRepo();
+  const dir = scratchRepo('js');
   const head = headOf(dir);
   writeReceipt(dir, 'COMMIT-GATE', commitReceipt(head, { first: 'VERIFIED the checkpoint' }));
   const receipt = path.join(dir, '.alfred', 'docs', 'flow', 'COMMIT-GATE');
-  // a.txt moves a minute past the receipt, rather than the receipt a minute back: that would predate the session (H4)
-  const aTxt = path.join(dir, 'a.txt');
+  // a.js moves a minute past the receipt, rather than the receipt a minute back: that would predate the session (H4)
+  const aTxt = path.join(dir, 'a.js');
   const written = fs.statSync(aTxt).mtime;
   const later = new Date(Date.now() + 60 * 1000);
   fs.utimesSync(aTxt, later, later);
   const r = gateFull(dir, 'git commit -am x');
-  assert.equal(r.status, 2, 'a.txt changed after the receipt');
-  assert.match(r.stderr, /a\.txt changed after this receipt was written - the review never saw that version/);
+  assert.equal(r.status, 2, 'a.js changed after the receipt');
+  assert.match(r.stderr, /a\.js changed after this receipt was written - the review never saw that version/);
   fs.utimesSync(aTxt, written, written);
   fs.utimesSync(receipt, new Date(), new Date());
   assert.equal(gateIn(dir, 'git commit -am x'), 0, 'a receipt written after the last edit');
   // inside the clock slack
   const now = Date.now();
   fs.utimesSync(receipt, new Date(now - 1000), new Date(now - 1000));
-  fs.utimesSync(path.join(dir, 'a.txt'), new Date(now), new Date(now));
+  fs.utimesSync(path.join(dir, 'a.js'), new Date(now), new Date(now));
   assert.equal(gateIn(dir, 'git commit -am x'), 0, 'one second apart is within the 2s slack');
 });
 
@@ -1670,14 +1671,14 @@ test('2026-10-22 review proof: a commit receipt naming no review needs some revi
 // commit of work edited hours after it. The user's ruling 'After the last edit': the newest review of the code started
 // after the last change to every file the commit takes in.
 test('2026-10-22 review proof: the newest review of the code started after the last edit to what is committed', () => {
-  const dir = scratchRepo();
+  const dir = scratchRepo('js');
   const now = Date.now();
   const min = (n) => new Date(now - n * 60 * 1000);
   // a review skill's call, then its result line
   const skill = (ago, name) => [{ type: 'assistant', timestamp: min(ago).toISOString(), message: { content: [{ type: 'tool_use', id: `s${ago}${name}`, name: 'Skill', input: { skill: name } }] } },
     resultRow(min(ago - 1))];
   const seat = (ago) => ({ type: 'assistant', timestamp: min(ago).toISOString(), message: { content: [{ type: 'tool_use', id: `a${ago}`, name: 'Agent', input: { subagent_type: 'alfred-code:node-verifier', prompt: 'review the change: `git diff HEAD`' } }] } });
-  const edit = (ago) => fs.utimesSync(path.join(dir, 'a.txt'), min(ago), min(ago));
+  const edit = (ago) => fs.utimesSync(path.join(dir, 'a.js'), min(ago), min(ago));
   // the transcripts first: a receipt written before the session began is absent (audit 2026-10-20 H4)
   const early = writeTranscript(dir, 'fr-early', [...skill(60, 'review-code')]);
   const again = writeTranscript(dir, 'fr-again', [...skill(60, 'review-code'), ...skill(5, 'review-code')]);
@@ -1690,16 +1691,16 @@ test('2026-10-22 review proof: the newest review of the code started after the l
   edit(10);
   const stale = gateWith(dir, 'git commit -am x', { transcript_path: early });
   assert.equal(stale.status, 2, 'an edit after the review: no review saw that version');
-  assert.match(stale.stderr, /a\.txt changed after the last review of the code covering it started \(\d\d:\d\d\) - no review saw that version; run review-code on it/);
+  assert.match(stale.stderr, /a\.js changed after the last review of the code covering it started \(\d\d:\d\d\) - no review saw that version; run review-code on it/);
   assert.equal(gateWith(dir, 'git commit -am x', { transcript_path: again }).status, 0, 'a review run after the edit');
-  assert.match(gateWith(dir, 'git commit -am x', { transcript_path: planLate }).stderr, /a\.txt changed after the last review/, 'a later plan review reads no code');
+  assert.match(gateWith(dir, 'git commit -am x', { transcript_path: planLate }).stderr, /a\.js changed after the last review/, 'a later plan review reads no code');
   assert.equal(gateWith(dir, 'git commit -am x', { transcript_path: seatLate }).status, 0, 'a verifier seat after the edit');
-  assert.match(gateWith(dir, 'git commit -am x', { transcript_path: lateOpen }).stderr, /a\.txt changed after the last review/, 'a later review with no result line yet');
+  assert.match(gateWith(dir, 'git commit -am x', { transcript_path: lateOpen }).stderr, /a\.js changed after the last review/, 'a later review with no result line yet');
   // the ledger's row is no review (2026-10-22)
   const ledger = path.join(dir, '.alfred', 'statistics', 'tools-usage');
   fs.mkdirSync(ledger, { recursive: true });
   fs.writeFileSync(path.join(ledger, 'sess-fr.jsonl'), JSON.stringify({ ts: min(5).toISOString(), session: 'sess-fr', tool: 'Skill', detail: 'review-code', cwd: dir }) + '\n');
-  assert.match(gateWith(dir, 'git commit -am x', { transcript_path: early, session_id: 'sess-fr' }).stderr, /a\.txt changed after the last review/, 'a ledger row after the edit');
+  assert.match(gateWith(dir, 'git commit -am x', { transcript_path: early, session_id: 'sess-fr' }).stderr, /a\.js changed after the last review/, 'a ledger row after the edit');
   // a carried review is judged where it ran
   writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: 'VERIFIED review-code inline' }) + 'carried: c2, reviewed 2026-10-21\n');
   assert.equal(gateWith(dir, 'git commit -am x', { transcript_path: early }).status, 0, 'a carried review');
@@ -1716,7 +1717,7 @@ test('2026-10-22 review proof: the newest review of the code started after the l
 // 'Snapshot at review': when a review of the code starts, the session-start guard records what each changed file
 // holds, and a file whose content still matches passes - byte for byte only since the user's 'Fix ALL left gaps'.
 test('2026-10-22 review proof: a file rewritten after the review with its code unchanged still passes', () => {
-  const dir = scratchRepo();
+  const dir = scratchRepo('js');
   const ago = (n) => new Date(Date.now() - n * 60 * 1000);
   const sid = 'sess-snap';
   const start = (input, session = sid) => runIn('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', session_id: session, cwd: dir, ...input }, {
@@ -1725,7 +1726,7 @@ test('2026-10-22 review proof: a file rewritten after the review with its code u
   // one snapshot file per call: review-snapshot-<session>@<call>.json (review 2026-10-23)
   const sessions = path.join(dir, '.alfred', 'state', 'sessions');
   const snapshots = (session) => { try { return fs.readdirSync(sessions).filter((n) => n.startsWith(`review-snapshot-${session}@`) && n.endsWith('.json')); } catch { return []; } };
-  const a = path.join(dir, 'a.txt');
+  const a = path.join(dir, 'a.js');
   const body = fs.readFileSync(a, 'utf8');
   const rewrite = (text) => { fs.writeFileSync(a, text); fs.utimesSync(a, ago(10), ago(10)); };
   // the transcript first: a receipt written before the session began is absent (audit 2026-10-20 H4)
@@ -1735,7 +1736,7 @@ test('2026-10-22 review proof: a file rewritten after the review with its code u
   const gate = (session = sid) => gateWith(dir, 'git commit -am x', { transcript_path: early, session_id: session });
   rewrite(body);
   assert.equal(gate().status, 2, 'no snapshot holds the content: the time decides');
-  // the review starts, and the hook records what a.txt holds
+  // the review starts, and the hook records what a.js holds
   start({ tool_name: 'Skill', tool_use_id: 's60', tool_input: { skill: 'review-code' } });
   assert.deepEqual(snapshots(sid), ['review-snapshot-sess-snap@s60.json'], 'a review-code call writes its own snapshot file');
   rewrite(body);
@@ -1745,7 +1746,7 @@ test('2026-10-22 review proof: a file rewritten after the review with its code u
   rewrite(`${body}\nline 40`);
   const edited = gate();
   assert.equal(edited.status, 2, 'a changed token is a version no review saw');
-  assert.match(edited.stderr, /a\.txt changed after the last review of the code covering it started/);
+  assert.match(edited.stderr, /a\.js changed after the last review of the code covering it started/);
   rewrite(body);
   assert.equal(gate('sess-other').status, 2, 'another session\'s snapshot is not this one\'s review');
   // a snapshot whose call never reached its result line vouches for nothing: an older review counted, s60 did not
@@ -1754,7 +1755,7 @@ test('2026-10-22 review proof: a file rewritten after the review with its code u
   writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: 'VERIFIED review-code inline' }));
   const unproven = gateWith(dir, 'git commit -am x', { transcript_path: open, session_id: sid });
   assert.equal(unproven.status, 2, 'the snapshot of a review with no result line');
-  assert.match(unproven.stderr, /a\.txt changed after the last review of the code covering it started/);
+  assert.match(unproven.stderr, /a\.js changed after the last review of the code covering it started/);
   writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: 'VERIFIED review-code inline' }));
   // only a review of the code takes one: the plan review and a seat that writes take none; a verifier seat and the
   // typed command do
@@ -1797,11 +1798,11 @@ test('2026-10-22 review proof: spacing is a change in every format', () => {
   }
 
   // the snapshot: a file matches what the review saw only byte for byte, whatever its format
-  const dir = scratchRepo();
+  const dir = scratchRepo('js');
   const ago = (n) => new Date(Date.now() - n * 60 * 1000);
   const sid = 'sess-indent';
   const p = path.join(dir, 'job.py');
-  const j = path.join(dir, 'a.txt');
+  const j = path.join(dir, 'a.js');
   fs.writeFileSync(p, py);
   const early = writeTranscript(dir, 'wm-early', [{ type: 'assistant', timestamp: ago(60).toISOString(), message: { content: [{ type: 'tool_use', id: 's60', name: 'Skill', input: { skill: 'review-code' } }] } },
     resultRow(ago(59))]);
@@ -1827,7 +1828,7 @@ test('2026-10-22 review proof: spacing is a change in every format', () => {
   gate(p, py);
   const spaced = gate(j, text.replace(/ /g, '  '));
   assert.equal(spaced.status, 2, 'spacing in a text file is a version no review saw too');
-  assert.match(spaced.stderr, /a\.txt changed after the last review of the code/);
+  assert.match(spaced.stderr, /a\.js changed after the last review of the code/);
 });
 
 // 2026-10-22, a fifth side note: the scan counted a review's CALL, and a call another hook refused still sits in the
@@ -1835,7 +1836,7 @@ test('2026-10-22 review proof: spacing is a change in every format', () => {
 // trusted, and its snapshot with it. A call whose result is an error (a hook's denial, an unknown skill) is no review:
 // not for the named review, the no-name rule, the freshness rule or the snapshot - and takes no result line after it.
 test('2026-10-22 review proof: a review call another hook refused is no review', () => {
-  const dir = scratchRepo();
+  const dir = scratchRepo('js');
   const ago = (n) => new Date(Date.now() - n * 60 * 1000);
   const call = (id, n, name, tool = 'Skill') => ({ type: 'assistant', timestamp: ago(n).toISOString(), message: { content: [{ type: 'tool_use', id, name: tool,
     input: tool === 'Skill' ? { skill: name } : { subagent_type: name, prompt: 'x' } }] } });
@@ -1851,19 +1852,19 @@ test('2026-10-22 review proof: a review call another hook refused is no review',
     writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first }));
     return gateWith(dir, 'git commit -am x', { transcript_path: tp, ...(session ? { session_id: session } : {}) });
   };
-  for (const f of ['a.txt', 'b.txt', 'c.txt']) fs.utimesSync(path.join(dir, f), ago(120), ago(120));   // edited before every review
+  for (const f of ['a.js', 'b.js', 'c.js']) fs.utimesSync(path.join(dir, f), ago(120), ago(120));   // edited before every review
   assert.match(gate('VERIFIED review-code inline', refused).stderr, /names review-code, but no run of it in this session reached its result line/, 'a refused review-code is not the run the line names');
   assert.match(gate('VERIFIED review-code inline', refusedThenLine).stderr, /reached its result line/, 'and a result line after it is no one\'s');
   assert.match(gate('VERIFIED the checkpoint', refused).stderr, /names no review and no review ran/, 'nor some review of the code');
   assert.match(gate('VERIFIED the checkpoint', refusedSeat).stderr, /names no review and no review ran/, 'a refused verifier seat neither');
-  fs.utimesSync(path.join(dir, 'a.txt'), ago(10), ago(10));
-  assert.match(gate('VERIFIED review-code inline', ranEarly).stderr, /a\.txt changed after the last review of the code/, 'the refused call is not the newest review');
+  fs.utimesSync(path.join(dir, 'a.js'), ago(10), ago(10));
+  assert.match(gate('VERIFIED review-code inline', ranEarly).stderr, /a\.js changed after the last review of the code/, 'the refused call is not the newest review');
   assert.equal(gate('VERIFIED review-code inline', ran).status, 0, 'a review whose result came back clears it');
   // and the snapshot the refused call took holds nothing: the file's time decides
   runIn('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', session_id: 'sess-rf', cwd: dir, tool_name: 'Skill', tool_use_id: 'r1', tool_input: { skill: 'review-code' } }, {
     env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir,
   });
-  assert.match(gate('VERIFIED review-code inline', ranEarly, 'sess-rf').stderr, /a\.txt changed after the last review/, 'the refused call\'s snapshot');
+  assert.match(gate('VERIFIED review-code inline', ranEarly, 'sess-rf').stderr, /a\.js changed after the last review/, 'the refused call\'s snapshot');
   assert.equal(gate('VERIFIED review-code inline', ran, 'sess-rf').status, 0, 'a snapshot whose call ran is the review\'s');
 });
 
@@ -1873,14 +1874,14 @@ test('2026-10-22 review proof: a review call another hook refused is no review',
 // change); no target argument, task-verify-code and a loop cover the whole change. A seat covers what its brief names
 // (the user's 'Fix ALL left gaps', 2026-10-22): a `git diff` of the whole change, else the paths it names, else nothing.
 test('2026-10-22 review proof: a review pointed at paths covers those paths alone', () => {
-  const dir = scratchRepo();
+  const dir = scratchRepo('js');
   const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
   fs.mkdirSync(path.join(dir, 'lib'));
-  fs.writeFileSync(path.join(dir, 'lib', 'x.txt'), 'x\n');
-  git('add', 'lib/x.txt'); git('commit', '-qm', 'lib', '--', 'lib/x.txt');
-  fs.writeFileSync(path.join(dir, 'lib', 'x.txt'), forty());
+  fs.writeFileSync(path.join(dir, 'lib', 'x.js'), 'x\n');
+  git('add', 'lib/x.js'); git('commit', '-qm', 'lib', '--', 'lib/x.js');
+  fs.writeFileSync(path.join(dir, 'lib', 'x.js'), forty());
   const ago = (n) => new Date(Date.now() - n * 60 * 1000);
-  for (const f of ['a.txt', 'lib/x.txt']) fs.utimesSync(path.join(dir, f), ago(10), ago(10));
+  for (const f of ['a.js', 'lib/x.js']) fs.utimesSync(path.join(dir, f), ago(10), ago(10));
   let id = 0;
   // a review skill's call, then its result line
   const review = (n, name, args) => [{ type: 'assistant', timestamp: ago(n).toISOString(), message: { content: [{ type: 'tool_use', id: `pt${id++}`, name: 'Skill',
@@ -1892,54 +1893,54 @@ test('2026-10-22 review proof: a review pointed at paths covers those paths alon
   const tps = {};
   for (const [k, rows] of Object.entries({
     early: [...review(60, 'review-code')],
-    oneFile: [...review(60, 'review-code'), ...review(5, 'review-code', 'a.txt')],
+    oneFile: [...review(60, 'review-code'), ...review(5, 'review-code', 'a.js')],
     folder: [...review(60, 'review-code'), ...review(5, 'review-code', 'lib')],
-    both: [...review(5, 'review-code', 'a.txt lib/x.txt --depth quick')],
-    onlyOne: [...review(5, 'review-code', 'a.txt')],
+    both: [...review(5, 'review-code', 'a.js lib/x.js --depth quick')],
+    onlyOne: [...review(5, 'review-code', 'a.js')],
     branch: [...review(60, 'review-code'), ...review(5, 'review-code', 'develop')],
-    security: [...review(60, 'review-code'), ...review(5, 'review-security', 'lib/x.txt')],
-    typedOne: [...review(60, 'review-code'), ...typed(5, 'lib/x.txt')],
-    whole: [...review(60, 'review-code', 'a.txt'), ...review(5, 'review-code', '--depth deep')],
-    planned: [...review(60, 'review-code', 'a.txt'), ...review(5, 'task-verify-code', 'plan-1')],
-    seatWhole: [...review(60, 'review-code', 'a.txt'), ...seat(5, 'Read the change with `git diff HEAD` and review it.')],
-    seatPath: [...review(5, 'review-code', 'a.txt'), ...seat(5, 'Review `git diff HEAD -- lib/x.txt` (lib/x.txt:3).')],
-    seatOne: [...review(60, 'review-code', 'lib/x.txt'), ...seat(5, 'review a.txt')],
-    seatNone: [...review(60, 'review-code', 'a.txt'), ...seat(5, 'review the parser change')],
-    seatRange: [...review(60, 'review-code', 'a.txt'), ...seat(5, 'review `git diff main..HEAD`')],
+    security: [...review(60, 'review-code'), ...review(5, 'review-security', 'lib/x.js')],
+    typedOne: [...review(60, 'review-code'), ...typed(5, 'lib/x.js')],
+    whole: [...review(60, 'review-code', 'a.js'), ...review(5, 'review-code', '--depth deep')],
+    planned: [...review(60, 'review-code', 'a.js'), ...review(5, 'task-verify-code', 'plan-1')],
+    seatWhole: [...review(60, 'review-code', 'a.js'), ...seat(5, 'Read the change with `git diff HEAD` and review it.')],
+    seatPath: [...review(5, 'review-code', 'a.js'), ...seat(5, 'Review `git diff HEAD -- lib/x.js` (lib/x.js:3).')],
+    seatOne: [...review(60, 'review-code', 'lib/x.js'), ...seat(5, 'review a.js')],
+    seatNone: [...review(60, 'review-code', 'a.js'), ...seat(5, 'review the parser change')],
+    seatRange: [...review(60, 'review-code', 'a.js'), ...seat(5, 'review `git diff main..HEAD`')],
   })) tps[k] = writeTranscript(dir, `pt-${k}`, rows);
   const gate = (k, session) => {
     writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: 'VERIFIED review-code inline' }));
     return gateWith(dir, 'git commit -am x', { transcript_path: tps[k], ...(session ? { session_id: session } : {}) });
   };
   const refuses = (k, re, why) => { const r = gate(k); assert.equal(r.status, 2, why); assert.match(r.stderr, re, why); return r; };
-  refuses('early', /a\.txt, lib\/x\.txt changed after the last review of the code covering them started/, 'an edit after the whole-change review');
-  const one = refuses('oneFile', /^.*lib\/x\.txt changed after the last review of the code covering it started/m, 'a review of a.txt leaves lib/x.txt stale');
-  assert.doesNotMatch(one.stderr, /a\.txt, lib/, 'and names only the file it did not cover');
-  refuses('folder', /a\.txt changed after the last review of the code covering it started/, 'a folder target covers what it holds, nothing else');
+  refuses('early', /a\.js, lib\/x\.js changed after the last review of the code covering them started/, 'an edit after the whole-change review');
+  const one = refuses('oneFile', /^.*lib\/x\.js changed after the last review of the code covering it started/m, 'a review of a.js leaves lib/x.js stale');
+  assert.doesNotMatch(one.stderr, /a\.js, lib/, 'and names only the file it did not cover');
+  refuses('folder', /a\.js changed after the last review of the code covering it started/, 'a folder target covers what it holds, nothing else');
   assert.equal(gate('both').status, 0, 'a review naming both files');
-  refuses('onlyOne', /lib\/x\.txt is in no review of the code this session ran \(the last, at \d\d:\d\d, was pointed at other paths, or was a seat whose brief named none of it/, 'a file no review covered');
-  refuses('branch', /a\.txt, lib\/x\.txt changed after the last review of the code covering them started/, 'a branch target covers none of the uncommitted change');
-  refuses('security', /a\.txt changed after the last review of the code covering it/, 'review-security reads its target the same way');
-  refuses('typedOne', /a\.txt changed after the last review of the code covering it/, 'and so does the typed command');
+  refuses('onlyOne', /lib\/x\.js is in no review of the code this session ran \(the last, at \d\d:\d\d, was pointed at other paths, or was a seat whose brief named none of it/, 'a file no review covered');
+  refuses('branch', /a\.js, lib\/x\.js changed after the last review of the code covering them started/, 'a branch target covers none of the uncommitted change');
+  refuses('security', /a\.js changed after the last review of the code covering it/, 'review-security reads its target the same way');
+  refuses('typedOne', /a\.js changed after the last review of the code covering it/, 'and so does the typed command');
   for (const k of ['whole', 'planned', 'seatWhole']) assert.equal(gate(k).status, 0, `${k}: covers the whole change`);
-  assert.equal(gate('seatPath').status, 0, 'a seat whose brief names lib/x.txt covers it, beside a review of a.txt');
-  refuses('seatOne', /lib\/x\.txt changed after the last review of the code covering it/, 'a seat whose brief names a.txt covers a.txt alone');
-  refuses('seatNone', /lib\/x\.txt/, 'a seat whose brief names no path and no git diff covers nothing');
-  refuses('seatRange', /lib\/x\.txt/, 'a diff of a commit range reads none of the uncommitted change');
+  assert.equal(gate('seatPath').status, 0, 'a seat whose brief names lib/x.js covers it, beside a review of a.js');
+  refuses('seatOne', /lib\/x\.js changed after the last review of the code covering it/, 'a seat whose brief names a.js covers a.js alone');
+  refuses('seatNone', /lib\/x\.js/, 'a seat whose brief names no path and no git diff covers nothing');
+  refuses('seatRange', /lib\/x\.js/, 'a diff of a commit range reads none of the uncommitted change');
   // the snapshot of a review pointed at paths holds only those
   const start = (session, args, toolUseId) => runIn('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', session_id: session, cwd: dir, tool_name: 'Skill', tool_use_id: toolUseId, tool_input: { skill: 'review-code', args } }, {
     env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir,
   });
   // the snapshot is the early transcript's own call (pt0), so it counts once that call reported
-  start('sess-pt', 'a.txt', 'pt0');
+  start('sess-pt', 'a.js', 'pt0');
   const held = fs.readFileSync(path.join(dir, '.alfred', 'state', 'sessions', 'review-snapshot-sess-pt@pt0.json'), 'utf8');
-  assert.match(held, /a\.txt"/, 'the snapshot holds the file the review was pointed at');
-  assert.doesNotMatch(held, /x\.txt"/, 'and not a file it never read');
-  for (const f of ['a.txt', 'lib/x.txt']) { fs.writeFileSync(path.join(dir, f), fs.readFileSync(path.join(dir, f))); fs.utimesSync(path.join(dir, f), ago(10), ago(10)); }
+  assert.match(held, /a\.js"/, 'the snapshot holds the file the review was pointed at');
+  assert.doesNotMatch(held, /x\.js"/, 'and not a file it never read');
+  for (const f of ['a.js', 'lib/x.js']) { fs.writeFileSync(path.join(dir, f), fs.readFileSync(path.join(dir, f))); fs.utimesSync(path.join(dir, f), ago(10), ago(10)); }
   const rewritten = gate('early', 'sess-pt');
   assert.equal(rewritten.status, 2, 'a rewrite of the file the snapshot never held is judged by its time');
-  assert.match(rewritten.stderr, /^.*lib\/x\.txt changed after the last review/m);
-  assert.doesNotMatch(rewritten.stderr, /a\.txt, lib/, 'while the file it held passes');
+  assert.match(rewritten.stderr, /^.*lib\/x\.js changed after the last review/m);
+  assert.doesNotMatch(rewritten.stderr, /a\.js, lib/, 'while the file it held passes');
 });
 
 // 2026-10-22, a seventh side note: a review seat counted from its dispatch, so one still running - or sent to the
@@ -1947,9 +1948,9 @@ test('2026-10-22 review proof: a review pointed at paths covers those paths alon
 // finish': a foreground seat counts at its result row, a background one at its completed task notification; its snapshot
 // counts from then too. A Skill review counts at its result line (the test above).
 test('2026-10-22 review proof: a review seat counts once it has reported', () => {
-  const dir = scratchRepo();
+  const dir = scratchRepo('js');
   const ago = (n) => new Date(Date.now() - n * 60 * 1000);
-  for (const f of ['a.txt', 'b.txt', 'c.txt']) fs.utimesSync(path.join(dir, f), ago(120), ago(120));
+  for (const f of ['a.js', 'b.js', 'c.js']) fs.utimesSync(path.join(dir, f), ago(120), ago(120));
   const BRIEF = 'review the change: `git diff HEAD`';
   const dispatch = (id, n, bg) => ({ type: 'assistant', timestamp: ago(n).toISOString(), message: { content: [{ type: 'tool_use', id, name: 'Agent',
     input: { subagent_type: 'alfred-code:node-verifier', prompt: BRIEF, ...(bg ? { run_in_background: true } : {}) } }] } });
@@ -1982,9 +1983,9 @@ test('2026-10-22 review proof: a review seat counts once it has reported', () =>
   runIn('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', session_id: 'sess-sf', cwd: dir, tool_name: 'Agent', tool_use_id: 'v3', tool_input: { subagent_type: 'alfred-code:node-verifier', prompt: BRIEF } }, {
     env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir,
   });
-  for (const f of ['a.txt', 'b.txt', 'c.txt']) { fs.writeFileSync(path.join(dir, f), fs.readFileSync(path.join(dir, f))); fs.utimesSync(path.join(dir, f), ago(10), ago(10)); }
+  for (const f of ['a.js', 'b.js', 'c.js']) { fs.writeFileSync(path.join(dir, f), fs.readFileSync(path.join(dir, f))); fs.utimesSync(path.join(dir, f), ago(10), ago(10)); }
   writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: 'VERIFIED review-code inline' }));
-  assert.match(gateWith(dir, 'git commit -am x', { transcript_path: early, session_id: 'sess-sf' }).stderr, /a\.txt changed after the last review of the code/, 'the running seat\'s snapshot');
+  assert.match(gateWith(dir, 'git commit -am x', { transcript_path: early, session_id: 'sess-sf' }).stderr, /a\.js changed after the last review of the code/, 'the running seat\'s snapshot');
   writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: 'VERIFIED review-code inline' }));
   assert.equal(gateWith(dir, 'git commit -am x', { transcript_path: earlyDone, session_id: 'sess-sf' }).status, 0, 'and once it reported, its time and its snapshot count');
 });
@@ -1993,10 +1994,10 @@ test('2026-10-22 review proof: a review seat counts once it has reported', () =>
 // the index - staging an unreviewed version, then putting the reviewed text back in the tree, passed. A file whose index
 // stages a version of its own passes the snapshot only when a review saw both.
 test('2026-10-22 review proof: a staged version no review saw is refused though the tree holds the reviewed one', () => {
-  const dir = scratchRepo();
+  const dir = scratchRepo('js');
   const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
   const ago = (n) => new Date(Date.now() - n * 60 * 1000);
-  const a = path.join(dir, 'a.txt');
+  const a = path.join(dir, 'a.js');
   const reviewed = fs.readFileSync(a, 'utf8');
   // the transcript first: a receipt written before the session began is absent (audit 2026-10-20 H4)
   const early = writeTranscript(dir, 'st-early', [{ type: 'assistant', timestamp: ago(60).toISOString(), message: { content: [{ type: 'tool_use', id: 'r0', name: 'Skill', input: { skill: 'review-code' } }] } },
@@ -2009,21 +2010,21 @@ test('2026-10-22 review proof: a staged version no review saw is refused though 
     return gateWith(dir, 'git commit -m x', { transcript_path: early, session_id: 'sess-st' });
   };
   // stage a version the review never saw, then put the reviewed text back in the tree
-  fs.writeFileSync(a, `${reviewed}\nline 40 unreviewed`); git('add', 'a.txt');
+  fs.writeFileSync(a, `${reviewed}\nline 40 unreviewed`); git('add', 'a.js');
   fs.writeFileSync(a, reviewed); fs.utimesSync(a, ago(10), ago(10));
   const staged = gate();
   assert.equal(staged.status, 2, 'the index holds a version no review saw');
-  assert.match(staged.stderr, /a\.txt changed after the last review of the code covering it started/);
+  assert.match(staged.stderr, /a\.js changed after the last review of the code covering it started/);
   // once the index holds the reviewed version too, the snapshot vouches for what is committed
-  git('add', 'a.txt'); fs.utimesSync(a, ago(10), ago(10));
+  git('add', 'a.js'); fs.utimesSync(a, ago(10), ago(10));
   assert.equal(gate().status, 0, 'index and tree both hold what the review saw');
   // a file gone from the tree whose index still stages a version of its own is judged by that version (the user's 'Fix
   // ALL left gaps', 2026-10-22: the time check skipped a file it could not stat)
-  fs.writeFileSync(a, `${reviewed}\nline 40 unreviewed`); git('add', 'a.txt'); fs.unlinkSync(a);
+  fs.writeFileSync(a, `${reviewed}\nline 40 unreviewed`); git('add', 'a.js'); fs.unlinkSync(a);
   const gone = gate();
   assert.equal(gone.status, 2, 'a staged version no review saw, the tree file deleted');
-  assert.match(gone.stderr, /a\.txt changed after the last review of the code covering it started/);
-  fs.writeFileSync(a, reviewed); git('add', 'a.txt'); fs.unlinkSync(a);
+  assert.match(gone.stderr, /a\.js changed after the last review of the code covering it started/);
+  fs.writeFileSync(a, reviewed); git('add', 'a.js'); fs.unlinkSync(a);
   assert.equal(gate().status, 0, 'the staged version the review saw, the tree file deleted');
 });
 
@@ -2396,7 +2397,7 @@ test('review proof 3.12: of two receipt calls the file proves the one that wrote
 });
 
 test('review proof 3.12: a receipt closes the reviews it speaks for', () => {
-  const dir = scratchRepo();
+  const dir = scratchRepo('js');
   const wrote = (command) => [cpBash('r', command), cpResult('r', RP_WROTE)];
   const run = (name, rows, verified) => {
     const tp = writeTranscript(dir, `rp-close-${name.replace(/\W+/g, '-')}`, rows);
@@ -2414,21 +2415,21 @@ test('review proof 3.12: a receipt closes the reviews it speaks for', () => {
   run('B12 the names in a variable', [cpSkill('a', 'review-code'), cpSkill('p', 'task-verify-plan'), ...wrote(V)], 'review-code and task-verify-plan over the change');
   // the fix flow: a first review, a fix, a second review of the fix - the three files in the commit
   const fixFlow = (id, first, printed, named, withReceipt = true) => {
-    const repo = scratchRepo();
-    spawnSync('git', ['-C', repo, 'add', 'a.txt', 'b.txt', 'c.txt']);
+    const repo = scratchRepo('js');
+    spawnSync('git', ['-C', repo, 'add', 'a.js', 'b.js', 'c.js']);
     const now = Date.now();
     const min = (n) => new Date(now - n * 60000);
-    for (const f of ['b.txt', 'c.txt']) fs.utimesSync(path.join(repo, f), min(120), min(120));
-    fs.utimesSync(path.join(repo, 'a.txt'), min(30), min(30));   // the fix, after the first review started
+    for (const f of ['b.js', 'c.js']) fs.utimesSync(path.join(repo, f), min(120), min(120));
+    fs.utimesSync(path.join(repo, 'a.js'), min(30), min(30));   // the fix, after the first review started
     const sk = (i, name, ago, args) => ({ type: 'assistant', timestamp: min(ago).toISOString(), message: { id: i, content: [{ type: 'tool_use', id: `t${i}`, name: 'Skill', input: { skill: name, ...(args ? { args } : {}) } }] } });
-    const tp = writeTranscript(repo, id, [sk('1', first, 60), sk('2', 'review-code', 20, 'a.txt'), ...(printed ? [resultRow(min(19))] : []),
+    const tp = writeTranscript(repo, id, [sk('1', first, 60), sk('2', 'review-code', 20, 'a.js'), ...(printed ? [resultRow(min(19))] : []),
       ...(withReceipt ? [cpBash('r', rpCmd(`${named} over the change`)), cpResult('r', RP_WROTE)] : [])]);
     writeReceipt(repo, 'COMMIT-GATE', commitReceipt(headOf(repo), { first: `VERIFIED ${named} over the change` }));
     return rpCommit(repo, tp, {}, 'git commit -m x');
   };
   rpPass(fixFlow('rp-b5', 'review-code', false, 'review-code'), 'B5');
   rpPass(fixFlow('rp-b6', 'review-code', true, 'review-code'), 'B6');
-  rpRefused(fixFlow('rp-b6-open', 'review-code', true, 'review-code', false), /b\.txt, c\.txt are in no review of the code this session ran/, 'B6 with no receipt call');
+  rpRefused(fixFlow('rp-b6-open', 'review-code', true, 'review-code', false), /b\.js, c\.js are in no review of the code this session ran/, 'B6 with no receipt call');
   rpPass(fixFlow('rp-b18', 'task-verify-code', false, 'task-verify-code'), 'B18');
 });
 
@@ -2509,19 +2510,19 @@ test('review proof 3.12: the WAIVED hint names no plan review', () => {
 });
 
 test('review proof 3.12: the block row of a review-proof refusal carries its branch', () => {
-  const named = scratchRepo();
+  const named = scratchRepo('js');
   const tpNamed = writeTranscript(named, 'rp-b17-named', RP_NO_REVIEW);
   writeReceipt(named, 'COMMIT-GATE', commitReceipt(headOf(named), { first: 'VERIFIED review-code over the change' }));
   rpRefused(rpCommit(named, tpNamed, { session_id: 'rp-b17-named' }), rpUnproven('review-code'), 'B17 unproven');
   assert.deepEqual(rpBlockRow(named, 'rp-b17-named').detail, { branch: 'review-unproven' });
-  const stale = scratchRepo();
+  const stale = scratchRepo('js');
   const now = Date.now();
   const min = (n) => new Date(now - n * 60000);
   const tpStale = writeTranscript(stale, 'rp-b17-stale', [{ ...cpSkill('a', 'review-code'), timestamp: min(60).toISOString() }, resultRow(min(59))]);
   writeReceipt(stale, 'COMMIT-GATE', commitReceipt(headOf(stale), { first: 'VERIFIED review-code over the change' }));
-  fs.utimesSync(path.join(stale, 'a.txt'), min(10), min(10));
+  fs.utimesSync(path.join(stale, 'a.js'), min(10), min(10));
   const r = rpCommit(stale, tpStale, { session_id: 'rp-b17-stale' });
-  rpRefused(r, /a\.txt changed after the last review/, 'B17 stale');
+  rpRefused(r, /a\.js changed after the last review/, 'B17 stale');
   assert.deepEqual(rpBlockRow(stale, 'rp-b17-stale').detail, { branch: 'review-stale' });
   fs.rmSync(path.join(stale, '.alfred', 'docs', 'flow', 'COMMIT-GATE'));
   rpRefused(rpCommit(stale, tpStale, { session_id: 'rp-b17-none' }), /without the pre-commit gate receipt/, 'B17 no receipt');
@@ -2541,4 +2542,113 @@ test('A4: a compact start of the docs and preferences hooks leaves the commit ga
   assert.equal(gateWith(dir, 'git commit -am x').status, 2, 'no receipt: refused after the compact start too');
   writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: 'VERIFIED the change' }));
   assert.equal(gateWith(dir, 'git commit -am x').status, 0, 'a receipt still passes it');
+});
+
+// B7 (session audit 2026-11-27, T08): a command substitution that only reads git is no publish. `P=($(git diff --name-only));
+// git add -- "${P[@]}" && git commit` was asked about as a publish, and the reason quoted a slice of the command.
+test('B7: a git read in a command substitution is no publish, and one that pushes still is', () => {
+  const dir = scratchRepo();
+  const reads = [
+    'P=($(git diff --name-only)); git add -- "${P[@]}" && git commit -m x',
+    'P=($(git ls-files --modified)); git add -- "${P[@]}" && git commit -m x',
+    'P=($(git status --porcelain)); git add -- "${P[@]}" && git commit -m x',
+    'S=$(git log -1 --format=%s); git add -- a.txt && git commit -m "$S"',
+    'B=$(git branch --show-current); git add -- a.txt && git commit -m "on $B"',
+  ];
+  for (const command of reads) {
+    const r = gateFull(dir, command);
+    assert.match(r.stderr, /without the pre-commit gate receipt/, `${command}: the commit half still asks`);
+    assert.doesNotMatch(r.stderr, /publish gate/, `${command}: no publish gate`);
+  }
+  writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: 'VERIFIED the change' }));
+  for (const command of reads) assert.equal(gateWith(dir, command).status, 0, `${command}: a commit receipt opens it`);
+  const gone = scratchRepo();
+  const pushes = [
+    'P=($(git push origin main)); git commit -m x',
+    'P=($(git log -1; git push)); git commit -m x',
+    'P=($(git diff --name-only | xargs git push)); git commit -m x',
+    'P=($(git status > out.txt)); git commit -m x',
+  ];
+  for (const command of pushes) {
+    const r = gateWith(gone, command);
+    assert.match(r.stderr, /publish gate receipt/, `${command}: still a publish`);
+  }
+});
+
+test('B7: a block reason names the verb that made the act a publish, never a slice of the command', () => {
+  const dir = scratchRepo();
+  const hidden = gateFull(dir, 'P=($(git push --force-with-lease origin acme-feature)); git commit -m x');
+  assert.match(hidden.stderr, /^Blocked: a git call that may push without the publish gate receipt/m, 'a push the reader never opened');
+  assert.doesNotMatch(hidden.stderr, /acme-feature|force-with-lease|\$\(/, 'no slice of the command');
+  const plain = gateFull(dir, 'git push origin acme-feature');
+  assert.match(plain.stderr, /^Blocked: git push without the publish gate receipt/m);
+  assert.doesNotMatch(plain.stderr, /acme-feature/);
+});
+
+// B15 (session audit 2026-11-27, S10): an edit to prose files only after the review keeps the review and the receipt. A code
+// or test file still voids both.
+test('B15: a prose edit after the review keeps the receipt, and a code edit voids it', () => {
+  const { dir, git, write } = scanRepo({ 'README.md': nLines(40, 'readme'), 'x.js': nLines(40, 'const x ='), 'notes.txt': nLines(40, 'note') });
+  fs.mkdirSync(path.join(dir, 'docs'));
+  write('docs/guide.md', nLines(40, 'guide'));
+  git('add', '-A'); git('commit', '-qm', 'docs');
+  const now = Date.now();
+  const min = (n) => new Date(now - n * 60 * 1000);
+  const touch = (rel, ago) => fs.utimesSync(path.join(dir, rel), min(ago), min(ago));
+  const skill = [{ type: 'assistant', timestamp: min(60).toISOString(), message: { content: [{ type: 'tool_use', id: 'b15review', name: 'Skill', input: { skill: 'review-code' } }] } }, resultRow(min(59))];
+  const tp = writeTranscript(dir, 'b15', skill);
+  for (const rel of ['README.md', 'docs/guide.md', 'x.js', 'notes.txt']) write(rel, `${fs.readFileSync(path.join(dir, rel), 'utf8')}edited\n`);
+  touch('x.js', 120);
+  writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: 'VERIFIED review-code inline', spec: 'spec: 4 files' }));
+  for (const rel of ['README.md', 'docs/guide.md', 'notes.txt']) touch(rel, 10);
+  assert.equal(gateWith(dir, 'git commit -am x', { transcript_path: tp }).status, 0, 'prose edits after the review');
+  touch('x.js', 10);
+  const stale = gateWith(dir, 'git commit -am x', { transcript_path: tp });
+  assert.equal(stale.status, 2, 'a code edit after the review');
+  assert.match(stale.stderr, /x\.js changed after the last review of the code covering it started/);
+  assert.doesNotMatch(stale.stderr, /README\.md|guide\.md|notes\.txt/, 'the prose files are not named');
+  git('checkout', '-q', '--', '.');
+});
+
+test('B15: a prose file edited after the receipt was written keeps the receipt, and a code file voids it', () => {
+  const dir = scratchRepo();
+  const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+  fs.writeFileSync(path.join(dir, 'CHANGELOG.md'), '# changes\n');
+  fs.writeFileSync(path.join(dir, 'lib.js'), 'const lib = 1;\n');
+  git('add', 'CHANGELOG.md', 'lib.js');
+  git('commit', '-qm', 'changelog and lib');
+  writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: 'VERIFIED the checkpoint' }));
+  const later = new Date(Date.now() + 60 * 1000);
+  const edit = (name, body) => { fs.writeFileSync(path.join(dir, name), body); fs.utimesSync(path.join(dir, name), later, later); };
+  edit('CHANGELOG.md', '# changes\n- a fix\n');
+  assert.equal(gateIn(dir, 'git commit -am x'), 0, 'a CHANGELOG.md edit after the receipt');
+  for (const name of ['spec.mdx', 'notes.rst', 'guide.adoc', 'todo.txt']) edit(name, 'x\n');
+  assert.equal(gateIn(dir, 'git commit -am x'), 0, 'every extension of the prose list');
+  edit('lib.js', 'const lib = 2;\n');
+  const r = gateFull(dir, 'git commit -am x');
+  assert.equal(r.status, 2, 'a .js file is code: the list of prose extensions is closed');
+  assert.match(r.stderr, /lib\.js changed after this receipt was written/);
+  assert.doesNotMatch(r.stderr, /CHANGELOG|spec\.mdx/, 'the prose files are not named');
+});
+
+// B20 (session audit 2026-11-27, S09): a publish verb in text the user pasted counts as the user's word, the same as typed
+// text; a verb inside a hold does not. NOT REPRODUCED: the check reads the quote's words only, so the pasted row already passes.
+test('B20: a pasted table row carrying a publish verb is the user\'s word for the push; a hold is not', () => {
+  const p = pushRepo();
+  fs.writeFileSync(path.join(p.dir, 'a.txt'), 'seed\nmore\n');
+  p.git('commit', '-qam', 'ahead');
+  const head = headOf(p.dir);
+  const pasted = '| 4 | Publish ffc69a8 |';
+  const tp = writeTranscript(p.dir, 'b20', [{ type: 'user', message: { role: 'user', content: `finish with this:\n| # | Step |\n${pasted}\n` } }]);
+  const pushWith = (quote) => {
+    writeReceipt(p.dir, 'PUSH-GATE', pushReceipt(head, { auth: `authorized: "${quote}"` }));
+    return gateWith(p.dir, 'git push', { transcript_path: tp });
+  };
+  assert.equal(pushWith(pasted).status, 0, 'the pasted row');
+  assert.equal(pushWith('Publish ffc69a8').status, 0, 'its step alone');
+  for (const hold of ['| 4 | Publish ffc69a8 | waits for your word |', 'Push ffc69a8 waits for your go', 'the publish waits for your word', 'do not publish ffc69a8 yet']) {
+    const r = pushWith(hold);
+    assert.equal(r.status, 2, `a hold: ${hold}`);
+    assert.match(r.stderr, /carries no publish verb left standing/, hold);
+  }
 });
