@@ -242,6 +242,7 @@ const HOME_DIR = (() => { try { return require('os').homedir() || ''; } catch { 
 const foldCase = (p) => (process.platform === 'win32' ? String(p).toLowerCase() : String(p));
 const under = (dir, file) => { const r = path.relative(dir, file); return r !== '' && !r.startsWith('..') && !path.isAbsolute(r) ? r.split(path.sep).join('/') : null; };
 const shownAs = (file) => { const r = real(file); const inRoot = under(real(ROOT), r); if (inRoot) return inRoot; const inHome = HOME_DIR ? under(real(HOME_DIR), r) : null; return inHome ? `~/${inHome}` : r; };
+const accountDir = () => process.env.CLAUDE_CONFIG_DIR || (HOME_DIR ? path.join(HOME_DIR, '.claude') : '');
 let watched = null;
 // The settings file `abs` is, as { abs, shown }, or null: the project's two, the repository root's local one Claude Code
 // reads for a sub-folder or a worktree (layout.js localSettingsFile), the account's, the managed file and its drop-ins.
@@ -252,7 +253,7 @@ function settingsAt(abs) {
     add(path.join(ROOT, '.claude', 'settings.json'));
     add(path.join(ROOT, '.claude', 'settings.local.json'));
     try { add(layout && layout.localSettingsFile(ROOT)); } catch { /* no repository */ }
-    const account = process.env.CLAUDE_CONFIG_DIR || (HOME_DIR ? path.join(HOME_DIR, '.claude') : '');
+    const account = accountDir();
     if (account) add(path.join(account, 'settings.json'));
     try {
       const managed = layout && layout.managedSettingsFile(process.platform);
@@ -693,6 +694,15 @@ const DOWNLOADS = new Set(['curl', 'wget']);
 const CLAUDE_BIN = /^claude(?:\.exe|\.cmd)?$/i;
 const PLUGIN_OFF_VERBS = new Set(['disable', 'uninstall', 'remove']);
 const PLUGIN_ON_VERBS = new Set(['install', 'i', 'enable']);
+// B1 (session audit 2026-11-27): a removal at one `--scope` leaves the core on where another scope's `enabledPlugins` still
+// holds it true, so the guards stay up and the act passes with a note. The scopes read are the settings files the guard
+// already watches, each from the folder the CLI names for it.
+const PLUGIN_SCOPE_FILES = Object.freeze({
+  user: () => path.join(accountDir(), 'settings.json'),
+  project: () => path.join(ROOT, '.claude', 'settings.json'),
+  local: () => path.join(ROOT, '.claude', 'settings.local.json'),
+});
+let coreKeptNote = null;
 function pluginActs(text) {
   const src = shell.blankComments(shell.blankHeredocs(String(text || '')));
   const chars = src.split('');
@@ -732,7 +742,18 @@ function pluginActs(text) {
 }
 // The same plugin: one id, or a bare name beside any core id.
 const sameCore = (a, b) => a.toLowerCase() === b.toLowerCase() || !a.includes('@') || !b.includes('@');
+// The scopes outside `offScopes` whose settings hold the core named by `id` (or any core for `--all`) at true.
+function scopesKeepingCore(id, offScopes) {
+  return Object.keys(PLUGIN_SCOPE_FILES).filter((scope) => {
+    if (offScopes.has(scope)) return false;
+    let file;
+    try { file = PLUGIN_SCOPE_FILES[scope](); } catch { return false; }
+    const kept = stateOf(readOr(file)).coreOn;
+    return Boolean(kept) && [...kept].some((key) => id === '--all' || sameCore(id, key));
+  });
+}
 function pluginCliOff(texts) {
+  const removals = [];
   for (const text of texts) {
     let parsed;
     try { parsed = pluginActs(text); } catch { continue; }
@@ -742,10 +763,15 @@ function pluginCliOff(texts) {
       if (!PLUGIN_OFF_VERBS.has(a.verb)) continue;
       const back = acts.slice(i + 1).some((b) => PLUGIN_ON_VERBS.has(b.verb) && b.id !== '--all' && b.scope === a.scope
         && (a.id === '--all' || sameCore(a.id, b.id)) && seps.slice(a.at, b.at).every((sp) => sp === '&&'));
-      if (back) continue;
-      const line = `claude plugin ${a.verb} ${a.id}`;
-      return { abs: line, shown: line, added: [], twins: [], all: false, core: true, cli: true };
+      if (!back) removals.push(a);
     }
+  }
+  const offScopes = new Set(removals.map((a) => a.scope));
+  for (const a of removals) {
+    const line = `claude plugin ${a.verb} ${a.id}`;
+    const keepers = PLUGIN_SCOPE_FILES[a.scope] ? scopesKeepingCore(a.id, offScopes) : [];
+    if (keepers.length) { coreKeptNote = coreKeptNote || `alfred-code: \`${line} --scope ${a.scope}\` leaves the core on at ${keepers.join(' and ')} scope, so the guards stay up.`; continue; }
+    return { abs: line, shown: line, added: [], twins: [], all: false, core: true, cli: true };
   }
   return null;
 }
@@ -924,4 +950,4 @@ function storeWrite() {
     process.exit(0);
   }
 }
-
+if (coreKeptNote) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: coreKeptNote } }));
