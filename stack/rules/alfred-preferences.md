@@ -20,3 +20,4 @@ The docs in `__DOCS_ROOT__/preferences/` bind every session and seat - the perso
 - The preferences capture changes the personal, personal code, architecture and git docs; the code-style capture refreshes the project doc. Never edit a doc to make a change pass.
 - A personal, code, architecture or git preference the user states in chat is named back to them as `/capture-preferences <their words>` to run - only the preferences docs reach every session. A correction to an entry is the same: follow it now and name the command back - never keep it in memory alone, where the doc keeps the stale entry.
 - A want the user states or stresses binds as the general rule behind it, their case its example; when the words could mean the one case or every case like it, ask, 'Every case like it' marked (Recommended).
+- A constraint the user puts on the work (who may be asked, what to avoid) is written that turn where the run keeps its state, so it outlives a compaction.

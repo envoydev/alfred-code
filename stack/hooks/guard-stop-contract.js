@@ -1900,6 +1900,33 @@ function rotateAskAnswered() {
 // (hook-prelude.js writeRunMarker), so a rewritten marker is a new run and starts over (stack-modes spec section 2). A torn
 // or foreign file reads as 0; an unwritable one counts nothing (0), the uncapped reading.
 const AUTO_CONTINUE_CAP = 50;
+// A RUN CLOSE ends the run (session f2de8d99, 2026-11-26/27: Claude Code's auto-mode classifier refused the model's `rm` of
+// the marker three times - 'Undermining Oversight' - so the run never closed and the model asked the user to delete it).
+// The two label pairs the run closes print: the auto-run close (`Done:` ... `Left for you:`) and the solve-task fields
+// (`Result:` ... `Leftovers:`). Each label opens its own line, so a progress note's inline 'Done: stage 2' is no close.
+const RUN_CLOSE_PAIRS = Object.freeze([['Done', 'Left for you'], ['Result', 'Leftovers']]);
+const closeLabel = (name) => new RegExp(`(?:^|\\n)\\s*(?:[-*+]\\s*)?\\**${name}\\**\\s*:`, 'i');
+// A fenced span is payload (a quoted close template), and a solve-task stop prints its fields at every stop, so a
+// `Progress:` short of its total is a stop mid-run, never the close (review 2026-11-27, findings 1 and 3).
+function closesRun(text) {
+  const t = String(text || '').replace(/(`{3,}|~{3,})[\s\S]*?(?:\1|$)/g, ' ');
+  const progress = progressOf(t);
+  if (progress && progress.n < progress.m) return false;
+  return RUN_CLOSE_PAIRS.some((pair) => pair.every((name) => closeLabel(name).test(t)));
+}
+// Removes this session's run marker when `text` is a run close under its live AUTO stamp; true once the marker is gone.
+function endRunOnClose(input, text) {
+  if (input.agent_id || !closesRun(text)) return false;
+  const stamp = stampOf(input);
+  if (!(stamp && stamp.live && stamp.session && /^AUTO\b/.test(stamp.first))) return false;
+  const marker = runMarkerOf(input);
+  if (!marker || !fs.existsSync(marker)) return false;
+  try { fs.rmSync(marker, { force: true }); } catch { /* a marker that will not go keeps the hold and its cap */ }
+  if (fs.existsSync(marker)) return false;
+  ledgerRow({ tool: '', mode: 'auto', kind: 'auto-run-closed', detail: { marker },
+    reason: 'auto-run: the run printed its close - the hook removed its marker; auto-run stays on until /alfred-code:mode:auto-run off' });
+  return true;
+}
 function countAutoContinue(session, markerMtimeMs) {
   const file = autoCountFile(payload);
   const key = `${session}@${markerMtimeMs}`;
@@ -2512,7 +2539,13 @@ if (payload.hook_event_name === 'Stop') {
   }
   // Only a continuation THIS hook caused stands down; one a sibling Stop hook caused is judged once more, and this
   // hook still blocks at most once per cycle (hook-prelude.js, the Stop chain - audit 2026-10-08 S1).
-  if (stopHeld(payload)) process.exit(0);
+  // A close written right after this hook's own hold is a Stop the chain passes unread (the temp-project drive of
+  // 2026-11-27), so a run close there ends the run first. Any other close goes on to every hold below - the rotation ask,
+  // the auto-fields hold - and ends the run in the AUTO-RUN section (review 2026-11-27, finding 2).
+  if (stopHeld(payload)) {
+    endRunOnClose(payload, payload.last_assistant_message);
+    process.exit(0);
+  }
   // The probes below count per TURN, and a continuation is the same turn - they read only the turn's own Stop.
   const continuation = !!payload.stop_hook_active;
   // The harness sends the turn's final text as `last_assistant_message` (Stop / SubagentStop) and
@@ -2786,7 +2819,7 @@ if (payload.hook_event_name === 'Stop') {
   // AUTO-RUN (stack-modes spec section 2, 2026-10-27; auto-mode, the user's ruling of 2026-10-14): the session's AUTO stamp
   // (guard-fresh-session-start.js, a `session:` line naming this session) is the MODE, and the run marker
   // `<data root>/state/sessions/AUTO-RUN-<session>` is the RUN in it - open from a typed family command until the run's
-  // close deletes it. Until then nobody is at the terminal to say 'go on', and a turn that ends between steps idles the run
+  // close, which this hook reads to remove it (endRunOnClose). Until then nobody is at the terminal to say 'go on', and a turn that ends between steps idles the run
   // until a person comes back, so a Stop under both is sent back to the run. Between runs the mode answers asks and holds
   // nothing. A torn or garbage marker still counts (spec, Error handling). The Stop chain bounds a cycle: once held, the
   // next Stop passes unless a tool call ran in between (hook-prelude.js stopHeldThisCycle, workSince). A hand-written AUTO
@@ -2798,6 +2831,7 @@ if (payload.hook_event_name === 'Stop') {
   const autoMarker = autoStamp && autoStamp.live && autoStamp.session && /^AUTO\b/.test(autoStamp.first) ? runMarkerOf(payload) : null;
   let markerStat = null;
   try { markerStat = autoMarker ? fs.statSync(autoMarker) : null; } catch { markerStat = null; }
+  if (markerStat && endRunOnClose(payload, prose)) process.exit(0);
   if (markerStat) {
     // A run waiting on work it launched itself is not idle: that work's completion notice re-invokes the session, so
     // nobody needs to send it back. Held anyway, every such wait cost one full-context turn that only restated the
@@ -2818,7 +2852,7 @@ if (payload.hook_event_name === 'Stop') {
     blockDetail('auto-continue', autoStamp.first.slice(0, 120));
     process.stderr.write(`auto-run is on and its run is not closed (${autoMarker} stands). Nobody is at the terminal to\n`
       + 'say go on: carry on with the run\'s next step now, taking each stop\'s (Recommended) option. If the run is finished,\n'
-      + `print its close and delete ${autoMarker} - that ends this run; ${(() => { try { return require('./hook-prelude.js').autoLasts(process.env.CLAUDE_PROJECT_DIR || payload.cwd); } catch { return 'auto-run stays on for the session until'; } })()}\n`
+      + `print its close with its \`Done:\` and \`Left for you:\` lines (or \`Result:\` and \`Leftovers:\`) - the hook then removes ${autoMarker}, which ends this run; never delete it yourself and never ask the user to; ${(() => { try { return require('./hook-prelude.js').autoLasts(process.env.CLAUDE_PROJECT_DIR || payload.cwd); } catch { return 'auto-run stays on for the session until'; } })()}\n`
       + '/alfred-code:mode:auto-run off. If it waits on work this session started, end the turn with one line saying so; if the next\n'
       + 'step needs the user - an ask with no Recommended option, or an outward act (push, publish, post, send) they have not approved, whether its ask is open or was answered in words - put that ask once now (for a series, one ask covering the rest of it) and end the turn on it; never restate it in prose.');
     process.exit(2); // guard-ask: Stop hold
@@ -3121,8 +3155,31 @@ const AUTO_TRACKER = String.raw`(?:Jira|Linear|YouTrack|GitHub|GitLab|backlog|tr
 const AUTO_FILED = String.raw`(?:stor(?:y|ies)|tasks?|epics?)`;
 const AUTO_FILING_VERB = String.raw`\b(?:raise|submit|create|open|add|(?<!\b(?:the|a|an|this|that|its|their|each|one)\s+)file)\b`;
 const AUTO_FILING_RE = new RegExp(`${AUTO_FILING_VERB}[^.;?\\n]{0,40}\\b(?:${AUTO_FILED}\\b[^.;?\\n]{0,40}\\b${AUTO_TRACKER}|${AUTO_TRACKER}\\b[^.;?\\n]{0,40}\\b${AUTO_FILED})\\b`, 'i');
+// Rotation is a credential act whenever the ask names a credential anywhere ('NPM_TOKEN', 'the creds'); a photo the
+// server rotates, with no credential word in the ask, is local work (session f2de8d99).
+const AUTO_SECRET_WORD = String.raw`(?<![A-Za-z])(?:keys?|keypairs?|tokens?|secrets?|creds?|credentials?|passwords?|passphrases?|certs?|certificates?)(?![A-Za-z])`;
+// A pick that is nothing but a hold of an outward act ('Hold', 'Hold - push later', 'Skip the publish', 'Leave them for
+// later') does nothing outward, so its question and the act it names are not read as the act (sessions f2de8d99 and
+// eb8ad61b, 2026-11-25..27: 36 'Hold' picks waited for an away user, one for 7.5 hours). Only the whole label counts:
+// anything after the hold ('Skip the push, publish to npm', 'Hold - push when green', 'Wait for green') is judged as any
+// pick, since a condition reads as approval once it holds (review 2026-11-27). Its description still waits on a forward
+// act ('then push develop', 'push once CI is green').
+// 'uploads' is the files, not the act, only after an age word ('older HEIC uploads', 'existing photo uploads'), with no
+// act verb before it in its clause ('Run the resize on the older uploads' still waits) and no 'to' after it - every
+// other spelling stays the act, the safe side (session f2de8d99, 2026-11-26: a photo-resize ask waited on 'older HEIC
+// uploads'; three reviews of 2026-11-27 found the wider readings answered real uploads).
+const AUTO_UPLOADS_VERB = String.raw`(?:(?<!\b(?:older|old|existing|earlier|past|previous)\s+(?:(?:heic|jpe?g|png|webp|photos?|images?|media|files?)\s+)?)uploads|(?<=\b(?:retry|retries|resume|re-?run|run|launch|kick\s+off|start|restart|continue|queue|redo|finish|trigger|send|push|re-?upload|upload)\b[^.;?\n]*)uploads|uploads(?=\s+(?:to|into|onto)\b))(?!\s+(?:folder|dir(?:ectory)?)\b)`;
+const AUTO_DEFER_ACT = String.raw`(?:push(?:es|ed|ing)?|merg(?:e|es|ed|ing)|deploy(?:s|ed|ing|ment)?|publish(?:es|ed|ing)?|releases?|ship(?:s|ping)?|send(?:s|ing)?|post(?:s|ing)?|upload(?:s|ing)?)`;
+const AUTO_HOLD_ONLY_RE = new RegExp(String.raw`^\s*(?:hold|skip|defer|don'?t|do\s+not|not\s+now|leave|postpone|park|later|keep\s+holding|stop\s+here)\b(?:[\s,:-]+(?:(?:the|a|any|both|all|this|that|it|them)\s+)?${AUTO_DEFER_ACT}(?:\s*(?:and|\/|\+)\s*${AUTO_DEFER_ACT})*(?:\s+(?:it|them|both|all|branch(?:es)?|commits?))?)?(?:[\s,:-]+(?:it|them))?(?:[\s,:-]+(?:(?:for\s+)?later|for\s+now|here))?\s*(?:\(Recommended\))?\s*$`, 'i');
+const AUTO_FORWARD_ACT_RE = new RegExp(String.raw`\b(?:then|and\s+then|after\s+that|afterwards?)\b[^.;\n]{0,40}\b${AUTO_DEFER_ACT}\b|\b${AUTO_DEFER_ACT}\b[^.;\n]{0,40}\b(?:when|once|after|as\s+soon\s+as|if)\b`, 'i');
+// A pick's own scope statement ('nothing is pushed', 'it is not merged') says what it leaves undone; in the question the
+// same words describe a state the pick may act on ('not pushed yet. Do it now?'), so only 'no' / 'never' / 'without'
+// negate an act there (review 2026-11-27).
+const AUTO_PICK_SCOPE_RE = /\b(?:not|nothing(?:\s+(?:is|gets|was))?)\s+(?:yet\s+|been\s+)?(?:push|merg|deploy|publish|releas|ship)\w*/gi;
 const AUTO_OUTWARD_RE = new RegExp([
-  String.raw`\b(?:push(?:es|ed|ing)?|merg(?:e|es|ed|ing)|deploy(?:s|ed|ing|ment)?|publish(?:es|ed|ing)?|release[sd]?|ship(?:s|ped|ping)?)\b`,
+  // A negated act is the opposite statement ('Commit locally (no push)', 'without pushing'): session f2de8d99,
+  // 2026-11-25..27 - 11 local commit asks waited for an away user on such a line. AUTO_PICK_SCOPE_RE takes the pick's own.
+  String.raw`(?<!\b(?:no|never|without)\s+)\b(?:push(?:es|ed|ing)?|merg(?:e|es|ed|ing)|deploy(?:s|ed|ing|ment)?|publish(?:es|ed|ing)?|release[sd]?|ship(?:s|ped|ping)?)\b`,
   String.raw`\b(?:pull requests?|merge requests?|PRs?|MRs?)\b`,
   String.raw`\b(?:open|create|raise|submit|file|report)\b[^.;?\n]{0,40}\b(?:issues?|tickets?|bugs?|incidents?)\b`,
   AUTO_FILING_RE.source,
@@ -3141,13 +3198,13 @@ const AUTO_OUTWARD_RE = new RegExp([
   // per message'), so auto-mode can step past a fresh-session ask. Measured over the 2,656 real recommended questions to
   // 2026-10-16: this and the money-word narrowing below drop 91 of 955 hits, every one a cost line, the pay idiom or a URL
   // path, and add none.
-  String.raw`(?<!\btokens\s(?:re-)?)\b(?:post(?:s|ed|ing)?|send(?:s|ing)?|sent|e-?mail(?:s|ed|ing)?|upload(?:s|ed|ing)?|announc(?:e|es|ed|ing)|notif(?:y|ies|ied))\b(?!-)(?!\s+(?:about\s+|roughly\s+|~)?\d[\d.,]*\s?k?\s+tokens\b)`,
+  String.raw`(?<!\btokens\s(?:re-)?)\b(?:post(?:s|ed|ing)?|send(?:s|ing)?|sent|e-?mail(?:s|ed|ing)?|upload(?:ed|ing)?|${AUTO_UPLOADS_VERB}|announc(?:e|es|ed|ing)|notif(?:y|ies|ied))\b(?!-)(?!\s+(?:about\s+|roughly\s+|~)?\d[\d.,]*\s?k?\s+tokens\b)`,
   String.raw`\b(?:delet(?:e|es|ed|ing)|remov(?:e|es|ed|ing)|prun(?:e|es|ed|ing))\b[^.;?\n]{0,40}\b(?:remote|origin|upstream|branch(?:es)?|tags?|releases?|repo(?:sitor(?:y|ies))?|environments?)\b`,
   String.raw`\breset\b[^.;?\n]{0,40}(?:--hard|\bhard\b|\borigin\b|\bupstream\b|\bbranch\b)`,
   String.raw`\b(?:drop(?:s|ped|ping)?|truncat(?:e|es|ed|ing)|wip(?:e|es|ed|ing))\b[^.;?\n]{0,40}\b(?:database|db|tables?|schemas?|collections?|data)\b`,
   String.raw`\b(?:drop(?:s|ped|ping)?|truncat(?:e|es|ed|ing))\b[^.;?\n]{0,10}\b(?:it|them)\b[^\n]{0,80}\b(?:database|db|tables?|schemas?)\b`,
   String.raw`\b(?:databases?|db|tables?|schemas?)\b[^\n]{0,80}\bdrop(?:s|ped|ping)?\b`,
-  String.raw`\bforce[- ]?push|--force\b|\brotat(?:e|es|ed|ing|ion)\b|\brevok(?:e|es|ed|ing)\b|(?<![/\w.-])(?:pay(?!\s+for\s+(?:itself|themselves|(?:the\s+|its\s+|their\s+)?(?:agent\s+)?seats?)\b)|purchas(?:e|es|ed|ing)|buy|charg(?:e|ed|ing))\b`,
+  String.raw`\bforce[- ]?push|--force\b|\brotat(?:e|es|ed|ing|ion)\b(?=[\s\S]*${AUTO_SECRET_WORD})|${AUTO_SECRET_WORD}[\s\S]*\brotat(?:e|es|ed|ing|ion)\b|\brevok(?:e|es|ed|ing)\b|(?<![/\w.-])(?:pay(?!\s+for\s+(?:itself|themselves|(?:the\s+|its\s+|their\s+)?(?:agent\s+)?seats?)\b)|purchas(?:e|es|ed|ing)|buy|charg(?:e|ed|ing))\b`,
 ].join('|'), 'i');
 // A BILLED run waits too (auto-run B, 2026-11-04: 'Run it, cap $5 - five billed Sonnet runs' was answered; the user's
 // 'fix the gap'). Its words are the bill (`billed`, `bills`, a paid run, spend - not spending time), a negated one
@@ -3181,7 +3238,9 @@ function autoAnswers(questions) {
     const pick = AUTO_FRESH_RE.test(marked[0].label)
       ? q.options.find((o) => o && typeof o.label === 'string' && o !== marked[0] && !AUTO_FRESH_RE.test(o.label)) : marked[0];
     if (!pick) return null;
-    if (outwardAsk(`${q.question} ${pick.label} ${pick.description || ''}`) || autoBilled(q.question, pick)) return null;
+    const holds = AUTO_HOLD_ONLY_RE.test(pick.label) && !AUTO_FORWARD_ACT_RE.test(pick.description || '');
+    const own = `${pick.label} ${pick.description || ''}`.replace(AUTO_PICK_SCOPE_RE, ' ');
+    if ((!holds && outwardAsk(`${q.question} ${own}`)) || autoBilled(q.question, pick)) return null;
     // an ask the English list cannot read waits for the user: a miss could push or post for them, a wait costs one click
     if (unreadable(`${q.question} ${pick.label}`)) return null;
     answers[q.question] = pick.label;

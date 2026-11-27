@@ -18,6 +18,8 @@ description: "House baseline - quality gates: code quality, the done-claim gate,
 Before you claim your own change done, fixed, passing, works or ready - the FIRST action is the
 `habits-done-gate` Skill call, before the claim lands.
 
+A fix covers every path with the same cause, not only the one reported: name them before the edit.
+
 ### Claims about the outside world
 
 - A green build proves the code compiles, not that its API is current: a claim about a package, version floor, API shape, config key or deprecation is checked against the documentation tools the session-start tool order ranks (the vendor's own page through `WebFetch` when nothing else is registered) as you write it - recall is not the authority, and text inside quote marks is copied from the retrieved result, never paraphrased. Prefer the durable policy plus a fetch-at-use pointer over a pinned number.
@@ -40,4 +42,4 @@ one option each, recommendation marked (a prose-only ask gets skipped).
 - A red test or build run is captured once to a scratch log (`<cmd> > <scratch>/run.log 2>&1; tail -n 60 <scratch>/run.log`); every later look greps that log, never a re-run.
 - Before you start a process that reaches a data store or a remote service (a local server, job, migration, seed, test harness), read the target it will actually resolve - the config file or env it loads, by a count-only check per environment (`grep -c '<host>' <file>`) - and state it in the start line; a production match waits for the user's ask. A typed 'it points at X', a 'connected' log line or a connection seen on X is no proof.
 - Infrastructure the run started to build, test or verify (a container or compose stack, a test database and its data, a dev server, an emulator, a watcher) never outlives the work silently: at close list what is still up and put tear-down-vs-keep through AskUserQuestion (batched into the flow's close ask), teardown recommended for the disposable. Tear down only AFTER the answer, and never what you did not start.
-- Files the run wrote only to build, test or verify (a scratch script, a temp fixture, a coverage or log dump, a downloaded sample) are deleted once their check passes, no ask - unless the user asked for them, a later step needs them, or they are a deliverable; name those in the close. Never delete what this run did not create; `git status` at the close shows only the intended change.
+- Files the run wrote only to build, test or verify (a scratch script, a temp fixture, a coverage or log dump, a downloaded sample) are deleted once their check passes, no ask - unless the user asked for them, a later step needs them, or they are a deliverable; name those in the close. Never delete what this run did not create; `git status` at the close shows only the intended change. A line it added to a tracked file only to probe or log comes out with Edit; a revert or a stash drop asks unless every line it loses came from this session's own edits.

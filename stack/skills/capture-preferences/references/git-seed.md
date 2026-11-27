@@ -5,7 +5,7 @@ Updated: __TODAY__
 ## G1 - Ask before any commit or push
 <!-- id: g1 -->
 <!-- locked: consent -->
-- Rule: Do NOT commit or push until the user explicitly says to, however done the task looks - a picked ask option is that word. A commit ask recommends the local commit (`git reset --soft HEAD~1` undoes it) and offers the diff first; when it names anything still owed, 'Show the diff first' takes the mark, and every push or publish ask marks holding.
+- Rule: Do NOT commit or push until the user explicitly says to, however done the task looks - a picked ask option is that word. A commit ask recommends the local commit (`git reset --soft HEAD~1` undoes it) and offers the diff first; when it names anything still owed, 'Show the diff first' takes the mark, and every push or publish ask marks holding. A commit ask always marks one option, under auto-run too: there the run's pick of the local commit is that word for the local commit alone, and a push or publish still waits for the user.
 - Scope: every commit, push, merge and publish
 - Why: the user owns what leaves the working tree.
 
