@@ -81,7 +81,10 @@ test('auto-wave: an outward act in a description that is not held still waits', 
         'Fix the lint, wait until CI is green and publish 2.1.0', 'Build now; later push the tag', 'pushes nothing until CI is green and then pushes',
         'pushes and then needs a restart', 'publishes then needs a restart', 'deploys to staging and then needs a smoke test',
         'Tell me when you are back - meanwhile I push the branch', 'Let me know once you have read it - I publish 2.1.0 now', 'pushes nothing but the tag',
-        'the push asks you for the token', 'CI stays red until the next push', 'pushes nothing, then publishes', 'pushes nothing except the tag',
+        'the push asks you for the token',
+        // round 3: a wait held by CI or a build is no hold
+        'the push waits for CI', 'the deploy waits for the build to finish', 'the publish waits on the tests', 'push and merge wait for the green run',
+        'the publish step waits for the lane', 'publish waits until CI is green', 'CI stays red until the next push', 'pushes nothing, then publishes', 'pushes nothing except the tag',
         'Read the log; then one publish ask for both changes, with rooms empty', 'publishing from the old network then needs the value switched back'])
         assert.strictEqual(answered(ask(p, 'h2', [pick(question, 'Go on (Recommended)', description)])), null, description);
 });

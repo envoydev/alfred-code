@@ -3473,12 +3473,12 @@ const HOLD_ALONE_RE = /^(?:(?:it|them|both|all)\s*)?(?:(?:for\s+)?now|here)?$/i;
 const cutAtDeferral = (text) => { const at = text.search(AUTO_DEFERRAL_RE); return at < 0 ? text : text.slice(0, at); };
 // A pick's DESCRIPTION may say the outward act is held (session audit 2026-11-27 B14, replayed over session eb8ad61b: 5 asks whose
 // pick said 'the publish stays your word' waited for an away user). Only two held shapes are cut, and only inside one clause: an
-// outward act word DIRECTLY followed by 'waits', 'stays held', 'is' or 'stays your word', or 'asks you later' / 'asks you first'
+// outward act word DIRECTLY followed by 'waits for you' (or 'for your word', 'OK', 'go'; a wait on CI or a build is no hold), 'stays held', 'is' or 'stays your word', or 'asks you later' / 'asks you first'
 // ('the push gate asks you later'), and 'for you to <act>'. Nothing else is read as held: a deferral ('once CI is green I push'),
 // a 'then needs', a 'tell me when ...' and 'asks you for the token' leave the act the pick's own (wave T16 round 2).
 const AUTO_ACT_WORD = String.raw`\b${AUTO_DEFER_ACT}\b`;
 const AUTO_ACT_SERIES = String.raw`${AUTO_ACT_WORD}(?:\s+(?:and|or)\s+(?:the\s+)?${AUTO_ACT_WORD})*`;
-const AUTO_HELD_TAIL = String.raw`(?:\s+(?:gate|step|half|part))?\s+(?:still\s+)?(?:waits?\b|stays?\s+held\b|(?:is|stays?)\s+your\s+word\b|asks?\s+you\s+(?:later|first)\b)`;
+const AUTO_HELD_TAIL = String.raw`(?:\s+(?:gate|step|half|part))?\s+(?:still\s+)?(?:waits?\s+for\s+(?:you|your\s+(?:word|OK|go))\b|stays?\s+held\b|(?:is|stays?)\s+your\s+word\b|asks?\s+you\s+(?:later|first)\b)`;
 const AUTO_HELD_CLAUSE_RE = new RegExp([
   String.raw`${AUTO_ACT_SERIES}${AUTO_HELD_TAIL}`,
   String.raw`\bfor\s+you\s+to\s+${AUTO_ACT_WORD}`,
