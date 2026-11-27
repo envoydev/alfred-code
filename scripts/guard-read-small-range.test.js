@@ -69,7 +69,11 @@ test('a Read of a harness tool-result file passes whole, and the same file in a 
   const elsewhere = path.join(config, 'other', 'acme-app', 'session-1', 'tool-results'); fs.mkdirSync(elsewhere, { recursive: true });
   fs.writeFileSync(path.join(elsewhere, 'a.txt'), big.repeat(1000));
   assert.equal(whole(path.join(elsewhere, 'a.txt')), 2, 'a tool-results folder outside projects/<project>/<session>/ is not the harness one');
-  assert.equal(whole(path.join(dir, '..', '..', '..', '..', 'other', 'acme-app', 'session-1', 'tool-results', 'a.txt')), 2, 'a dot-dot path out of the harness folder is judged by where it lands');
+  assert.equal(whole(`${dir}/../../../../other/acme-app/session-1/tool-results/a.txt`), 2, 'a raw dot-dot path out of the harness folder is judged by where it lands');
+  if (process.platform !== 'win32') {
+    const link = path.join(dir, 'link.txt'); fs.symlinkSync(control, link);
+    assert.equal(whole(link), 2, 'a link from tool-results out to a project file is judged by its target');
+  }
 });
 
 test('a Read of a session task output file passes whole', () => {
