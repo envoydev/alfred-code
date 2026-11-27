@@ -789,11 +789,14 @@ const sectionHash = (text) => crypto.createHash('sha1').update(stripStamp(text))
 const QUOTE_CHARS = 200;
 // B17: a line holding only a list marker ('1.', '-', '*') has no text to quote: the excerpt takes the first line that does.
 const LIST_MARKER_ONLY = /^\s*(?:[-*+]|\d+[.)])\s*$/;
+// ... and a marker that leads text is no part of the sentence: '1. Refunds are processed.' quotes 'Refunds are processed.', not '1.'.
+const LIST_MARKER_LEAD = /^(?:[-*+]|\d+[.)])\s+/;
 const excerptLine = (lines) => lines.find((l) => l.trim() && !COMMENT.test(l) && !LIST_MARKER_ONLY.test(l)) || '';
 function firstSentence(text) {
   const body = excerptLine(norm(text).split('\n').slice(1));
-  const m = /^(.*?[.!?])(\s|$)/.exec(body.trim());
-  const one = (m ? m[1] : body).trim();
+  const line = body.trim().replace(LIST_MARKER_LEAD, '');
+  const m = /^(.*?[.!?])(\s|$)/.exec(line);
+  const one = (m ? m[1] : line).trim();
   return one.length > QUOTE_CHARS ? `${one.slice(0, QUOTE_CHARS - 3)}...` : one;
 }
 const stampLineOf = (t) => norm(t).split('\n').find((l) => STAMP.test(l)) || '';

@@ -159,12 +159,17 @@ const actorKey = (input) => (input.agent_id || input.agent_type ? agentKey(input
 function gateOf(state, input) {
   const key = actorKey(input);
   if (!state.gate || typeof state.gate !== 'object' || Array.isArray(state.gate)) state.gate = {};
-  if (!state.gate[key]) {
+  const held = state.gate[key];
+  if (!held || typeof held !== 'object' || Array.isArray(held)) {
     state.gate[key] = key === MAIN_ACTOR
       ? { consults: Array.isArray(state.consults) ? state.consults : [], holds: Number(state.holds) || 0, candidates: !!state.candidates }
       : { consults: [], holds: 0, candidates: false };
   }
-  return state.gate[key];
+  // A stored record with a malformed field reads as an empty one (fail open: a compact start once threw on it).
+  const gate = state.gate[key];
+  if (!Array.isArray(gate.consults)) gate.consults = [];
+  if (typeof gate.holds !== 'number') gate.holds = Number(gate.holds) || 0;
+  return gate;
 }
 // A /clear re-arms this actor's gate in each joined member's file of the session too (stage 6); a compaction only drops the
 // actor's entry claims, so its orientation is sent again (A4: the read marks stay).

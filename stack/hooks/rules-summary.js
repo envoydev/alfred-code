@@ -214,10 +214,11 @@ function editNote(project, sessionId, actor, file, env = process.env)
     catch { return ''; }
 }
 
-// B16: a file under the data root (`.alfred/`) is the plugin's own state, no project file; a copy without layout.js attaches as before.
+// B16: a file under the data root (`.alfred/`) other than the docs root is the plugin's own state, no project file: the docs root holds
+// the user's own docs, so its rules attach. A copy without layout.js attaches as before.
 function isPluginState(project, file)
 {
-    try { return require(path.join(__dirname, 'layout.js')).underDataRoot(project, file); }
+    try { return require(path.join(__dirname, 'layout.js')).underStateOnly(project, file); }
     catch { return false; }
 }
 

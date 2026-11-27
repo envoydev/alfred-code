@@ -2662,6 +2662,38 @@ test('B17: the docs check quotes the first line with text when a section opens o
   }
 });
 
+test('B17: a first line that opens with a list marker and holds words is quoted without the marker, not as the marker alone', () => {
+  for (const [marker, words] of [['1.', 'Refunds are processed.'], ['2)', 'Refunds are processed.'], ['-', 'Refunds are processed.'], ['*', 'Refunds are processed.']]) {
+    const r = watched({ 'references/patterns.md': section('orders', 'src/Api/**', `${marker} ${words} Then more.\nThe rest.`) });
+    try {
+      const s = sid();
+      r.hook(subStart(s, 'a1'), GIT);
+      touchBy(r, s, 'a1');
+      const reason = JSON.parse(r.hook(subStop(s, 'a1'), GIT).stdout).reason;
+      assert.match(reason, /\n {2}"Refunds are processed\."\n/, `${marker}: ${reason}`);
+    } finally { r.rm(); }
+  }
+});
+
+// A4 fail-open: a stored gate with a malformed field reads as an empty one; the compact start never throws.
+test('A4: a garbage gate record on a compact start throws nothing, and the good entries are still named in the note', () => {
+  const r = prefsRepo();
+  try {
+    const s = sid();
+    const file = path.join(os.tmpdir(), `docs-session-${s}.json`);
+    const writeGate = (gate) => fs.writeFileSync(file, JSON.stringify({ consults: [], holds: 0, edits: 0, asked: false, snapshot: null, gate: { 'main.session': gate } }));
+    writeGate({ consults: 'oops', holds: 'x', candidates: 7 });
+    const bad = r.hook({ hook_event_name: 'SessionStart', session_id: s, source: 'compact' }, GIT);
+    assert.strictEqual(bad.status, 0, bad.stderr);
+    assert.strictEqual(bad.stderr, '', 'no throw');
+    assert.match(ctx(bad), /Before your first change under/, 'a malformed record reads as nothing read');
+    writeGate({ consults: [7, null, '', 'patterns#orders'], holds: 0 });
+    const mixed = r.hook({ hook_event_name: 'SessionStart', session_id: s, source: 'compact' }, GIT);
+    assert.strictEqual(mixed.stderr, '');
+    assert.match(ctx(mixed), /A compaction dropped the text of the docs this session read: patterns#orders\./, 'the good entry is named');
+  } finally { r.rm(); }
+});
+
 test('G8: a seat\'s start block names conflict markers too', () => {
   const r = repo({ tracked: true, docs: { 'references/patterns.md': `${PATTERNS}\n<<<<<<< HEAD\nA.\n=======\nB.\n>>>>>>> feat\n`, 'ORIENTATION.md': ORIENT } });
   try {
