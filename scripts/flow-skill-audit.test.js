@@ -499,8 +499,9 @@ test('SKF-16: the coverage loop vendors the anti-gaming sweep, records its basel
 // SKF-04 (the user's ruling, option A): the upgrade carried a legacy `--auto` that 'skips the gate' beside auto-mode, which
 // answers every marked ask - so a stage that stayed red re-planned unattended with no cap. One mode now (auto-run since the
 // stack-modes spec of 2026-10-27): auto-run answers
-// the gate, and the hard-stop ask goes out unmarked under it, so the hook leaves it for the user (lint 61 holds templates
-// only, and this ask is prose; scripts/auto-mode.test.js replays both shapes through the hook).
+// the gate, and the hard-stop ask goes out under it with its question opening 'waits for you: <reason>' and its safe option
+// marked, so the hook leaves it for the user (lint 61 holds templates only, and this ask is prose; scripts/auto-mode.test.js
+// replays both shapes through the hook).
 test('SKF-04: the upgrade has one auto mode, and its hard stop waits for the user under it', () => {
     const t = flat(skill('task-version-upgrade'));
     assert.strictEqual((t.match(/--auto\b(?!-)/g) || []).length, 1, 'the only --auto left is the line saying it starts nothing');
@@ -509,7 +510,7 @@ test('SKF-04: the upgrade has one auto mode, and its hard stop waits for the use
     assert.match(t, /\*\*Under auto-run the gate is answered, not skipped - and only when the user turned auto-run on, the hook's contract in context\.\*\*/);
     assert.match(t, /the old `--auto`, 'auto mode' or `auto-mode` wording starts nothing, and the gate stands/);
     assert.match(t, /Hard stops, auto-run included:/);
-    assert.match(t, /Under auto-run put the same three options with NO `\(Recommended\)` mark, the question opening 'no option is recommended: a hard stop waits for you under auto-run' - the hook answers only a marked ask, so this one waits\./);
+    assert.match(t, /Under auto-run put the same options with the safe one marked `\(Recommended\)`, the question opening 'waits for you: <reason>' - auto-run never answers it\./);
     // the attended ask keeps its mark, and the modes paragraph is untouched
     assert.match(t, /- 'Re-plan from this stage \(Recommended\)' - .* - 'Roll back to the last stage's rollback point' - .* - 'Stop here' - /);
     assert.match(t, /\*\*Modes\.\*\* Auto-run, auto-compact and output scoring are modes the user turns on and off with the mode commands/);

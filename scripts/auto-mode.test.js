@@ -725,28 +725,56 @@ test('auto-mode asks: the pay-for-seats idiom and the fresh-session cost line ar
 });
 
 // audit 2026-10-14 SKF-04 (the user's ruling, option A): the upgrade's hard stop is a rail. Put as the attended run puts
-// it, the hook answers its marked 'Re-plan' and a stage that stays red re-plans unattended; so under auto-mode the skill
-// puts it with no mark and the question saying why, and the hook leaves it for the user without denying it.
-test('auto-mode asks: the upgrade hard stop waits when put unmarked with its reason, as task-version-upgrade says', () =>
+// it, the hook answers its marked 'Re-plan' and a stage that stays red re-plans unattended. B8 (session audit 2026-11-27):
+// under auto-run the skill puts the same options with the safe one marked and the question opening 'waits for you: <why>',
+// and the hook never answers it - a marked pick shows, so the user is asked with a default.
+test('auto-mode asks: the upgrade hard stop waits when its question opens waits for you, as task-version-upgrade says', () =>
 {
     const p = project();
     autoStamp(p, 'u1');
-    const labels = ['Re-plan from this stage', "Roll back to the last stage's rollback point", 'Stop here'];
-    const marked = q('Stage 3 stays red after its resolver pass. How do we go on?', [`${labels[0]} (Recommended)`, ...labels.slice(1)]);
-    assert.deepStrictEqual(answered(ask(p, 'u1', [marked])), { [marked.question]: 'Re-plan from this stage (Recommended)' },
-        'the attended shape is answered unattended - the reason auto-mode drops the mark');
+    const labels = ['Re-plan from this stage (Recommended)', "Roll back to the last stage's rollback point", 'Stop here'];
+    const plain = q('Stage 3 stays red after its resolver pass. How do we go on?', labels);
+    assert.deepStrictEqual(answered(ask(p, 'u1', [plain])), { [plain.question]: 'Re-plan from this stage (Recommended)' },
+        'the attended shape is answered unattended - so the wait needs its prefix');
     const skillText = fs.readFileSync(path.join(__dirname, '..', 'stack', 'skills', 'task-version-upgrade', 'SKILL.md'), 'utf8').replace(/\s+/g, ' ');
-    const opener = (/the question opening '([^']+)'/.exec(skillText) || [])[1];
-    assert.ok(opener, 'the skill names the opener its auto-mode hard stop carries');
-    const waits = q(`${opener}. Stage 3 stays red after its resolver pass. How do we go on?`, labels);
+    assert.match(skillText, /the question opening 'waits for you: <reason>' - auto-run never answers it\./, 'the skill names the form');
+    const waits = q('waits for you: a hard stop. Stage 3 stays red after its resolver pass. How do we go on?', labels);
     const r = ask(p, 'u1', [waits]);
-    assert.strictEqual(answered(r), null, 'the unmarked hard stop is not answered');
+    assert.strictEqual(answered(r), null, 'a marked ask that opens waits for you is not answered');
     assert.strictEqual(r.status, 0, `the mark check lets it through: ${r.stderr}`);
     assert.doesNotMatch(r.stderr, /Blocked/);
     assert.ok(rows(p, 'u1').some((x) => x.kind === 'auto-ask-waits'), 'the wait is logged');
-    const bare = ask(p, 'u1', [q('Stage 3 stays red after its resolver pass. How do we go on?', labels)]);
+    const bare = ask(p, 'u1', [q('Stage 3 stays red after its resolver pass. How do we go on?', labels.map((l) => l.replace(' (Recommended)', '')))]);
     assert.strictEqual(bare.status, 'ask', 'unmarked with no reason is handed back by the mark check');
     assert.match(bare.stderr, /without exactly one option marked '\(Recommended\)'/);
+});
+
+test('auto-mode asks: a waits for you ask with one marked pick waits under auto-run, whatever else the ask says', () =>
+{
+    const p = project();
+    autoStamp(p, 'wf1');
+    const labels = ['Upgrade (Recommended)', 'Stay on the current version'];
+    const waits = q('waits for you: a hard stop. Upgrade the framework to the next major?', labels);
+    assert.strictEqual(answered(ask(p, 'wf1', [waits])), null, 'a hard stop waits');
+    for (const reason of ['a rule every later session follows', 'other people\'s data', 'money', 'an act that cannot be undone'])
+        assert.strictEqual(answered(ask(p, 'wf1', [q(`waits for you: ${reason}. Go on?`, ['Hold (Recommended)', 'Go'])])), null, reason);
+    assert.strictEqual(answered(ask(p, 'wf1', [q('  Waits for you: a hard stop. Go on?', ['Hold (Recommended)', 'Go'])])), null, 'case and leading blanks');
+    assert.strictEqual(answered(ask(p, 'wf1', [waits, q('Which name?', ['alpha (Recommended)', 'beta'])])), null, 'one waiting question holds the whole ask');
+    // S12: the browser-history ask in the new form waits and shows a pick
+    const history = ask(p, 'wf1', [q('waits for you: other people\'s data. Read the browser history for the right tab?', ['Skip it (Recommended)', 'Read it'])]);
+    assert.strictEqual(answered(history), null);
+    assert.strictEqual(history.status, 0, history.stderr);
+    // a reason is part of the form: the bare prefix and a mid-question mention are no wait mark
+    assert.deepStrictEqual(answered(ask(p, 'wf1', [q('Plan ready. This waits for you: build it?', ['Build (Recommended)', 'Stop'])])), { 'Plan ready. This waits for you: build it?': 'Build (Recommended)' }, 'only an opener counts');
+    assert.deepStrictEqual(answered(ask(p, 'wf1', [q('waits for you:', ['Build (Recommended)', 'Stop'])])), { 'waits for you:': 'Build (Recommended)' }, 'no reason, no wait');
+});
+
+test('auto-mode asks: an ordinary ask is still answered under auto-run after the wait form', () =>
+{
+    const p = project();
+    autoStamp(p, 'wf2');
+    const one = q('Plan ready. Build it?', ['Approve and build (Recommended)', 'Changes needed']);
+    assert.deepStrictEqual(answered(ask(p, 'wf2', [one])), { 'Plan ready. Build it?': 'Approve and build (Recommended)' });
 });
 
 // ---------------------------------------------------------------------------------------------

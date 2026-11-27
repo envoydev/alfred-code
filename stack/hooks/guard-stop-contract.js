@@ -3142,6 +3142,15 @@ const REMOTE_READ_RE = /\bgh\s+(?:repo\s+view|api\s+user)\b|\bgit\s+(?:fetch|pul
 // A money word counts outside a path segment ('/purchases/' in a URL) and not as the cost idiom 'too small to pay for
 // seats' - a task-solve approval in auto-mode waited for the user on it (2026-10-16, the user's bug report).
 const AUTO_FRESH_RE = /\bfresh session\b|\bresume (?:it |this |the run )?(?:in|from) a (?:new|fresh)\b/i;
+// THE MARKED WAIT (session audit 2026-11-27, B8): an ask that must wait for the user opens its question 'waits for you: <why>'
+// and still marks one safe option '(Recommended)', so the user sees a default. Auto-run never answers it. It replaces the old
+// unmarked escape ('no option is recommended: <why>'), which showed the user no pick. Only an opener with a reason counts: the
+// words in the middle of a question, or the bare prefix, are no wait mark.
+const WAIT_PREFIX_RE = /^\s*waits for you:\s*\S/i;
+function waitsForUser(question)
+{
+    return WAIT_PREFIX_RE.test(String(question || ''));
+}
 const AUTO_TARGET = String.raw`(?:tickets?|issues?|PRs?|pull requests?|MRs?|cards?|threads?|Confluence|Notion|wiki|Jira|Linear)`;
 // A ticket key: two to ten capitals or digits led by a capital, a dash, digits (PROJ-12, AB2-7). Not one letter ('X-1'), not
 // glued to a word or a dotted name, and not an encoding or standard name ('UTF-8', 'SHA-256', 'ISO-8601', 'RFC-9110'), which
@@ -3246,6 +3255,7 @@ function autoAnswers(questions) {
   const answers = {};
   for (const q of questions) {
     if (!q || typeof q.question !== 'string' || !Array.isArray(q.options)) return null;
+    if (waitsForUser(q.question)) return null;
     const marked = q.options.filter((o) => o && typeof o.label === 'string' && /\(Recommended\)/i.test(o.label));
     if (marked.length !== 1) return null;
     // The fresh-session hand-off is never taken: nobody is there to paste its resume block (task-solve's AUTO rule). An
@@ -3449,15 +3459,13 @@ if (payload.tool_name === 'AskUserQuestion') {
     })();
     // 9. THE RECOMMENDED MARK (alfred-interaction.md: 'the recommended one marked'). A single-select question with
     // options and none marked '(Recommended)', or more than one, went out in 2 of 11 questions of one session (C26,
-    // bda299a8), and the mark goes on the FIRST option (lint check 61's rule for the ask templates). Denied once: a
-    // contradiction the rule asks to put WITHOUT a default is re-sent unchanged and passes. A question with NO mark
-    // whose own text says why none is recommended is that case stated, and passes at once (audit 2026-10-10, T5
-    // cross-track, f450ea64: the user had to answer the deny of a question that already said there was no default).
-    const NO_DEFAULT_RE = /\b(?:no|none(?: of (?:these|them|the options))?(?: is)?|nothing(?: is)?|without an?) (?:single |clear )?(?:option (?:is )?)?recommend(?:ed|ation)\b|\bno (?:default|preferred) (?:option|answer|pick|choice)\b|\bwithout a default\b|\bno (?:option|answer) is (?:better|preferred)\b/i;
+    // bda299a8), and the mark goes on the FIRST option (lint check 61's rule for the ask templates). Denied once: the
+    // same ask re-sent unchanged passes. No question is exempt for saying why it has no default (B8, session audit
+    // 2026-11-27: that escape showed the user no pick): an ask that must wait opens 'waits for you: <why>' and marks the
+    // safe option, and auto-run never answers it (waitsForUser).
     const unmarked = questions.filter((q) => {
       if (!q || q.multiSelect || !Array.isArray(q.options) || q.options.length < 2) return false;
       const marks = q.options.map((o, i) => (o && /\(Recommended\)/i.test(String(o.label || '')) ? i : -1)).filter((i) => i >= 0);
-      if (!marks.length && NO_DEFAULT_RE.test(`${q.question || ''} ${q.header || ''}`)) return false;
       return marks.length !== 1 || marks[0] !== 0;
     }).length;
     // 9b. THE MARK AGREES WITH THE QUESTION. A question saying 'Recommended: the alpha site after you deploy the fix branch'
@@ -3625,7 +3633,7 @@ if (payload.tool_name === 'AskUserQuestion') {
         blockCall(payload, `Blocked: this AskUserQuestion carries ${reasons.join('; ')}.`
           + (voice.length ? ` The house voice (alfred-interaction.md) covers an ask's question, header, labels and descriptions, and the user reads them as written.` : '')
           + (typeIntoOther ? ` A picked option returns only its LABEL - a value the user must type goes in plain prose that ends the turn, and the ask carries what they can PICK (${pickLabels}).` : '')
-          + (unmarked ? ` Mark the recommended option '(Recommended)' and list it first - or, for a question with no default, say why in the question ('no option is recommended: <why>').` : '')
+          + (unmarked ? ` Mark the recommended option '(Recommended)' and list it first. A question that must wait for the user - a hard stop, a rule every later session follows, other people's data or privacy, money, an act that cannot be undone - still marks its safe option, and opens 'waits for you: <why>'; auto-run never answers it.` : '')
           + (misMarked ? ` Put the mark on the option the question recommends, or reword the question so both say the same pick.` : '')
           + (noReview ? `${noReview.from === 'text' ? '' : ' State the cycle\'s `Size:` on the close - a trivial run has no stop, so a run that stops here is small at least.'} The small row runs \`task-verify-code\` inline before its close (task-solve SKILL.md): run it, then put \`review: <reviewer> - <its verdict>\` on the \`Result:\` line - or, if the size grew past small, restate \`Size:\`.` : '')
           + (blind ? ` The user answers on what the chat SHOWS: put ${blind.noun ? `the ${blind.noun}` : 'what the ask names'} in your reply text first (the stages, the draft as it will be posted, the edit made), then re-send this same ask unchanged - a reworded ask is judged again. If your reply already shows it (this hook reads a transcript that can lag the message in flight) or it sits in a file the user has open, re-send the ask unchanged now.` : '')

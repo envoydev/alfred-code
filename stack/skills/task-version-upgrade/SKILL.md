@@ -78,7 +78,7 @@ Stage <N> hit a hard stop: <the resolver's BLOCKED_CONTRACT_CHANGE | the red tha
 - 'Stop here' - nothing more runs; the landed stages stay
 ```
 
-Under auto-run put the same three options with NO `(Recommended)` mark, the question opening 'no option is recommended: a hard stop waits for you under auto-run' - the hook answers only a marked ask, so this one waits.
+Under auto-run put the same options with the safe one marked `(Recommended)`, the question opening 'waits for you: <reason>' - auto-run never answers it.
 
 ### 6. VERIFY + REPORT
 Full suite green at the end; on a large upgrade, optionally the domain **verifier (sonnet/xhigh)** over the assembled result. Report: current -> target, stages landed and what each changed, runtime-break checks done, anything deferred or user-declined, the rollback points, and the commit line. If the run stopped early: which stage, why, and the state it left. Shaped like:

@@ -635,9 +635,17 @@ test('guard-stop-contract: an ask that sends the user to type into Other, or mar
   const second = askIn(tp, [{ question: 'Ship?', options: [{ label: 'Hold', description: 'x' }, { label: 'Ship (Recommended)', description: 'y' }] }]);
   assert.equal(second.status, 'ask', 'the marked option goes first');
   assert.match(second.stderr, /listed first/);
-  // f450ea64 (T5 cross-track): a question that already says why none is recommended is the no-default case stated
-  assert.equal(askIn(tp, [{ ...bare[0], question: 'What should a Manager see? No option is recommended: the two rules contradict.' }]).status, 0,
-    'a question saying why none is recommended passes at once');
+  // B8 (session audit 2026-11-27): the unmarked escape is gone. A question that says no option is recommended is denied
+  // too, and the reason names the mark and the 'waits for you:' form that replaced it.
+  const noDefault = askIn(tp, [{ ...bare[0], question: 'What should a Manager see? No option is recommended: the two rules contradict.' }]);
+  assert.equal(noDefault.status, 'ask', 'a question saying why none is recommended is denied like any unmarked ask');
+  assert.match(noDefault.stderr, /without exactly one option marked '\(Recommended\)'/);
+  assert.match(noDefault.stderr, /'\(Recommended\)' and list it first/, 'the reason names the mark');
+  assert.match(noDefault.stderr, /'waits for you: <why>'/, 'and the wait form');
+  assert.doesNotMatch(noDefault.stderr, /no option is recommended: <why>/, 'the old form is no longer offered');
+  assert.equal(askIn(tp, [{ ...bare[0], question: 'waits for you: a hard stop. What should a Manager see?', options: [{ label: 'Hidden entirely (Recommended)', description: 'x' }, { label: 'Read-only', description: 'y' }] }]).status, 0,
+    'a waits-for-you ask with one marked pick passes the mark check');
+  assert.equal(askIn(tp, [{ ...bare[0], question: 'waits for you: a hard stop. What should a Manager see?' }]).status, 'ask', 'the wait form with no mark is denied');
   assert.equal(askIn(tp, [{ question: 'Ship? None is recommended.', options: [{ label: 'Hold (Recommended)', description: 'x' }, { label: 'Ship (Recommended)', description: 'y' }] }]).status, 'ask',
     'two marks are still denied');
 });

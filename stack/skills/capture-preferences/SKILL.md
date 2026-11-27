@@ -72,7 +72,7 @@ When the user's words name one case - a type, a file, an API, a single call such
 - 'Only this case' - the entry's Rule: is '<the words as given>', and nothing else is bound
 ```
 
-Under auto-run this ask goes out with no `(Recommended)` mark, its question opening 'no option is recommended: a rule every later session follows is yours to widen' - the ask hook passes an unmarked question only when it says why, and auto-run answers only a marked one, so this one waits for the user.
+Under auto-run put the same options with the safe one marked `(Recommended)`, the question opening 'waits for you: <reason>' - auto-run never answers it.
 
 ### 3. CONFLICT CHECK
 

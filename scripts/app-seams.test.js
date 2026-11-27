@@ -33,7 +33,7 @@ test('NORMALIZE lifts a case to its rule', () =>
     assert.ok(normalize.includes('`- Example:`'), 'the case goes on an Example: line');
     const asks = [...normalize.matchAll(/```ask\n([\s\S]*?)```/g)].map((m) => m[1].split('\n').filter((l) => /^- '/.test(l)));
     assert.ok(asks.some((options) => options[0] && options[0].startsWith('- \'Every case like it (Recommended)\'')), 'the ask recommends the general rule, first');
-    assert.ok(normalize.includes('Under auto-run this ask goes out with no `(Recommended)` mark'), 'auto-run leaves the ask for the user');
+    assert.ok(normalize.includes("the question opening 'waits for you: <reason>' - auto-run never answers it"), 'auto-run leaves the ask for the user');
     assert.ok(read('stack/skills/capture-preferences/references/doc-shape.md').includes('`Example:`'), 'the doc shape lists the line');
 });
 
