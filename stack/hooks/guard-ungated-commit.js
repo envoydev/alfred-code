@@ -1165,10 +1165,24 @@ function lastCodeReviewMs() {
 // committed and its time is unknown (a staged removal commits no content and is skipped). A file a review's snapshot saw
 // with the content it holds now passes whatever its time says: a stash and pop or a branch round-trip moved the time,
 // not the code (a third side note; the user's ruling 'Snapshot at review' - hook-prelude.js snapshotReview).
-// B15 (session audit 2026-11-27): prose is a closed list of extensions. An edit to prose files only after the review, or after
-// the receipt, leaves the review standing - a README or a changelog holds no code to review. A code or test file still voids it.
+// B15 (session audit 2026-11-27): prose is a closed list. An edit to prose files only after the review, or after the receipt,
+// leaves the review standing - a README or a changelog holds no code to review. Prose is a file with a prose extension, a
+// CHANGELOG file of any extension, and a file under `docs/` whose extension is not code. A code or test file still voids it,
+// and so does a dependency or build list that only looks like text (`requirements*.txt`, `constraints*.txt`, `CMakeLists.txt`).
 const PROSE_EXTENSIONS = Object.freeze(['.md', '.mdx', '.txt', '.rst', '.adoc']);
-const proseOnly = (files) => files.every((file) => PROSE_EXTENSIONS.includes(path.extname(String(file)).toLowerCase()));
+const DOCS_CODE_EXTENSIONS = Object.freeze(['.js', '.cjs', '.mjs', '.ts', '.tsx', '.jsx', '.py', '.rb', '.go', '.rs', '.java', '.cs', '.sh', '.ps1', '.json', '.yml', '.yaml', '.toml']);
+const CODE_SHAPED_TEXT = /^(?:requirements|constraints)[^/]*\.txt$|^CMakeLists\.txt$/i;
+const CHANGELOG_NAME = /^CHANGELOG/i;
+const proseFile = (file) => {
+  const rel = String(file).replace(/\\/g, '/');
+  const name = path.posix.basename(rel);
+  const extension = path.posix.extname(name).toLowerCase();
+  if (CODE_SHAPED_TEXT.test(name)) return false;
+  if (CHANGELOG_NAME.test(name)) return true;
+  if (rel.startsWith('docs/')) return !DOCS_CODE_EXTENSIONS.includes(extension);
+  return PROSE_EXTENSIONS.includes(extension);
+};
+const proseOnly = (files) => files.every(proseFile);
 function editedAfterReview() {
   const set = commitSet();
   let top = set.top;

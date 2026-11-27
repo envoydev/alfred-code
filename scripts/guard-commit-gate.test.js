@@ -2652,3 +2652,64 @@ test('B20: a pasted table row carrying a publish verb is the user\'s word for th
     assert.match(r.stderr, /carries no publish verb left standing/, hold);
   }
 });
+
+// B15 round 2: the row's other names - a CHANGELOG file of any extension and a file under docs/ - are prose; a build or
+// dependency list that only looks like text (requirements*.txt, constraints*.txt, CMakeLists.txt) and a code file under docs/ are not.
+test('B15: CHANGELOG files and docs/ files keep the receipt, and code under docs/ or a dependency list voids it', () => {
+  const dir = scratchRepo();
+  const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+  const later = new Date(Date.now() + 60 * 1000);
+  const names = ['CHANGELOG', 'CHANGELOG-2.x', 'CHANGELOG.rst', 'docs/index.html', 'docs/guide/setup.png.md', 'docs/gen.js', 'docs/conf.yml',
+    'requirements.txt', 'requirements-dev.txt', 'constraints.txt', 'CMakeLists.txt', 'lib/CMakeLists.txt'];
+  for (const name of names) {
+    fs.mkdirSync(path.dirname(path.join(dir, name)), { recursive: true });
+    fs.writeFileSync(path.join(dir, name), 'seed\n');
+  }
+  git('add', '-A'); git('commit', '-qm', 'seed files');
+  writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: 'VERIFIED the checkpoint', spec: 'spec: 20 files' }));
+  const edit = (name) => { fs.writeFileSync(path.join(dir, name), 'edited\n'); fs.utimesSync(path.join(dir, name), later, later); };
+  const back = (name) => { fs.writeFileSync(path.join(dir, name), 'seed\n'); fs.utimesSync(path.join(dir, name), new Date(Date.now() - 60 * 1000), new Date(Date.now() - 60 * 1000)); };
+  for (const name of ['CHANGELOG', 'CHANGELOG-2.x', 'CHANGELOG.rst', 'docs/index.html', 'docs/guide/setup.png.md']) edit(name);
+  assert.equal(gateIn(dir, 'git commit -am x'), 0, 'a CHANGELOG file of any extension and a docs/ page are prose');
+  for (const name of ['docs/gen.js', 'docs/conf.yml', 'requirements.txt', 'requirements-dev.txt', 'constraints.txt', 'CMakeLists.txt', 'lib/CMakeLists.txt']) {
+    edit(name);
+    const r = gateFull(dir, 'git commit -am x');
+    assert.equal(r.status, 2, `${name} is code`);
+    assert.match(r.stderr, new RegExp(`${name.replace(/[.\/]/g, '\\$&')} changed after this receipt was written`), name);
+    back(name);
+  }
+});
+
+test('B15: a code-shaped .txt file edited after the review voids it, and a docs/ page does not', () => {
+  const { dir, write } = scanRepo({ 'requirements.txt': nLines(40, 'pkg'), 'x.js': nLines(40, 'const x =') });
+  fs.mkdirSync(path.join(dir, 'docs'));
+  write('docs/index.html', nLines(40, '<p>'));
+  spawnSync('git', ['-C', dir, 'add', '-A'], { encoding: 'utf8' });
+  spawnSync('git', ['-C', dir, 'commit', '-qm', 'docs'], { encoding: 'utf8' });
+  const min = (n) => new Date(Date.now() - n * 60 * 1000);
+  const touch = (rel, ago) => fs.utimesSync(path.join(dir, rel), min(ago), min(ago));
+  const tp = writeTranscript(dir, 'b15r2', [{ type: 'assistant', timestamp: min(60).toISOString(), message: { content: [{ type: 'tool_use', id: 'b15r2review', name: 'Skill', input: { skill: 'review-code' } }] } }, resultRow(min(59))]);
+  for (const rel of ['requirements.txt', 'x.js', 'docs/index.html']) write(rel, `${fs.readFileSync(path.join(dir, rel), 'utf8')}edited\n`);
+  touch('x.js', 120); touch('requirements.txt', 120);
+  writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: 'VERIFIED review-code inline', spec: 'spec: 3 files' }));
+  touch('docs/index.html', 10);
+  assert.equal(gateWith(dir, 'git commit -am x', { transcript_path: tp }).status, 0, 'a docs/ page edited after the review');
+  touch('requirements.txt', 10);
+  const stale = gateWith(dir, 'git commit -am x', { transcript_path: tp });
+  assert.equal(stale.status, 2, 'requirements.txt is a dependency change');
+  assert.match(stale.stderr, /requirements\.txt changed after the last review of the code covering it started/);
+  assert.doesNotMatch(stale.stderr, /index\.html/);
+});
+
+// B7 round 2: the backtick form and a git read naming another checkout, both ways.
+test('B7: a backtick git read is no publish, and a push to another checkout inside a substitution still is', () => {
+  const dir = scratchRepo();
+  const read = gateFull(dir, 'P=(`git diff --name-only`); git add -- "${P[@]}" && git commit -m x');
+  assert.match(read.stderr, /without the pre-commit gate receipt/, 'the commit half asks');
+  assert.doesNotMatch(read.stderr, /publish gate/, 'a backtick read is no publish');
+  const dashC = gateFull(dir, 'P=($(git -C ../acme-app push)); git commit -m x');
+  assert.match(dashC.stderr, /publish gate receipt/, '$(git -C ../x push) still publishes');
+  const tick = gateFull(dir, 'P=(`git push origin main`); git commit -m x');
+  assert.match(tick.stderr, /publish gate receipt/, 'a backtick push still publishes');
+  assert.doesNotMatch(dashC.stderr + tick.stderr, /acme-app|origin main/, 'the verb only');
+});
