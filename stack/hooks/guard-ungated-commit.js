@@ -986,7 +986,7 @@ function transcriptScan() {
       if (/"type"\s*:\s*"user"/.test(line) && !line.includes('"tool_result"') && line.length < 256 * 1024) {
         let row;
         try { row = JSON.parse(line); } catch { return; }
-        if (!row || row.type !== 'user' || row.isMeta || row.isCompactSummary || row.isVisibleInTranscriptOnly) return;   // a compaction summary quotes old words: never a typed turn
+        if (!row || row.type !== 'user' || row.isMeta || row.isCompactSummary) return;   // a compaction summary quotes old words: never a typed turn
         const text = textOf(row.message && row.message.content);
         if (text && !/^\s*<(?:command-name|local-command|bash-|task-notification)/.test(text)) { _scan.typed.push(normQuote(text)); _scan.typedRaw.push({ text, ts: tsOf(row) }); }
         // a review the user TYPED as a slash command is a review run too, once its result line followed it

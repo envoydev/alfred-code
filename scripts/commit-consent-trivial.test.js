@@ -3,13 +3,14 @@
 // now needs the user's commit consent - a typed sentence or a picked option - and skips only the verify receipt.
 const test = require('node:test');
 require('./hook-test-env').isolateHookSuite();
-const { legacyBlock, userPick } = require('./hook-test-env');
+const { legacyBlock, userPick, REVIEW_ROW } = require('./hook-test-env');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
+const HELPER = path.join(__dirname, '..', 'stack', 'skills', 'habits-commit-checkpoint', 'scripts', 'receipt.js');
 const GUARD = path.join(__dirname, '..', 'stack', 'hooks', 'guard-ungated-commit.js');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'commit-consent-trivial-'));
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
@@ -70,17 +71,26 @@ function aheadRepo() {
   git('commit', '-qam', 'change');
   return dir;
 }
-test("'commit it but do not push' lets the commit through, and the push gate still asks for the push", () => {
-  const rows = [typed('commit it but do not push')];
-  passes(rows);
-  const dir = aheadRepo();
-  const tp = path.join(TMP, `t-${++n}.jsonl`);
-  fs.writeFileSync(tp, `${rows.join('\n')}\n`);
-  const r = legacyBlock(spawnSync(process.execPath, [GUARD], {
-    input: JSON.stringify({ hook_event_name: 'PreToolUse', session_id: `consent-push-${n}`, tool_name: 'Bash', tool_input: { command: 'git push' }, cwd: dir, transcript_path: tp }),
-    cwd: dir, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir } }));
-  assert.equal(r.status, 2, 'a commit-only word consents to no push');
-  assert.match(r.stderr, /git push/);
+test("'commit it but do not push' lets the commit through, and its push consent is withheld", () => {
+  const word = 'commit it but do not push';
+  passes([typed(word)]);
+  // the same words as a push receipt's authorized: quote are refused by the push gate; 'commit it and push' is the control
+  const push = (quote) => {
+    const dir = aheadRepo();
+    const tp = path.join(TMP, `t-${++n}.jsonl`);
+    fs.writeFileSync(tp, `${REVIEW_ROW}\n${typed(quote)}\n`);
+    const env = { ...process.env, CLAUDE_PROJECT_DIR: dir };
+    const h = spawnSync(process.execPath, [HELPER, 'push', '--verified', 'the change', '--authorized', quote, '--probe', 'NOT RUN - fixture'], { cwd: dir, encoding: 'utf8', env });
+    assert.equal(h.status, 0, h.stderr);
+    return legacyBlock(spawnSync(process.execPath, [GUARD], {
+      input: JSON.stringify({ hook_event_name: 'PreToolUse', session_id: `consent-push-${n}`, tool_name: 'Bash', tool_input: { command: 'git push' }, cwd: dir, transcript_path: tp }),
+      cwd: dir, encoding: 'utf8', env }));
+  };
+  const withheld = push(word);
+  assert.equal(withheld.status, 2, 'a commit-only word consents to no push');
+  assert.match(withheld.stderr, /carries no publish verb left standing/);
+  const control = push('commit it and push');
+  assert.equal(control.status, 0, control.stderr);
 });
 test("a bullet-style message whose own line says 'commit it', with no stop marks, lets the commit through", () => {
   passes([typed('- fix the typo\n- check the docs\n- commit it\n- watch CI')]);
@@ -132,4 +142,10 @@ test('the block names the latest message, not the session, and says an answer co
 test("a typed row with no timestamp after an answered 'Commit now' meets the commit ask", () => {
   const noTime = JSON.stringify({ type: 'user', message: { role: 'user', content: 'one more typo fix' } });
   meetsAsk([picked('Commit now (Recommended)', '10:00:00'), noTime]);
+});
+
+// Fix round 2: only isCompactSummary marks a summary (the prelude's localOnlyRow keys on it alone).
+test('a typed row carrying only isVisibleInTranscriptOnly stays a typed turn', () => {
+  const visible = JSON.stringify({ type: 'user', timestamp: '2026-11-27T10:05:00Z', isVisibleInTranscriptOnly: true, message: { role: 'user', content: 'what does X do?' } });
+  meetsAsk([typed('commit it', '10:00:00'), visible]);
 });
