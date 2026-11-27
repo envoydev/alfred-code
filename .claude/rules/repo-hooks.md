@@ -718,7 +718,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     credential verdicts only; (3) the stores (`denyStores`) and the key file at the project, the cwd, their data roots,
     the home and the account dir, every value of a dotenv or a named file, but of the data-root store only the values A3 below
     names; (4) variables named like a credential. A value under 6 characters
-    (`OUTPUT_MASK_MIN`; a store value under a credential-named key keeps any length), a placeholder and - outside a store - a sample are
+    (`OUTPUT_MASK_MIN`; a store value under a credential-named key keeps 4 characters or more), a placeholder and - outside a store - a sample are
     not masked, and a value is masked only as a whole token, never inside a word (card item 4, 2026-11-23: a 5- and a
     12-character value were masked inside a field name and an issue key, and the letters around the mask gave them away;
     the `--with-sensitive` run keeps `MASK_MIN`, 4); each value is matched in its literal and
@@ -763,7 +763,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     to short secrets such as `ADMIN_CODE=4821` and `DB_LOGIN=hunter2`): a store value is masked only when `credentialKey` holds - a part
     of its key, split on `_` `-` `.` and case changes, is one of `OUTPUT_CREDENTIAL_WORDS` (TOKEN, SECRET, KEY, APIKEY, PASSWORD, PASSWD,
     PASS, PWD, PIN, OTP, CODE, LOGIN, DSN, CREDENTIAL, CREDENTIALS, CRED, AUTH, CERT, PRIVATE, SIGNING, SALT, HASH, COOKIE, SESSION; a word of
-    5 letters or more counts at the key's end too, `GITHUBTOKEN`, and KEY is no part of `MONKEY`) - and then at any length, or the value
+    5 letters or more counts at the key's end too, `GITHUBTOKEN`, and KEY is no part of `MONKEY`) - and the value is over 3 characters (`PIN=7` and `OTP=123` show, `ADMIN_CODE=4821` is masked: a 1-3 character mask would hit every standalone `7` in the output) - or the value
     has a credential shape (`credentialLike`, a PEM key, an embedded password). `ORG_SLUG=acme-app` and `KEYBOARD_LAYOUT=us` print as they are.
     The line-shape redactor skips a value of 1-3 characters and a type word (`typeWord`: `originKey: string,`, `ApiKey;`), and a store pair
     in a walk or a diff is judged by the same key and shape test (`storeValueMasked`); a line of the store that is no pair is still
