@@ -21,8 +21,12 @@ const OWN_LINES_MAX = 40;
 const EDIT_TOOLS = new Set(['Edit', 'MultiEdit', 'Write']);
 const STASH_ROW_RE = /^(stash@\{\d+\}):\s*(.*)$/;
 const STASH_REF_G = /stash@\{\d+\}/g;
-// A stash call that can move the refs: anything but list, show and apply.
-const STASH_CALL_RE = /\bgit\b[^\n;&|]*\bstash\b(?!\s+(?:list|show|apply)\b)/;
+// The calls that may sit between the proposal and the drop: a plain read of the stash list, and tools that change
+// nothing in git (fifth review R5-4: a ToolSearch or Read call first is routine).
+const STASH_READ_RE = /^\s*git(?:\s+(?:-C\s+[^\s;&|<>`$]+|--no-pager))*\s+stash\s+(?:list|show)\b[^;&|<>`$\n]*$/;
+// A Skill is not here: a forked skill can run git where this hook cannot see it (sixth review R6-2). A `cd X &&`
+// stash read is not either: the cd stays for the next command (R6-3).
+const READ_ONLY_TOOLS = new Set(['Read', 'Grep', 'Glob', 'ToolSearch', 'LSP']);
 const TREE_ROW_RE = /^(.)(.) (.+)$/;
 // A row the own route judges: a tracked file changed in the tree with nothing staged (review F10: an index version is
 // another copy of the work, unseen by `git diff HEAD`).
@@ -244,7 +248,15 @@ function typedText(row, isHarness)
 }
 
 // The newest typed prompt and the model's text between the typed prompt before it and it, or null with no typed prompt.
-function lastExchange(rows, isHarness)
+// Whether a row holds a tool call other than a plain stash read (and other than the call judged now).
+function otherCall(row, callId)
+{
+    const content = row && row.type === 'assistant' && row.message && row.message.content;
+    return Array.isArray(content) && content.some((b) => b && b.type === 'tool_use' && b.id !== callId && !READ_ONLY_TOOLS.has(b.name)
+        && !(b.name === 'Bash' && b.input && !b.input.run_in_background && STASH_READ_RE.test(String(b.input.command || ''))));
+}
+
+function lastExchange(rows, isHarness, callId)
 {
     let at = -1;
     for (let i = rows.length - 1; i >= 0; i--) if (typedText(rows[i], isHarness) !== null) { at = i; break; }
@@ -261,9 +273,10 @@ function lastExchange(rows, isHarness)
         if (row.type === 'attachment' && row.attachment && row.attachment.type === 'queued_command') return null;
         // A newer turn - typed, or a harness prompt such as a task notice - is no longer the user's answer here.
         if (row.type === 'user' && !row.isMeta && row.message && !(Array.isArray(row.message.content) && row.message.content.every((b) => b && b.type === 'tool_result'))) return null;
-        // The word is spent once a stash call ran after it: the refs it named have moved (third review H1).
-        if (row.type === 'assistant' && Array.isArray(row.message && row.message.content)
-            && row.message.content.some((b) => b && b.type === 'tool_use' && b.input && STASH_CALL_RE.test(String(b.input.command || '')))) return null;
+        // Any call but a plain stash read since the word can move the refs or carry newer words - a stash or pull
+        // --autostash, a seat, an ask, a refused call's feedback (third review H1, fourth review N2, N3, N5).
+        if (otherCall(row, callId)) return null;
+        if (row.type === 'user' && Array.isArray(row.message && row.message.content) && row.message.content.some((b) => b && b.type === 'tool_result' && b.is_error)) return null;
     }
     const said = [];
     for (let i = at - 1; i >= 0; i--)
@@ -271,6 +284,8 @@ function lastExchange(rows, isHarness)
         if (typedText(rows[i], isHarness) !== null) break;
         const row = rows[i];
         if (!row || row.type !== 'assistant' || row.isSidechain) continue;
+        // Text before a call that could move the refs named a stash list that is gone (fourth review N1).
+        if (otherCall(row, callId)) break;
         const content = row.message && row.message.content;
         if (Array.isArray(content)) for (const b of content) if (b && b.type === 'text') said.push(b.text || '');
     }
@@ -318,7 +333,7 @@ function ownConsent(losses, own, diffOf)
 }
 
 // The one call the rm guard makes: true when the discard may run unasked. Never throws - a failure asks as before.
-function discardCleared({ transcriptPath, groups, losses, diffOf, isHarness = () => false, single = false, seat = false })
+function discardCleared({ transcriptPath, groups, losses, diffOf, isHarness = () => false, single = false, seat = false, callId = null })
 {
     try
     {
@@ -327,7 +342,7 @@ function discardCleared({ transcriptPath, groups, losses, diffOf, isHarness = ()
         if (!transcriptPath || !groups.length || !single || seat) return false;
         const rows = transcriptRows(transcriptPath);
         if (!rows.length) return false;
-        if (typedConsent(lastExchange(rows, isHarness), groups)) return 'typed';
+        if (typedConsent(lastExchange(rows, isHarness, callId), groups)) return 'typed';
         return ownConsent(losses, ownEditsOf(rows), diffOf) ? 'own' : false;
     }
     catch { return false; }

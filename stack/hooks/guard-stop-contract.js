@@ -3225,7 +3225,22 @@ function autoBilled(question, pick) {
   return AUTO_BILL_RE.test(own) || AUTO_AMOUNT_RE.test(own) || AUTO_BILL_RE.test(question) || AUTO_FORWARD_AMOUNT_RE.test(question);
 }
 // The text a pick is judged on, its ticket keys (PROJ-12, case-sensitive) read as the word 'ticket'.
-function outwardAsk(text) { return AUTO_OUTWARD_RE.test(text.replace(AUTO_TICKET_KEY_RE, 'ticket')); }
+// 'uploads' read as the files stays the files only when the PICK opens with a local verb ('Resize them', 'Fix them') and
+// the ask names nothing that sends them; any other ask holding 'uploads' waits - 'The older uploads failed. Resend
+// them?' too (fourth review N6, fifth review R5-2; sixth review R6-1: a stem found anywhere - 'reviewers', 'Checked' -
+// let 'Transfer them' through).
+const AUTO_UPLOADS_LOCAL_RE = /^\s*(?:resize|compress|convert|crop|rotate|optimi[sz]e|rename|clean|tidy|fix|dedupe|re-?encode|thumbnail|delete|remove|archive|sort|count|list|check|inspect|review|scan|tag)\b/i;
+// A pick that goes on past its local verb - a second clause, or a place - may send them: 'Fix them, then transfer them',
+// 'Archive them to the client's vault' (seventh review).
+const AUTO_UPLOADS_MORE_RE = /[,;&+]|\b(?:then|and|also|to|into|onto|on|with|for|via)\b/i;
+const AUTO_UPLOADS_ACT_RE = /\b(?:retr|resum|resend|re-?run|run|launch|kick|start|restart|continu|re-?queue|queue|redo|finish|trigger|send|sent|push|sync|move|copy|go\s+out|again|re-?upload(?!s)|upload(?!s)|try)/i;
+function outwardAsk(text, pickLabel = '')
+{
+    const plain = text.replace(AUTO_TICKET_KEY_RE, 'ticket');
+    if (AUTO_OUTWARD_RE.test(plain)) return true;
+    return /\buploads\b/i.test(plain) && (!AUTO_UPLOADS_LOCAL_RE.test(String(pickLabel)) || AUTO_UPLOADS_ACT_RE.test(plain)
+        || AUTO_UPLOADS_MORE_RE.test(String(pickLabel)));
+}
 function autoAnswers(questions) {
   if (!Array.isArray(questions) || !questions.length) return null;
   const answers = {};
@@ -3240,7 +3255,7 @@ function autoAnswers(questions) {
     if (!pick) return null;
     const holds = AUTO_HOLD_ONLY_RE.test(pick.label) && !AUTO_FORWARD_ACT_RE.test(pick.description || '');
     const own = `${pick.label} ${pick.description || ''}`.replace(AUTO_PICK_SCOPE_RE, ' ');
-    if ((!holds && outwardAsk(`${q.question} ${own}`)) || autoBilled(q.question, pick)) return null;
+    if ((!holds && outwardAsk(`${q.question} ${own}`, pick.label)) || autoBilled(q.question, pick)) return null;
     // an ask the English list cannot read waits for the user: a miss could push or post for them, a wait costs one click
     if (unreadable(`${q.question} ${pick.label}`)) return null;
     answers[q.question] = pick.label;

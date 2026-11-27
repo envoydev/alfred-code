@@ -648,9 +648,14 @@ function runtimeWipe(rawCommand, read, payload, powershell)
 
 // The verbs `gitPlan` can find a loss in - any other git call has nothing to lose and spawns nothing.
 const LOSS_VERBS = new Set(['checkout', 'restore', 'reset', 'switch', 'clean', 'stash']);
-// A command that may run a call more than once: a shell loop (zsh's repeat too), xargs, find -exec, parallel or watch -
-// each read at a command position, so a word in an echo or a comment is none (third review M2).
-const LOOPED_RE = /(?:^|[;&|(`\n]\s*|\b(?:do|then|else)\s+)(?:for|while|until|select|repeat|xargs|parallel|watch)(?=\s|$)|\s-exec(?:dir)?\s/;
+// A `git stash list` or `show` beside the drop reads and moves nothing, so it is no second call: Claude checks the list
+// in the same command (the user's session of 2026-11-27, `git stash list && git stash drop`).
+const STASH_READ_SUBS = new Set(['list', 'show']);
+const stashRead = (c) => c.sub === 'stash' && STASH_READ_SUBS.has(String((c.argv || [])[0] || ''));
+// A command that may run a call more than once: a shell loop (zsh's repeat too), xargs, find -exec, fd --exec / -x,
+// parallel or watch, `for((` and zsh `foreach` too (fifth review R5-3). The word is read anywhere, an echo's or a comment's included: a false ask is the safe side
+// (fourth review N7: a command-position reading missed `{ for`, `time for` and `! for`).
+const LOOPED_RE = /(?:^|[\s;&|(`{!])(?:for|foreach|while|until|select|repeat|xargs|parallel|watch)(?=[\s;(]|$)|\s--?exec(?:dir)?\b|\s-x\s/;
 
 // Per verb: the short letters and long names that take a VALUE, and the long names this guard reads. A
 // long option may be cut to any unique prefix, as git's own parser allows (`git reset --har` is --hard).
@@ -870,7 +875,7 @@ function discardConsented(payload, groups, losses, gitIn, single)
         }
         catch { return null; }
     };
-    return Boolean(consent.discardCleared({ transcriptPath: payload.transcript_path, groups, losses, diffOf, isHarness, single, seat: Boolean(payload.agent_id) }));
+    return Boolean(consent.discardCleared({ transcriptPath: payload.transcript_path, groups, losses, diffOf, isHarness, single, seat: Boolean(payload.agent_id), callId: payload.tool_use_id || null }));
 }
 
 // The one exit of a PreToolUse block (guards ask, D1): the prelude asks or denies; with no prelude, today's exit 2.
@@ -1133,7 +1138,7 @@ function main()
     // One discard or stash call alone, read whole: a ref the same command moves first is not the ref judged (review F4).
     // A loop or xargs runs one call many times (re-review N4).
     const single = overCap.length === 0 && read.unreadAt < 0 && !LOOPED_RE.test(read.command || rawCommand)
-        && read.calls.filter((c) => c.sub && (LOSS_VERBS.has(c.sub) || c.sub === 'stash')).length === 1;
+        && read.calls.filter((c) => c.sub && (LOSS_VERBS.has(c.sub) || c.sub === 'stash') && !stashRead(c)).length === 1;
     if (groups.size && !discardConsented(payload, [...groups.values()], losses, gitIn, single))
     {
         const kinds = [...groups.values()];

@@ -576,7 +576,19 @@ test('auto-mode asks: a holding pick, a negated act and a photo rotation are ans
         // third review H3: an act verb far back, a launch, 'uploads' as the verb after a noun
         ['Next?', 'Retry the 12 failed large HEIC photo uploads (Recommended)'], ['Next?', 'Kick off the image uploads (Recommended)'],
         ['Next?', 'Launch the image uploads (Recommended)'], ['The image uploads directly to S3. Run it?', 'Run it (Recommended)'],
-        ['Next?', 'Retry the older photo uploads (Recommended)']])
+        ['Next?', 'Retry the older photo uploads (Recommended)'],
+        // fourth review N6: the act in another sentence or in the pick
+        ['The older uploads failed with a 503.', 'Retry them (Recommended)'], ['12 of the older HEIC uploads failed. Retry?', 'Retry (Recommended)'],
+        // fifth review R5-2: any form that sends them, or no local act at all
+        ['The older uploads failed with a 503.', 'Resend them (Recommended)'], ['The older uploads failed with a 503.', 'Requeue them (Recommended)'],
+        ['The older uploads failed with a 503.', 'Kick them off again (Recommended)'], ['Should the older uploads go out again now?', 'Yes (Recommended)'],
+        ['Sync the older uploads with the bucket?', 'Sync (Recommended)'],
+        // sixth review R6-1: a local stem elsewhere is no local act
+        ['Reviewed the older uploads - 12 hit a 503. Transfer them to the bucket?', 'Transfer (Recommended)'],
+        ['Share the older uploads with the reviewers?', 'Share (Recommended)'], ['Checked the existing uploads. Forward them to the vendor?', 'Forward (Recommended)'],
+        // seventh review: a local verb that goes on to a second act or a place
+        ['Fix the older uploads?', 'Fix them, then transfer them to the bucket (Recommended)'], ['Next for the older uploads?', 'Review and forward to the vendor (Recommended)'],
+        ['Next for the older uploads?', 'Archive them to the client vault (Recommended)']])
         assert.strictEqual(answered(ask(p, 'hold1', [q(question, [label, 'Not now'])])), null, `waits: ${question} ${label}`);
     const holdThen = q('Push develop?', ['Hold (Recommended)', 'Push now']);
     holdThen.options[0].description = 'then push develop and merge to main';
