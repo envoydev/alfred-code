@@ -64,6 +64,8 @@ const END_WORD_MIN = 5;
 const TYPE_WORDS = Object.freeze(['string', 'number', 'boolean', 'unknown', 'any', 'never', 'void', 'null', 'undefined', 'object', 'true', 'false']);
 const TYPE_NAME_END = /^[A-Z][A-Za-z0-9_]*[,;)>]$/;
 const SHORT_VALUE_MAX = 3;
+// A store value of one character is never masked, whatever its key (`PIN=7` would hide every standalone 7); two or more are.
+const STORE_VALUE_MIN = 2;
 // The value shapes the stack's credentials take - copied from guard-stop-contract.js; keep identical.
 const SECRET_SHAPE = /\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|glpat-[0-9A-Za-z_-]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})/;
 // A credential file is small - a settings.json is under 10 KB - so the cap costs this gate nothing
@@ -156,9 +158,8 @@ const typeWord = (value) => {
   const text = String(value).trim();
   return TYPE_WORDS.includes(text.replace(/[,;)>]+$/, '')) || TYPE_NAME_END.test(text);
 };
-// A3: is this live store value hidden in output - its key names a credential (and the value is over 3 characters), or the value has a credential shape.
-// A value of 1-3 characters is never masked, whatever its key: it would mask every standalone `7` in the output.
-const storeValueMasked = (key, value) => isLive(value) && ((credentialKey(key) && value.length > SHORT_VALUE_MAX) || credentialLike(value) || PEM_PRIVATE.test(value));
+// A3: is this live store value hidden in output - its key names a credential (and the value is 2 characters or more), or the value has a credential shape.
+const storeValueMasked = (key, value) => isLive(value) && ((credentialKey(key) && value.length >= STORE_VALUE_MIN) || credentialLike(value) || PEM_PRIVATE.test(value));
 // A credential INSIDE a larger value: a connection string's `Password=` / `Pwd=` (`;` pairs, or Redis's `,`
 // pairs) and a URL's userinfo (`postgres://user:<pw>@host`). The key names the CONNECTION (`Postgres`,
 // `DATABASE_URL`), so the key test never saw it. Measured: a Staging Postgres and Redis password printed raw
@@ -1076,7 +1077,7 @@ function sensitiveValues(file) {
 // it in the output and say nothing a guess would not.
 const MASK_MIN = 4;
 // The output masker's floor (card item 4, 2026-11-23): a value under 6 characters matches ordinary words, so it is left
-// unmasked - except a store value under a credential-named key (A3), which keeps 4 characters or more; the --with-sensitive run keeps MASK_MIN.
+// unmasked - except a store value under a credential-named key (A3), which keeps 2 characters or more; the --with-sensitive run keeps MASK_MIN.
 const OUTPUT_MASK_MIN = 6;
 // A character that continues a word: a value is masked only where none touches it on a side that is itself a word character.
 const WORD_CHAR = /[A-Za-z0-9_]/;
@@ -1468,7 +1469,7 @@ if (payload.hook_event_name === 'SessionStart') {
     } catch { /* no git: nothing to commit it with */ }
     // A3: the keys whose values print as they are - the key names no credential and the value has no credential shape
     const plain = keys.filter((k) => isLive(chain.values[k]) && !storeValueMasked(k, chain.values[k]) && !embeddedCredential(chain.values[k]));
-    if (plain.length) exposed += ` Shown in output, not masked (no credential key and no credential shape, or a value of 3 characters or fewer): ${plain.join(', ')} - rename a key to name its credential (as DB_PASS or API_TOKEN) to have its value masked.`;
+    if (plain.length) exposed += ` Shown in output, not masked (no credential key and no credential shape, or a value of 1 character): ${plain.join(', ')} - rename a key to name its credential (as DB_PASS or API_TOKEN) to have its value masked.`;
     process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext:
       `Sensitive data: ${holds} - kept out of the chat: a Read is blocked and a printed value is masked, but only its exact text, so never print one in another form (encoded, split, reversed) and never ask the user to paste one. A command that needs them: node "${__filename}" --with-sensitive -- "<command line>" - they are in its environment, and each prints as <KEY> in its output.${exposed}` } }));
   }
@@ -1585,7 +1586,7 @@ function valuesOf(file, { every = false } = {}) {
       const m = COMMENT_LINE.test(line) ? null : line.match(DOTENV_LINE);
       if (!m) continue;
       const v = unquote(m[2]);
-      // A3: the store gives a value only when its key names a credential (over 3 characters) or the value looks like one
+      // A3: the store gives a value only when its key names a credential (2 characters or more) or the value looks like one
       if (store) { if (storeValueMasked(m[1], v)) put(m[1], v, credentialKey(m[1])); else maskEmbedded(v, (x) => put(m[1], x)); continue; }
       if (all ? isLive(v) : maskable(m[1], v)) put(m[1], v); else maskEmbedded(v, (x) => put(m[1], x));
     }
@@ -1626,7 +1627,7 @@ function collectValues(p, every = true) {
   const command = String((p.tool_input || {}).command || '');
   const add = (key, value, source, file, all, any = false) => {
     // an every-value read (a named dotenv or config) keeps a value whatever it looks like; a store value under a
-    // credential-named key (A3) keeps 4 characters or more
+    // credential-named key (A3) keeps 2 characters or more
     if ((value.length < OUTPUT_MASK_MIN && !any) || isPlaceholder(value) || (!all && isSampleValue(key, value))) return;
     for (const v of new Set([value, JSON.stringify(value).slice(1, -1)])) if (!values.has(v)) values.set(v, { key, source, file: file ? baseOf(file) : null });
   };

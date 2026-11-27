@@ -1212,7 +1212,7 @@ test('A3: the output masker hides credential-named and credential-shaped store v
     const printed = `org acme-app; pass hunter2; smtp x9; code 4821; token ${GH}; note ${A3_NOTE}; layout us; monkey banana-split; sess s3ss-4821; port 3000\n`;
     const r = masked('node print-it.js', { response: said(printed) });
     const got = answer(r).updatedToolOutput.stdout;
-    assert.strictEqual(got, `org acme-app; pass ${SET('hunter2')}; smtp x9; code ${SET('4821')}; token ${SET(GH)}; note ${SET(A3_NOTE)}; layout us; monkey banana-split; sess ${SET('s3ss-4821')}; port 3000\n`);
+    assert.strictEqual(got, `org acme-app; pass ${SET('hunter2')}; smtp ${SET('x9')}; code ${SET('4821')}; token ${SET(GH)}; note ${SET(A3_NOTE)}; layout us; monkey banana-split; sess ${SET('s3ss-4821')}; port 3000\n`);
   });
 });
 test('A3: a word of the key is matched as a word - KEY is no part of MONKEY, DB_LOGIN and dbLogin are one login', () => {
@@ -1233,14 +1233,14 @@ test('A3: the session-start note lists the store keys whose values show, by name
     const note = JSON.parse(r.stdout).hookSpecificOutput.additionalContext;
     const shown = note.match(/Shown in output[^:]*: ([^.]*?) - /);
     assert.ok(shown, note);
-    assert.deepStrictEqual(shown[1].split(', ').sort(), ['KEYBOARD_LAYOUT', 'MONKEY', 'ORG_SLUG', 'PORT', 'SMTP_PWD']);
+    assert.deepStrictEqual(shown[1].split(', ').sort(), ['KEYBOARD_LAYOUT', 'MONKEY', 'ORG_SLUG', 'PORT']);
     for (const value of ['acme-app', 'hunter2', 'banana-split', A3_NOTE, GH]) assert.ok(!note.includes(value), 'no value in the note');
   });
 });
-test('A3: a credential-keyed store value of 1-3 characters shows (PIN=7, OTP=123); 4 characters are masked', () => {
+test('A3: a credential-keyed store value of 1 character shows (PIN=7); 2 or more are masked (OTP=123, SMTP_PWD=x9)', () => {
   withA3Store(() => {
     const r = masked('node print-it.js', { response: said('took 7 s, 123 rows, x9 ms, code 4821\n') });
-    assert.strictEqual(answer(r).updatedToolOutput.stdout, `took 7 s, 123 rows, x9 ms, code ${SET('4821')}\n`);
+    assert.strictEqual(answer(r).updatedToolOutput.stdout, `took 7 s, ${SET('123')} rows, ${SET('x9')} ms, code ${SET('4821')}\n`);
   }, 'PIN=7\nOTP=123\nSMTP_PWD=x9\nADMIN_CODE=4821\n');
 });
 test('A3: a long word counts at the end of a key (GITHUBTOKEN), a short one only as a part of it (MYPIN)', () => {
