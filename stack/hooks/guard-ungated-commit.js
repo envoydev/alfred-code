@@ -733,6 +733,12 @@ const WHY_CLAUSE = /^\s*(?:why|who|did you|have you|what)\b/i;
 const ANSWERED_NO = /^[^\p{L}\p{N}]*(?:no|nope|not yet|not now|later)[^\p{L}\p{N}]*$/iu;
 const CLASS_COMMIT = /^(?:commit|land)/i;
 const CLASS_PUSH = /^(?:push|publish|release|ship|merge|land)|\bPR\b|pull|^(?:open|create|raise|submit)/i;
+// L2-05: a 'land' whose object is a PR, MR, pull request or branch publishes, so it is a push-class verb and its deferral ('land the PR later') refuses the push only.
+const LAND_VERB = /^land/i;
+const LAND_PUBLISH_OBJECT = /^\s+(?:(?:the|a|an|this|that|my|our|your)\s+)?(?:PRs?|MRs?|pull[\s-]?requests?|merge[\s-]?requests?|branch(?:es)?)\b/i;
+const isOwnAct = (gate, word, after) => (gate === 'PUSH-GATE'
+  ? CLASS_PUSH.test(word)
+  : CLASS_COMMIT.test(word) && !(LAND_VERB.test(word) && LAND_PUBLISH_OBJECT.test(after)));
 const GENERIC_CONSENT = /^(?:go ahead|do it|approve[ds]?|yes)/i;
 const CONSENT_QUOTE_CAP = 1000;
 const LINE_BREAKS = /\s*[\r\n]+\s*/g;
@@ -791,7 +797,6 @@ function consentIn(text, gate, detail) {
   if (text.length > CONSENT_QUOTE_CAP || foreignQuote(text)) return false;
   const clean = text.replace(POSITIVE_IDIOM, (m) => ' '.repeat(m.length));
   const bounds = clauseBoundsOf(clean);
-  const own = gate === 'PUSH-GATE' ? CLASS_PUSH : CLASS_COMMIT;
   let ownHit = false;
   let otherHit = false;
   let genericHit = false;
@@ -802,7 +807,7 @@ function consentIn(text, gate, detail) {
       if (actIsNoun(slices, m)) continue;
       const negated = actNegated(clean, bounds, m, slices);
       const word = m[0].trim();
-      if (negated && own.test(word)) { if (detail) detail.refused = true; return false; }
+      if (negated && isOwnAct(gate, word, after)) { if (detail) detail.refused = true; return false; }
       if (negated || STATEMENT_AFTER.test(after)) continue;
       if (GENERIC_CONSENT.test(word)) genericHit = true;
       else if (gate !== 'PUSH-GATE' || CLASS_PUSH.test(word)) ownHit = true;
@@ -1179,7 +1184,7 @@ function quoteTyped(quote, scan, gate) {
 // The part's key words with any run of non-word characters between them, whole words only: the key holds letters and digits.
 const partPlace = (part) => new RegExp(`(?<![\\p{L}\\p{N}])${part.split(' ').join('[^\\p{L}\\p{N}]+')}(?![\\p{L}\\p{N}])`, 'giu');
 // A line break ends a sentence here, since the clause reader would otherwise run two lines into one.
-const turnView = (text, gate) => ({ raw: straightText(String(text).replace(LINE_BREAKS, '. ')), own: gate === 'PUSH-GATE' ? CLASS_PUSH : CLASS_COMMIT, clean: null, bounds: null });
+const turnView = (text, gate) => ({ raw: straightText(String(text).replace(LINE_BREAKS, '. ')), gate, clean: null, bounds: null });
 // True when an own-class act verb or a generic yes that lies whole inside [from, to) of the turn is refused by its clause.
 function actRefusedIn(view, from, to) {
   if (view.clean === null) {
@@ -1192,7 +1197,7 @@ function actRefusedIn(view, from, to) {
       const slices = actSlices(view.clean, view.bounds, m);
       // 'hold off on the push' names the noun after a stop word: that is the refusal, not a noun use
       const word = m[0].trim();
-      if (!(view.own.test(word) || GENERIC_CONSENT.test(word)) || (actIsNoun(slices, m) && !STOP_BEFORE.test(slices.before))) continue;
+      if (!(isOwnAct(view.gate, word, slices.after) || GENERIC_CONSENT.test(word)) || (actIsNoun(slices, m) && !STOP_BEFORE.test(slices.before))) continue;
       if (actNegated(view.clean, view.bounds, m, slices)) return true;
     }
   }

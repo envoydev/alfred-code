@@ -981,6 +981,16 @@ test('guard-ungated-commit: the 26 holdout phrases hold on both gates (2.1.6 re-
   assert.equal(R2_HOLDOUT_PER_GATE.length, 26);
   assert.deepStrictEqual(perGateWrong(R2_HOLDOUT_PER_GATE), []);
 });
+// L2-05 (fix wave 2026-11-28): 'land' is a commit verb, so 'Commit it. Then we land the PR later.' refused its own commit through the
+// deferral on 'land'. A 'land' whose object is a PR, MR, pull request or branch is a publish verb: its deferral refuses the push only.
+test("guard-ungated-commit: a deferred 'land the PR' does not refuse the commit before it (L2-05)", () => {
+  assert.deepStrictEqual(perGateWrong([
+    ['Commit it. Then we land the PR later.', 0, 2], ['Commit it. Then we land the branch later.', 0, 2], ['Commit it, and land the pull request later.', 0, 2],
+    ['Commit it. We merge the MR later.', 0, 2],
+    ['land the PR', 0, 0], ['land it', 0, 0],
+    ['land it later', 2, 2], ['land the change later', 2, 2],
+  ]), []);
+});
 // R4-m1: 'once CI is green' was a deferral for every verb, so 'merge it once CI is green' - the ordinary way to ask for a
 // merge that waits on CI - was refused at the PUSH-GATE. A push, publish, release or ship still waits on CI; a merge
 // is the act that CI gates and consents.
