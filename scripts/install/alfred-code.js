@@ -47,6 +47,10 @@ const { NEW_SESSION_LINE, TOP_REL } = require('./report-constants.js');
 const { shippedText } = require('./retired-rules.js');
 const uninstallLayer = require('./uninstall.js');
 const toolIgnoresLayer = require('./tool-ignores.js');
+const { scanOldNameReferences } = require('./old-name-hold/effects.js');
+const { holdLines, holdsRename } = require('./old-name-hold/references.js');
+const { installedPaths } = require('./old-name-hold/installed.js');
+const { MAX_SCAN_FILES } = require('./old-name-hold/constants.js');
 const workspace = require('./workspace.js');
 const childKeep = require('./child-keep.js');
 const childHide = require('./child-hide.js');
@@ -716,7 +720,11 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
 
         // --- the run ---------------------------------------------------------------
         // The store's rename (item 3).
-        const secrets = secretsStep({ projectRoot, info: dataInfo, log });
+        const stackFiles = installedPaths({
+            hooks: [...new Set(manifest.catalogs.hooks.map((e) => e.split('::')[0]))], engines: HOOK_ENGINES, modules: HOOK_MODULES,
+            skills: manifest.catalogs.skills.map((e) => e.split('|').pop()), agents: manifest.agents, rules: manifest.rules,
+        });
+        const secrets = secretsStep({ projectRoot, info: dataInfo, log, stackFiles });
         // What a release retired from the MCP catalog and this run still prunes: the first update past
         // a retirement only (mcp.dueRetired) - after it, the name is the user's add-back registration.
         const versionDue = mcp.dueRetired({
@@ -1236,14 +1244,19 @@ function sensitiveFile(ctx, root)
 // AND this run is another session's than the one that wrote it (an unset or empty session id differs from every `by`) - a
 // session opened before the update may still run a guard that knows only the old name, so the session that updated never
 // renames under it. Returns the stamp's { by }: as recorded, else this run's, marked `fresh` for secretsRecord.
-function secretsStep({ projectRoot, info, log })
+function secretsStep({ projectRoot, info, log, stackFiles })
 {
     const sid = process.env.CLAUDE_CODE_SESSION_ID || '';
     const rec = info.recorded.secrets;
     const roots = [info.root];
     if (rec && (!sid || rec.by !== sid))
     {
-        for (const r of dataRoot.renameSecrets({ projectDir: projectRoot, roots }))
+        // B4: a file the user owns that still names the old store - or a scan cut at the file cap - holds the rename; the old
+        // file stays and both names stay readable.
+        const scan = legacyStoreAt(projectRoot, roots) ? scanOldNameReferences({ projectRoot, root: info.root, installed: stackFiles }) : null;
+        const held = scan !== null && holdsRename(scan.files, scan.capped);
+        if (held) for (const line of holdLines(info.root, scan.files, scan.capped, MAX_SCAN_FILES)) log(line);
+        if (!held) for (const r of dataRoot.renameSecrets({ projectDir: projectRoot, roots }))
         {
             const at = (name) => `${r.root}/${name}`;
             if (r.state === 'renamed') log(`  sensitive: renamed .sensitive-data -> .secrets - restart any session opened before this update (${r.root})`);
