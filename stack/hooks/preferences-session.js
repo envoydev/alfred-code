@@ -155,6 +155,9 @@ const READ_ONLY_BUILTINS = Object.freeze(['Explore', 'Plan', 'claude-code-guide'
 // tools that make a seat write, and the grant of every tool.
 const SEAT_FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---/;
 const SEAT_TOOLS_ENTRY = /^tools:[ \t]*([^\n]*(?:\n[ \t]*-[^\n]*)*)/m;
+// L2-26: the seat's own `disallowedTools:` entry, same shape. A seat denied both Edit and Write cannot write, whatever `tools:` grants.
+const SEAT_DISALLOWED_ENTRY = /^disallowedTools:[ \t]*([^\n]*(?:\n[ \t]*-[^\n]*)*)/m;
+const seatDenies = (list, tool) => new RegExp(`(?:^|[\\s,"'[-])${tool}(?=$|[\\s,"'\\]])`).test(list);
 const SEAT_EDIT_TOOL = /(?:^|[\s,"'[-])(?:Edit|Write|MultiEdit|NotebookEdit)(?=$|[\s,"'\]])/;
 const SEAT_ALL_TOOLS = /^["']?\*["']?$/;
 const STAMP_BYTES = 64 * 1024;
@@ -985,6 +988,8 @@ function seatGetsPush(seat, type) {
   if (seat === 'other' || !seat || typeof seat.frontmatter !== 'string') return !READ_ONLY_BUILTINS.includes(String(type));
   const block = SEAT_FRONTMATTER.exec(seat.frontmatter);
   const entry = block ? SEAT_TOOLS_ENTRY.exec(block[1]) : null;
+  const denied = block ? SEAT_DISALLOWED_ENTRY.exec(block[1]) : null;
+  if (denied && seatDenies(denied[1], 'Edit') && seatDenies(denied[1], 'Write')) return false;
   if (!entry) return true;
   const tools = entry[1].trim();
   return !tools || SEAT_ALL_TOOLS.test(tools) || SEAT_EDIT_TOOL.test(tools);

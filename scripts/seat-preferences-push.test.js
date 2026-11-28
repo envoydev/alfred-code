@@ -203,6 +203,20 @@ test('seatGetsPush decides by seat kind and type', () =>
     for (const type of ['', undefined, null]) assert.strictEqual(seatGetsPush('other', type), false, `no type: ${type}`);
 });
 
+// L2-26 (fix wave 2026-11-28): a seat with no `tools:` line but a `disallowedTools:` that takes away Edit and Write cannot write.
+test('L2-26: a seat whose disallowedTools denies Edit and Write is handed no push, with or without a tools line', () =>
+{
+    const seat = (lines) => ({ frontmatter: `---\nname: x\n${lines}---\n` });
+    for (const lines of ['disallowedTools: Edit, Write\n', 'disallowedTools: Edit, Write, NotebookEdit, MultiEdit\n', 'disallowedTools: [Write, Edit]\n',
+        'disallowedTools:\n- Edit\n- Write\n', 'disallowedTools: "Edit", "Write"\n', 'tools: *\ndisallowedTools: Edit, Write\n', 'tools: Read, Edit, Write\ndisallowedTools: Edit, Write\n',
+        'disallowedTools: Bash, Edit, Write\n'])
+        assert.strictEqual(seatGetsPush(seat(lines), 'x'), false, JSON.stringify(lines));
+    for (const lines of ['disallowedTools: Edit\n', 'disallowedTools: Write\n', 'disallowedTools: Bash\n', 'disallowedTools: Edit(src/**), Write\n', 'disallowedTools: MultiEdit, NotebookEdit\n',
+        'tools: Read, Edit\ndisallowedTools: Write\n'])
+        assert.strictEqual(seatGetsPush(seat(lines), 'x'), true, `a seat that can still write: ${JSON.stringify(lines)}`);
+    assert.strictEqual(seatGetsPush(seat('disallowedTools: Edit, Write\n'), 'alfred-code:aspnet-verifier'), true, 'a judge is handed the docs whatever it is denied');
+});
+
 // The full copy route (ALFRED_CODE_SKILLS_VIA_PLUGIN=false) writes `seats-route: copy` with an EMPTY `library-agents:` line and
 // the seats it copied on `picked-agents:` (name@home); the library route records its seats on `library-agents:` instead.
 const COPY_ROUTE_STAMP = 'seats-route: copy\npicked-skills: \npicked-agents: security-auditor@alfred-code,aspnet-verifier@alfred-code\nlibrary-skills: \nlibrary-agents: \n';
