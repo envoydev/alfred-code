@@ -617,7 +617,7 @@ test('A2c: the Recommended option follows the user, a wait is marked and kept, a
         "Check a Recommended option against every rule the user stated this conversation and any unactioned request: an option against one is never marked, and a contradiction marks the safe option.",
         "A push or a publish the user's prompt asked for is the Recommended option, not a hold.",
         'While a wait runs, recommend the next work, never idling.',
-        "An ask that must wait opens 'waits for you: <why>' and keeps its mark - only for a hard stop, a standing rule, privacy or another person's data or access (a client's or a customer's contact fields, a role that sees another user's records), money, deleting data on the user's machine that the user did not name and this run did not make (simulators, app data, caches), or an act that cannot be undone.",
+        "An ask that must wait opens 'waits for you: <why>' and keeps its mark - only for a hard stop, a standing rule, privacy or another person's data or access (a client's or a customer's contact fields, a role that sees another user's records), money, deleting data on the user's machine that the user did not name and this run did not make (simulators, app data), or an act that cannot be undone.",
         "A claim that no tool could check this session is labelled '(low confidence - <why>)'.",
     ]) assert.ok(text.includes(squash(clause)), clause.slice(0, 60));
 });
@@ -635,7 +635,9 @@ test('C9: the waits-for-you kinds name another person\'s data or access and an u
     assert.ok(from >= 0, 'the wait bullet is found');
     const line = text.slice(from, text.indexOf(' - The markers hooks read', from));
     assert.ok(line.includes("privacy or another person's data or access (a client's or a customer's contact fields, a role that sees another user's records)"), 'N07: another person\'s data or access, with no lone privacy');
-    assert.ok(line.includes("deleting data on the user's machine that the user did not name and this run did not make (simulators, app data, caches)"), 'N08: an unnamed delete, never the run\'s own files');
+    assert.ok(line.includes("deleting data on the user's machine that the user did not name and this run did not make (simulators, app data)"), 'N08: an unnamed delete, never the run\'s own files');
+    // final review M2: regenerable data (a cache) is no critical moment
+    assert.ok(!/caches/.test(line), 'M2: caches are not named as an unnamed delete');
     assert.ok(!/privacy, another person/.test(line), 'privacy does not stand alone');
     assert.ok(line.includes('or an act that cannot be undone.'), 'the old closing kind stays');
 });
