@@ -106,6 +106,8 @@ The mechanism notes for each part live in a path-scoped rule in `.claude/rules/`
   (installer, hook, command, skill, rule, agent, MCP, manifest - a one-line or prose-only edit included)
   is exercised end to end from THIS working tree (`--source <repo>`) inside throwaway projects created
   under the session scratchpad (or `os.tmpdir()`), never a real consuming project, and removed after.
+  A throwaway run sets `CLAUDE_CONFIG_DIR` beside `HOME`, both into the throwaway folder, since a session
+  may export `CLAUDE_CONFIG_DIR` (`seed-sandbox.js` and `nested-sandbox.js` already do).
   - Edge cases are REQUIRED, not optional: a fresh install; an update over an older install; a re-run
     (idempotent - a second run changes nothing); a project holding the user's own config the change must
     not clobber (hand-added MCP server, settings key, hook); missing, empty or malformed input (absent
