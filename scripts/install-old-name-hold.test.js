@@ -239,3 +239,39 @@ test('with no user file naming the old store the rename goes at the second updat
     assert.deepStrictEqual([steps[2].old, steps[2].fresh], [null, 'K=v\n'], outs[2]);
     assert.match(outs[2], /renamed \.sensitive-data -> \.secrets/);
 });
+
+// L1-26: the same update prunes a retired stack rule copy, so the copy must not hold the rename it is about to lose.
+const RETIRED_RULE = ['.claude', 'rules', 'baseline-security.md'];
+const { MARKER } = require('./install/native-rules-constants.js');
+// planted after the first update, which records the dual line and would prune the copy itself
+const plantRetiredRule = (repo, body) =>
+{
+    fs.mkdirSync(path.join(repo, '.claude', 'rules'), { recursive: true });
+    fs.writeFileSync(path.join(repo, ...RETIRED_RULE), body);
+    execFileSync('git', ['add', '-f', RETIRED_RULE.join('/')], { cwd: repo });
+};
+
+test('L1-26: a tracked retired stack rule copy that names the old store and that the same update prunes does not hold the rename', POSIX_ONLY, () =>
+{
+    const { outs, steps } = seedRun(['install', 'update', 'update'], SELECTION, {
+        env: NO_SESSION, plugins: CORE_HERE,
+        args: [['--scope', 'project'], UPDATE, UPDATE],
+        each: (repo, i) => { if (i === 0) { plantOldState(repo); dropReference(repo); } if (i === 1) plantRetiredRule(repo, `${MARKER}\nkeys live in .alfred/.sensitive-data\n`); return { ...look(repo), rule: read(path.join(repo, ...RETIRED_RULE)) }; },
+    });
+    assert.strictEqual(steps[2].rule, null, 'the retired copy is pruned');
+    assert.deepStrictEqual([steps[2].old, steps[2].fresh], [null, 'K=v\n'], outs[2]);
+    assert.match(outs[2], /renamed \.sensitive-data -> \.secrets/);
+    assert.doesNotMatch(outs[2], /baseline-security\.md names/);
+});
+
+test('L1-26: a retired rule copy that the update keeps as the user own, and that names the old store, still holds the rename', POSIX_ONLY, () =>
+{
+    const { outs, steps } = seedRun(['install', 'update', 'update'], SELECTION, {
+        env: NO_SESSION, plugins: CORE_HERE,
+        args: [['--scope', 'project'], UPDATE, UPDATE],
+        each: (repo, i) => { if (i === 0) { plantOldState(repo); dropReference(repo); } if (i === 1) plantRetiredRule(repo, 'my own rule: keys live in .alfred/.sensitive-data\n'); return { ...look(repo), rule: read(path.join(repo, ...RETIRED_RULE)) }; },
+    });
+    assert.notStrictEqual(steps[2].rule, null, 'the user copy stays');
+    assert.deepStrictEqual([steps[2].old, steps[2].fresh], ['K=v\n', null], outs[2]);
+    assert.match(outs[2], /baseline-security\.md names/);
+});

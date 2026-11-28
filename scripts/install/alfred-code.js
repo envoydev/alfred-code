@@ -719,12 +719,6 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         }
 
         // --- the run ---------------------------------------------------------------
-        // The store's rename (item 3).
-        const stackFiles = installedPaths({
-            hooks: [...new Set(manifest.catalogs.hooks.map((e) => e.split('::')[0]))], engines: HOOK_ENGINES, modules: HOOK_MODULES,
-            skills: manifest.catalogs.skills.map((e) => e.split('|').pop()), agents: manifest.agents, rules: manifest.rules,
-        });
-        const secrets = secretsStep({ projectRoot, info: dataInfo, log, stackFiles });
         // What a release retired from the MCP catalog and this run still prunes: the first update past
         // a retirement only (mcp.dueRetired) - after it, the name is the user's add-back registration.
         const versionDue = mcp.dueRetired({
@@ -780,6 +774,13 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             // Workspace layering: prepare's answer, this run's own --add lines, and whether its read-back was blind.
             workspace: wsPrep, userAdds, workspaceBlind: readBlind, installedBefore,
         };
+        // The store's rename (item 3), after the context: the retired copies this same update prunes are judged by its own prune test.
+        const pruned = retiredCopiesPruned(ctx);
+        const stackFiles = installedPaths({
+            hooks: [...new Set(manifest.catalogs.hooks.map((e) => e.split('::')[0])), ...pruned.hooks], engines: HOOK_ENGINES, modules: HOOK_MODULES,
+            skills: manifest.catalogs.skills.map((e) => e.split('|').pop()), agents: manifest.agents, rules: [...manifest.rules, ...pruned.rules],
+        });
+        const secrets = secretsStep({ projectRoot, info: dataInfo, log, stackFiles });
         const pinSnapshot = args.keepPins
             ? pinsLayer.snapshotPins({ files: pinFiles(ctx), log })
             : null;
@@ -1237,6 +1238,19 @@ function sensitiveFile(ctx, root)
     if (r === 'written') ctx.log(`  sensitive data: ${root}/${dataRoot.SECRETS_FILE} written - empty, gitignored; put KEY=value lines in it by hand`);
     else if (r === 'exposed') ctx.log(`  !! sensitive data: ${root}/${dataRoot.SECRETS_FILE} not written - git would commit it (the data root's .gitignore is the project's own); ignore it, then run /alfred-code:update`);
     else if (r === 'blocked') ctx.log(`  !! sensitive data: ${root}/${dataRoot.SECRETS_FILE} is not a file - nothing written`);
+}
+
+// L1-26: a retired hook or rule copy that this same update prunes (the prunes run later, in the layers) is the stack's text on its
+// way out, so it must not hold the rename. A copy the prune keeps as the project's own still holds it.
+function retiredCopiesPruned(ctx)
+{
+    const goes = (kind, folder, names) =>
+    {
+        const dir = path.join(ctx.claudeDir, folder);
+        const keep = retiredKeep(ctx, kind, dir);
+        return names.filter((name) => fs.existsSync(path.join(dir, name)) && !keep(name));
+    };
+    return { hooks: goes('hook', 'hooks', ctx.manifest.retired.hooks), rules: goes('rule', 'rules', ctx.manifest.retired.rules) };
 }
 
 // THE STORE'S RENAME, in two phases (item 3, 2026-10-25): `.sensitive-data` becomes `.secrets`. The first run on this
