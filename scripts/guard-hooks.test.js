@@ -17,6 +17,9 @@ const { realLong } = require('./test-paths.js');
 
 const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-hooks-'));
+const SPAWN_TIMEOUT_MS = 30000;
+// Every node child of this file: bounded, and a timeout or a signal fails at once with the child's name (L2-30).
+const hookSpawn = (args, options = {}) => { const result = spawnSync(process.execPath, args, { timeout: SPAWN_TIMEOUT_MS, ...options }); assert.ok(!result.error && !result.signal, `node ${args.filter((a) => typeof a === 'string').map((a) => path.basename(a)).join(' ')} did not finish in ${SPAWN_TIMEOUT_MS}ms: ${result.error ? result.error.code : result.signal}`); return result; };
 // a session where a review ran: every commit receipt needs one since 2026-10-22, so the commit gate's cases judging
 // another line of it run over this transcript unless they hand their own
 // and the user typed 'commit it': a trivial commit needs that word too (N01, 2026-11-27)
@@ -28,7 +31,7 @@ const BIG = path.join(__dirname, 'lint-skills.js'); // a real, long source file 
 // What the hook decided, as one word (hook-test-env.js verdictOf): 0 a pass, 'ask' or 'deny' a converted guard's block, 2 a
 // guard that still exits 2.
 function run(hook, payload) {
-  return verdictOf(spawnSync(process.execPath, [path.join(HOOKS, hook)], { input: JSON.stringify(payload), encoding: 'utf8' }));
+  return verdictOf(hookSpawn([path.join(HOOKS, hook)], { input: JSON.stringify(payload), encoding: 'utf8' }));
 }
 const bash = (hook, command) => run(hook, { tool_name: 'Bash', tool_input: { command } });
 const heredoc = (body, target = '/tmp/plan.md') => `cat <<'EOF' > ${target}\n${body}\nEOF`;
@@ -135,7 +138,7 @@ function scratchRepo() {
 
 test('guard-ungated-commit: the receipt must target the gate file, not merely name it', () => {
   const dir = scratchRepo();
-  const inRepo = (command) => legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-ungated-commit.js')], {
+  const inRepo = (command) => legacyBlock(hookSpawn([path.join(HOOKS, 'guard-ungated-commit.js')], {
     input: JSON.stringify({ tool_name: 'Bash', tool_input: { command } }),
     encoding: 'utf8',
     env: { ...process.env, CLAUDE_PROJECT_DIR: dir },
@@ -156,7 +159,7 @@ test('guard-protected-force-push / guard-catastrophic-rm: heredoc bodies are dat
 });
 
 test('guard-catastrophic-rm: the prompt of a blocked delete names the target (guards ask, T3 review Minor 3)', () => {
-  const asked = (command) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-catastrophic-rm.js')],
+  const asked = (command) => hookSpawn([path.join(HOOKS, 'guard-catastrophic-rm.js')],
     { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, cwd: TMP }), encoding: 'utf8' });
   const named = (command, target) => {
     const r = asked(command);
@@ -192,7 +195,7 @@ test('guard-catastrophic-rm: the prompt of a blocked delete names the target (gu
 
 test('guard-catastrophic-rm: a lesser harm never speaks alone for a command that also wipes a target (final review, Important 1)', () => {
   const dir = scratchRepo();
-  const asked = (command, extra = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-catastrophic-rm.js')],
+  const asked = (command, extra = {}) => hookSpawn([path.join(HOOKS, 'guard-catastrophic-rm.js')],
     { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, cwd: dir }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir, ...extra }, cwd: dir });
   // the discard check fires first today, and its sentence named only one file
   const both = asked('git checkout -- a.txt && rm -rf .git');
@@ -220,7 +223,7 @@ test('guard-catastrophic-rm: a throw while naming the target still blocks, under
   fs.writeFileSync(preload, `const sw = require(${JSON.stringify(path.join(HOOKS, 'shell-writes.js'))});
 const real = sw.groupsAsCuts;
 sw.groupsAsCuts = (...args) => { if (new Error().stack.includes('wipeTargetOf')) throw new Error('naming failed'); return real(...args); };\n`);
-  const r = spawnSync(process.execPath, ['-r', preload, path.join(HOOKS, 'guard-catastrophic-rm.js')],
+  const r = hookSpawn(['-r', preload, path.join(HOOKS, 'guard-catastrophic-rm.js')],
     { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'rm -rf /' }, cwd: TMP }), encoding: 'utf8' });
   assert.equal(verdictOf(r), 'ask', `${r.stdout}${r.stderr}`);
   assert.match(askText(r), /^alfred-code guard-catastrophic-rm: this command recursively deletes `rm -rf \/`\./, askText(r));
@@ -232,7 +235,7 @@ test('guard-catastrophic-rm: a throw while reading the rm half beside a discard 
   fs.writeFileSync(preload, `const sw = require(${JSON.stringify(path.join(HOOKS, 'shell-writes.js'))});
 const real = sw.blankHeredocs;
 sw.blankHeredocs = (...args) => { if (new Error().stack.includes('wipeReason')) throw new Error('wipe read failed'); return real(...args); };\n`);
-  const r = spawnSync(process.execPath, ['-r', preload, path.join(HOOKS, 'guard-catastrophic-rm.js')],
+  const r = hookSpawn(['-r', preload, path.join(HOOKS, 'guard-catastrophic-rm.js')],
     { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git checkout -- a.txt' }, cwd: dir }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
   assert.equal(verdictOf(r), 'ask', `${r.stdout}${r.stderr}`);
   assert.match(askText(r), /this discards uncommitted work/, askText(r));
@@ -649,7 +652,7 @@ test('guard-fresh-session-start: the trigger is the tier\'s own variable', () =>
 // `status` is the hook's decision as one word (verdictOf): 0, 'ask', 'deny', or 2 for a guard that still exits 2. For an ask or a
 // deny `stderr` carries the text the model reads (blockText), so the cases that match a guard's wording read it where they always did.
 const runIn = (hook, payload, opts) => {
-  const r = spawnSync(process.execPath, [path.join(HOOKS, hook)], { input: JSON.stringify(payload), encoding: 'utf8', ...opts });
+  const r = hookSpawn([path.join(HOOKS, hook)], { input: JSON.stringify(payload), encoding: 'utf8', ...opts });
   const verdict = verdictOf(r);
   return { ...r, status: verdict, stderr: verdict === 'ask' || verdict === 'deny' ? blockText(r) : r.stderr };
 };
@@ -2087,7 +2090,7 @@ test('instrument-tool-usage: off by default, one JSONL row per call when switche
     ['Task', 'architecture-analyzer'], ['Bash', 'git commit'], ['Bash', 'cat']]);
   assert.ok(!JSON.stringify(rows).includes('secret'), 'a command body is never logged');
   assert.ok(!JSON.stringify(rows).includes('.env'), '... and neither is a path the fallback saw');
-  assert.equal(spawnSync(process.execPath, [path.join(HOOKS, 'instrument-tool-usage.js')], { input: 'not json', encoding: 'utf8',
+  assert.equal(hookSpawn([path.join(HOOKS, 'instrument-tool-usage.js')], { input: 'not json', encoding: 'utf8',
     env: { ...process.env, ALFRED_CODE_INSTRUMENT: '1', ALFRED_CODE_INSTRUMENT_LOG: log } }).status, 0, 'bad input never blocks');
   const root = fs.mkdtempSync(path.join(TMP, 'inst-'));
   assert.equal(inst({ tool_name: 'Grep', tool_input: { pattern: 'x' }, session_id: 'sid/../up' },
@@ -2406,7 +2409,7 @@ test('guard-stop-contract: the tier variable at 0 turns the offer off', () => {
 const XP_ROOT = fs.mkdtempSync(path.join(TMP, 'projA-'));
 const XP_OTHER = fs.mkdtempSync(path.join(TMP, 'projB-'));
 const xp = (payload) => {
-  const r = legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
+  const r = legacyBlock(hookSpawn([path.join(HOOKS, 'guard-cross-project-write.js')], {
     input: JSON.stringify(payload),
     encoding: 'utf8',
     env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' },
@@ -2427,7 +2430,7 @@ test('guard-cross-project-write: a write into another project is blocked', () =>
 
 test('guard-cross-project-write: the denial names an absolute card path under work/cross-project-tasks/, relative or absolute docs root', () => {
   const card = (env) => {
-    const r = legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
+    const r = legacyBlock(hookSpawn([path.join(HOOKS, 'guard-cross-project-write.js')], {
       input: JSON.stringify({ tool_name: 'Write', tool_input: { file_path: path.join(XP_OTHER, 'src', 'a.ts') } }),
       encoding: 'utf8',
       env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ALFRED_CODE_DOCS_PATH: '', ...env },
@@ -2484,7 +2487,7 @@ test('guard-cross-project-write: the session\'s own scratch and the account dir 
   // A real project does not live in the temp tree, so this case runs with THIS repo as the
   // root - the fixtures above deliberately do, which is what proves the containment rule.
   const repoRoot = path.join(__dirname, '..');
-  const inRepo = (payload) => legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
+  const inRepo = (payload) => legacyBlock(hookSpawn([path.join(HOOKS, 'guard-cross-project-write.js')],
     { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repoRoot, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ALFRED_CODE_DOCS_PATH: LEDGER, ALFRED_CODE_DATA_PATH: LEDGER } })).status;
   const w = (f) => inRepo({ tool_name: 'Write', tool_input: { file_path: f } });
 
@@ -2559,7 +2562,7 @@ test('guard-cross-project-write: a linked worktree of the project\'s own reposit
   const garbage = path.join(base, 'garbage');
   fs.mkdirSync(garbage);
   fs.writeFileSync(path.join(garbage, '.git'), '{not a gitdir line');
-  const run = (root, payload) => legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
+  const run = (root, payload) => legacyBlock(hookSpawn([path.join(HOOKS, 'guard-cross-project-write.js')],
     { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' } })).status;
   const write = (root, f) => run(root, { tool_name: 'Write', tool_input: { file_path: f } });
   assert.equal(write(main, path.join(wt, 'Server', 'Socket.csproj')), 0, 'the measured Edit: a file in the session\'s own worktree');
@@ -2588,7 +2591,7 @@ test('guard-cross-project-write: the retired fork-liveness probe reads no transc
 
 test('guard-cross-project-write: a relocated CLAUDE_CONFIG_DIR and the harness scratch root stay writable (audit 2026-10-08)', (t) => {
   const cfg = fs.mkdtempSync(path.join(TMP, 'xw-cfg-'));
-  const run = (root, payload, env = {}) => legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
+  const run = (root, payload, env = {}) => legacyBlock(hookSpawn([path.join(HOOKS, 'guard-cross-project-write.js')],
     { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ...env } })).status;
   const w = (f) => ({ tool_name: 'Write', tool_input: { file_path: f } });
   assert.equal(run(XP_ROOT, w(path.join(cfg, 'projects', 'p', 'memory', 'm.md')), { CLAUDE_CONFIG_DIR: cfg }), 0, 'the relocated account dir');
@@ -2618,7 +2621,7 @@ test("guard-cross-project-write: the account's plugins folder and the running pl
   // set up: on the plugin route a repo with no install record stands every non-protective guard down (GATE 4), this one included
   fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
   fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), '');
-  const go = (payload, env = {}) => legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
+  const go = (payload, env = {}) => legacyBlock(hookSpawn([path.join(HOOKS, 'guard-cross-project-write.js')],
     { input: JSON.stringify({ transcript_path: tp, session_id: 'gap-1', ...payload }), encoding: 'utf8',
       env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: cfg, CLAUDE_PLUGIN_ROOT: '', ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ALFRED_CODE_DOCS_PATH: '.alfred/docs', ...env } }));
   const w = (f, env) => go({ tool_name: 'Write', tool_input: { file_path: f } }, env);
@@ -2855,7 +2858,7 @@ test('guard-cross-project-write: a script file a shell runs is read as its comma
 // at 0.99MB denied - and so did every other place the reader stopped (a glob, `make` / `npm run`, a fish shebang, a
 // file the same command wrote with `tee` or `cp`, a fourth level of nesting). A script is read under the scan budget
 // (hook-prelude.js), and one the reader cannot read is asked about each time, never allowed.
-const xpFull = (command, env = {}) => legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
+const xpFull = (command, env = {}) => legacyBlock(hookSpawn([path.join(HOOKS, 'guard-cross-project-write.js')], {
   input: JSON.stringify({ tool_name: 'Bash', tool_input: { command } }),
   encoding: 'utf8',
   env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ...env },
@@ -2917,7 +2920,7 @@ test('guard-cross-project-write: a 245KB chain of cd steps and writes is judged 
   const size = 245 * 1024;
   const parts = [];
   for (let i = 0, n = 0; n < size; i++) { const l = `cd pkg${i} && cp a b${i}; cd ..\n`; parts.push(l); n += l.length; }
-  const r = legacyBlock(spawnSync(process.execPath, ['-e',
+  const r = legacyBlock(hookSpawn(['-e',
     "process.on('exit', () => { const c = process.cpuUsage(); require('fs').writeSync(3, String((c.user + c.system) / 1000)); }); require(process.argv[1]);",
     path.join(HOOKS, 'guard-cross-project-write.js')], {
     input: JSON.stringify({ tool_name: 'Bash', cwd: XP_ROOT, tool_input: { command: parts.join('') } }),
@@ -2952,9 +2955,9 @@ test('guard-cross-project-write: prose describing a command is not a command', (
 
 test('guard-cross-project-write: it fails open rather than guessing', () => {
   assert.equal(xpBash('cp a.txt "$OTHER_REPO/a.txt"'), 0, 'an unexpanded variable is not judged');
-  assert.equal(legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
+  assert.equal(legacyBlock(hookSpawn([path.join(HOOKS, 'guard-cross-project-write.js')],
     { input: 'not json', encoding: 'utf8' })).status, 0, 'unparseable stdin never blocks');
-  const opened = legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
+  const opened = legacyBlock(hookSpawn([path.join(HOOKS, 'guard-cross-project-write.js')], {
     input: JSON.stringify({ tool_name: 'Write', tool_input: { file_path: path.join(XP_OTHER, 'a.ts') } }),
     encoding: 'utf8',
     env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: XP_OTHER },
@@ -2970,7 +2973,7 @@ const FS_MOVE = 'mcp__filesystem__move_file'; // mcp-fixture
 test('guard-cross-project-write: a filesystem server write is judged like a Write, a move on both ends (audit 2026-11-03 SYS-02)', () => {
   const outFile = path.join(XP_OTHER, 'src', 'a.ts');
   for (const tool of FS_WRITE_NAMES) {
-    const r = legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
+    const r = legacyBlock(hookSpawn([path.join(HOOKS, 'guard-cross-project-write.js')], {
       input: JSON.stringify({ tool_name: tool, tool_input: { path: outFile, content: 'x', edits: [] } }),
       encoding: 'utf8',
       env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' },
@@ -3009,7 +3012,7 @@ test('guard-cross-project-write: a filesystem server write is judged like a Writ
 // retried turn. Until this ledger existed the per-hook block count was unmeasurable.
 test('guard hooks record every block, and nothing on a pass', () => {
   const proj = fs.mkdtempSync(path.join(TMP, 'blocklog-'));
-  const run = (hook, payload) => verdictOf(spawnSync(process.execPath, [path.join(HOOKS, hook)], {
+  const run = (hook, payload) => verdictOf(hookSpawn([path.join(HOOKS, hook)], {
     input: JSON.stringify({ session_id: 'sess1', hook_event_name: 'PreToolUse', ...payload }),
     encoding: 'utf8',
     env: { ...process.env, CLAUDE_PROJECT_DIR: proj },
@@ -3044,7 +3047,7 @@ test('each protective block denies under dontAsk with today\'s text', () => {
   const proj = fs.mkdtempSync(path.join(TMP, 'dontask-'));
   spawnSync('git', ['init', '-q', '-b', 'main', proj]);
   const deny = (hook, command) => {
-    const r = spawnSync(process.execPath, [path.join(HOOKS, hook)], {
+    const r = hookSpawn([path.join(HOOKS, hook)], {
       input: JSON.stringify({ session_id: 'da1', permission_mode: 'dontAsk', tool_name: 'Bash', tool_input: { command }, cwd: proj }),
       encoding: 'utf8', cwd: proj, env: { ...process.env, CLAUDE_PROJECT_DIR: proj },
     });
@@ -3062,7 +3065,7 @@ test('block telemetry never interferes with the gate', () => {
   const proj = fs.mkdtempSync(path.join(TMP, 'blockro-'));
   fs.mkdirSync(path.join(proj, '.alfred', 'statistics'), { recursive: true });
   fs.writeFileSync(path.join(proj, '.alfred', 'statistics', 'hook-blocks'), 'not a directory');
-  const run = (cmd) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-catastrophic-rm.js')], {
+  const run = (cmd) => hookSpawn([path.join(HOOKS, 'guard-catastrophic-rm.js')], {
     input: JSON.stringify({ session_id: 's', tool_name: 'Bash', tool_input: { command: cmd } }),
     encoding: 'utf8',
     env: { ...process.env, CLAUDE_PROJECT_DIR: proj },
@@ -3121,7 +3124,7 @@ test('guard-cross-project-write: git listing forms in the other checkout are rea
 test('guard-cross-project-write: space account dirs, ~ in the allowance, and unresolvable roots', () => {
   const home = os.homedir();
   const repoRoot = path.join(__dirname, '..');
-  const inRepo = (payload, env = {}) => legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
+  const inRepo = (payload, env = {}) => legacyBlock(hookSpawn([path.join(HOOKS, 'guard-cross-project-write.js')],
     { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repoRoot, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ALFRED_CODE_DOCS_PATH: LEDGER, ALFRED_CODE_DATA_PATH: LEDGER, ...env } })).status;
   // An isolated runner points HOME inside os.tmpdir(), where every path is session scratch the guard allows - the
   // 'outside HOME' cases below then cannot block, so they run only on a real home (audit 2026-10-08: 55/56 isolated).
@@ -3139,7 +3142,7 @@ test('guard-cross-project-write: space account dirs, ~ in the allowance, and unr
   assert.equal(inRepo({ tool_name: 'Write', tool_input: { file_path: path.join(XP_OTHER, 'f.txt') } }, { CLAUDE_PROJECT_DIR: '/nonexistent/root' }), 0, 'a root that does not exist fails open, as the header promises');
   // Without CLAUDE_PROJECT_DIR the nearest .git ancestor of the session cwd is the root - the cwd
   // itself may be a subdirectory the session cd-ed into, which called a sibling folder 'outside'.
-  assert.equal(legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
+  assert.equal(legacyBlock(hookSpawn([path.join(HOOKS, 'guard-cross-project-write.js')], {
     input: JSON.stringify({ tool_name: 'Write', tool_input: { file_path: path.join(repoRoot, 'stack', 'x.md') }, cwd: path.join(repoRoot, 'scripts') }),
     encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: '', ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' },
   })).status, 0, 'a subdirectory cwd still sees the whole repo');
@@ -3152,7 +3155,7 @@ test("guard-cross-project-write: a block asks each time, and a receipt, a typed 
   const other = fs.mkdtempSync(path.join(TMP, 'projD-'));
   const receipt = path.join(root, '.alfred', 'docs', 'flow', 'CROSS-WRITE-ALLOW');
   const tp = path.join(root, 'session.jsonl');
-  const raw = (payload, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
+  const raw = (payload, env = {}) => hookSpawn([path.join(HOOKS, 'guard-cross-project-write.js')],
     { input: JSON.stringify({ transcript_path: tp, ...payload }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ALFRED_CODE_DOCS_PATH: '.alfred/docs', ...env } });
   const go = (payload, env) => verdictOf(raw(payload, env));
   const target = path.join(other, 'src', 'a.ts');
@@ -3193,7 +3196,7 @@ test('every guard fails open on a JSON scalar or null payload', () => {
   // exit 1 with a stack trace surfaced as a hook error (reproduced on 7 of 9 guards).
   for (const hook of fs.readdirSync(HOOKS).filter((f) => f.startsWith('guard-'))) {
     for (const input of ['null', '"str"', '[]', '{"tool_name":"Bash","tool_input":null}']) {
-      const r = spawnSync(process.execPath, [path.join(HOOKS, hook)], { input, encoding: 'utf8' });
+      const r = hookSpawn([path.join(HOOKS, hook)], { input, encoding: 'utf8' });
       assert.equal(r.status, 0, `${hook} on ${input}: ${(r.stderr || '').split('\n').find((l) => /Error/.test(l)) || ''}`);
     }
   }
@@ -3608,7 +3611,7 @@ test('guard-read-whole-file: a 40,000-character pathological command is judged i
     "process.on('exit', () => { if (global.JUDGE_WORK) require('fs').writeSync(2, `\\nJUDGE_WORK ${global.JUDGE_WORK.used} ${global.JUDGE_WORK.max}\\n`); });\n");
   const once = (command, max = '') => {
     const t = process.hrtime.bigint();
-    const r = spawnSync(process.execPath, ['-r', meter, path.join(HOOKS, 'guard-read-whole-file.js')], { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command } }), encoding: 'utf8', env: { ...process.env, JUDGE_WORK_MAX: String(max) } });
+    const r = hookSpawn(['-r', meter, path.join(HOOKS, 'guard-read-whole-file.js')], { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command } }), encoding: 'utf8', env: { ...process.env, JUDGE_WORK_MAX: String(max) } });
     const w = /JUDGE_WORK (\d+) (\d+)/.exec(r.stderr) || [];
     return { ms: Number(process.hrtime.bigint() - t) / 1e6, status: verdictOf(r), stderr: r.stderr + blockText(r), work: Number(w[1]), max: Number(w[2]) };
   };
@@ -3860,7 +3863,7 @@ test('guard-ungated-commit: an ABSOLUTE docs root inside the repo does not fail 
   const head = spawnSync('git', ['-C', dir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
   fs.writeFileSync(path.join(docs, 'flow', 'COMMIT-GATE'),
     `VERIFIED the three fixtures\nauthorized: "commit it"\nhead: ${head}\nspec: 3 files - the fixtures\nlive-probe: tests green\nformat: npx prettier --check - clean over 3 staged files\nfindings: none\n`);
-  const status = legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-ungated-commit.js')], {
+  const status = legacyBlock(hookSpawn([path.join(HOOKS, 'guard-ungated-commit.js')], {
     input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git commit -am wip' }, transcript_path: REVIEWED }),
     encoding: 'utf8',
     env: { ...process.env, CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_DOCS_PATH: docs },
@@ -4431,7 +4434,7 @@ test('stage 1 B11: a check config can be loosened; switching a guard off is stil
     assert.strictEqual(run(H, switchOff), 'ask', 'adding a protective guard to the off-list is refused');
   });
   withProject(root, { ALFRED_CODE_HOOKS_OFF: 'guard-config-protection' }, () => {
-    const r = spawnSync(process.execPath, [path.join(HOOKS, H)], { input: JSON.stringify(switchOff), encoding: 'utf8' });
+    const r = hookSpawn([path.join(HOOKS, H)], { input: JSON.stringify(switchOff), encoding: 'utf8' });
     assert.strictEqual(verdictOf(r), 'ask', `the csv naming this guard is a no-op for the switch-off ask\n${r.stderr}`);
     assert.match(blockText(r), /Blocked: this write to \.claude\/settings\.json adds guard-catastrophic-rm/);
     assert.doesNotMatch(r.stderr, /Error|\n\s+at /, 'no error on stderr');
@@ -4443,7 +4446,7 @@ test('guard-config-protection: the switch-off asks, a chat yes and a receipt ope
   const { root, at } = cfgProject('cfg-d3-');
   const settings = at('.claude/settings.json', '{\n  "env": {}\n}\n');
   const off = (extra = {}) => ({ session_id: 'cfg-d3', tool_name: 'Edit', cwd: root, tool_input: { file_path: settings, old_string: '"env": {}', new_string: '"env": { "ALFRED_CODE_HOOKS_OFF": "guard-catastrophic-rm" }' }, ...extra });
-  const fire = (payload) => withProject(root, {}, () => spawnSync(process.execPath, [path.join(HOOKS, H)], { input: JSON.stringify(payload), encoding: 'utf8', env: process.env }));
+  const fire = (payload) => withProject(root, {}, () => hookSpawn([path.join(HOOKS, H)], { input: JSON.stringify(payload), encoding: 'utf8', env: process.env }));
   const asked = fire(off());
   assert.equal(verdictOf(asked), 'ask', 'B19: the switch-off asks');
   assert.match(askText(asked), /^alfred-code guard-config-protection: this write to \.claude\/settings\.json adds guard-catastrophic-rm/);
@@ -4586,7 +4589,7 @@ test('guard-ungated-commit: a STAGED-SCAN-ALLOW receipt opens nothing, and dontA
   const dir = stagedRepo({ 'a.spec.ts': "fit('x', () => {});\n", 'b.ts': 'debugger;\n' });
   const allow = path.join(dir, '.alfred', 'docs', 'flow', 'STAGED-SCAN-ALLOW');
   fs.mkdirSync(path.dirname(allow), { recursive: true });
-  const call = (extra = {}, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-ungated-commit.js')], {
+  const call = (extra = {}, env = {}) => hookSpawn([path.join(HOOKS, 'guard-ungated-commit.js')], {
     input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git commit -m "x"' }, transcript_path: REVIEWED, ...extra }),
     encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir, ...env }, cwd: dir });
   fs.writeFileSync(allow, '*\n');
@@ -4671,7 +4674,7 @@ test('fresh-session engine: both hooks run silent when the engine file is missin
   const dir = fs.mkdtempSync(path.join(TMP, 'no-engine-'));
   for (const f of ['guard-stop-contract.js', 'guard-fresh-session-start.js', 'hook-prelude.js', 'model-windows.json']) fs.copyFileSync(path.join(HOOKS, f), path.join(dir, f));
   const tp = transcript('no-engine', [{ type: 'assistant', message: { model: 'claude-sonnet-5', role: 'assistant', content: [{ type: 'text', text: 'Done.' }], usage: { input_tokens: 1, cache_read_input_tokens: 900000 } } }]);
-  const go = (hook, payload) => spawnSync(process.execPath, [path.join(dir, hook)], { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir } });
+  const go = (hook, payload) => hookSpawn([path.join(dir, hook)], { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir } });
   const stop = go('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp, last_assistant_message: 'Done.' });
   assert.equal(stop.status, 0, stop.stderr); assert.equal(stop.stderr, ''); assert.equal(stop.stdout, '');
   const skill = go('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'task-verify-code' }, transcript_path: tp });
@@ -4681,7 +4684,7 @@ test('fresh-session engine: both hooks run silent when the engine file is missin
 test('guard-stop-contract: a turn that ends on a tool call logs one skip-tool-end row and passes', () => {
   const dir = fs.mkdtempSync(path.join(TMP, 'tool-end-'));
   const tp = transcript('tool-end', [{ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Bash', input: { command: 'ls' } }] } }]);
-  const r = spawnSync(process.execPath, [path.join(HOOKS, 'guard-stop-contract.js')], {
+  const r = hookSpawn([path.join(HOOKS, 'guard-stop-contract.js')], {
     input: JSON.stringify({ hook_event_name: 'Stop', session_id: 'tool-end-sess', transcript_path: tp }), encoding: 'utf8',
     env: { ...process.env, CLAUDE_PROJECT_DIR: dir },
   });
@@ -4776,7 +4779,7 @@ test('every hook-blocks ledger file is named from a sanitised session id', () =>
 // The interpreter-write probe (audit 2026-10-10 T5) was dropped in the deep hooks review 2026-10-16: 622 rows nobody read.
 test('deep review: guard-cross-project-write passes an in-project interpreter write and writes no probe row', () => {
   const ledger = fs.mkdtempSync(path.join(os.tmpdir(), 'xp-probe-'));
-  const runP = (command, agent) => legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
+  const runP = (command, agent) => legacyBlock(hookSpawn([path.join(HOOKS, 'guard-cross-project-write.js')], {
     input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, session_id: 'xp-probe', ...(agent ? { agent_id: agent } : {}) }),
     encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, ALFRED_CODE_DOCS_PATH: ledger, ALFRED_CODE_DATA_PATH: ledger, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' },
   }));
@@ -4799,7 +4802,7 @@ test('deep review: guard-unapproved-dispatch passes a first dispatch with no Exe
   const ledger = path.join(root, 'ledger');
   const tp = (name, rows) => { const f = path.join(root, `${name}.jsonl`); fs.writeFileSync(f, rows.map((r) => JSON.stringify(r)).join('\n') + '\n'); return f; };
   const dispatch = (id) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'Agent', input: { subagent_type: 'Explore', prompt: 'map the folders' } }] } });
-  const go = (transcript, extra = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-unapproved-dispatch.js')], {
+  const go = (transcript, extra = {}) => hookSpawn([path.join(HOOKS, 'guard-unapproved-dispatch.js')], {
     input: JSON.stringify({ tool_name: 'Agent', tool_input: { subagent_type: 'Explore', prompt: 'map the folders' }, session_id: 'exec', tool_use_id: 'toolu_now', transcript_path: transcript, ...extra }),
     encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: ledger, ALFRED_CODE_DATA_PATH: ledger },
   });
@@ -4851,7 +4854,7 @@ test('guard-stop-contract: only an option that IS the fresh-session hand-off tak
 test('audit 2026-10-20 H6: the home dir, the project and the cwd are caught however they are spelled; cmd /c is a wrapper', () => {
   const proj = fs.realpathSync(fs.mkdtempSync(path.join(TMP, 'h6-')));
   fs.mkdirSync(path.join(proj, 'sub', 'build'), { recursive: true });
-  const rm = (command, tool = 'Bash') => verdictOf(spawnSync(process.execPath, [path.join(HOOKS, 'guard-catastrophic-rm.js')], {
+  const rm = (command, tool = 'Bash') => verdictOf(hookSpawn([path.join(HOOKS, 'guard-catastrophic-rm.js')], {
     input: JSON.stringify({ tool_name: tool, tool_input: { command }, cwd: path.join(proj, 'sub') }), encoding: 'utf8',
     env: { ...process.env, CLAUDE_PROJECT_DIR: proj },
   }));
@@ -4869,7 +4872,7 @@ test('audit 2026-10-20 H6: the home dir, the project and the cwd are caught howe
   // A tilde inside a segment is a name, not the home dir: Windows CI's 8.3 temp path (`RUNNER~1`) let the project through.
   const tilde = path.join(proj, 'RUNNER~1');
   fs.mkdirSync(tilde);
-  const rmIn = (command) => verdictOf(spawnSync(process.execPath, [path.join(HOOKS, 'guard-catastrophic-rm.js')], {
+  const rmIn = (command) => verdictOf(hookSpawn([path.join(HOOKS, 'guard-catastrophic-rm.js')], {
     input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, cwd: tilde }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: tilde },
   }));
   assert.equal(rmIn(`rm -rf '${tilde}'`), 'ask', 'a project whose path holds a mid-segment tilde');
@@ -5073,7 +5076,7 @@ test('guard-stop-contract: the ask-fixed row is dropped for a hook ask the user 
   };
   // The layer gate holds the unpasted table's ask on the same call, as it does beside the stop contract: its own row is the record.
   const gateAsks = (id, questions) => {
-    const r = spawnSync(process.execPath, [GATE], { input: JSON.stringify({ tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', session_id: 'afh', tool_use_id: id, transcript_path: tp, tool_input: { questions } }), encoding: 'utf8', ...env });
+    const r = hookSpawn([GATE], { input: JSON.stringify({ tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', session_id: 'afh', tool_use_id: id, transcript_path: tp, tool_input: { questions } }), encoding: 'utf8', ...env });
     assert.equal(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision, 'ask', `the real gate asks on ${id}: ${r.stdout}`);
   };
   const result = (id, content, isError) => { rows.push({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content, ...(isError ? { is_error: true } : {}) }] } }); flush(); };
@@ -5124,7 +5127,7 @@ test('guard-read-whole-file: a line of here-strings is charged to the work budge
   fs.writeFileSync(meter, "process.on('exit', () => { if (global.JUDGE_WORK) require('fs').writeSync(2, `\\nJUDGE_WORK ${global.JUDGE_WORK.used} ${global.JUDGE_WORK.max}\\n`); });\n");
   const once = (command) => {
     const t = process.hrtime.bigint();
-    const r = spawnSync(process.execPath, ['-r', meter, path.join(HOOKS, 'guard-read-whole-file.js')], { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command } }), encoding: 'utf8' });
+    const r = hookSpawn(['-r', meter, path.join(HOOKS, 'guard-read-whole-file.js')], { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command } }), encoding: 'utf8' });
     return { ms: Number(process.hrtime.bigint() - t) / 1e6, status: r.status, work: Number((/JUDGE_WORK (\d+)/.exec(r.stderr) || [])[1]) };
   };
   for (const [what, command] of [['many here-strings', `wc -c ${'<<< x '.repeat(40000 / 6)}`], ['a run of < in a quoted word', `echo 'a${'<'.repeat(80000)}b' | wc -c`]]) {
@@ -5153,7 +5156,7 @@ function memWs() {
     const env = { ...process.env, CLAUDE_PROJECT_DIR: at(rel), CLAUDE_CONFIG_DIR: acct, HOME: home, USERPROFILE: home, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ...extra };
     delete env.CLAUDE_CODE_PROJECT_DIR_NAME;
     if (!('ALFRED_CODE_WORKSPACE' in extra)) delete env.ALFRED_CODE_WORKSPACE;
-    return legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], { cwd: at(rel), input: JSON.stringify({ cwd: at(rel), ...payload }), encoding: 'utf8', env }));
+    return legacyBlock(hookSpawn([path.join(HOOKS, 'guard-cross-project-write.js')], { cwd: at(rel), input: JSON.stringify({ cwd: at(rel), ...payload }), encoding: 'utf8', env }));
   };
   const write = (rel, file, extra) => run(rel, { tool_name: 'Write', tool_input: { file_path: file, content: 'x' } }, extra);
   return { top, at, put, home, acct, mem, run, write, rm: () => fs.rmSync(top, { recursive: true, force: true }) };
@@ -5249,7 +5252,7 @@ test('guard-cross-project-write: R171 a write into the memory folder an old star
       const env = { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: acct, HOME: home, USERPROFILE: home, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' };
       delete env.CLAUDE_CODE_PROJECT_DIR_NAME;
       delete env.ALFRED_CODE_WORKSPACE;
-      return legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], { cwd: root,
+      return legacyBlock(hookSpawn([path.join(HOOKS, 'guard-cross-project-write.js')], { cwd: root,
         input: JSON.stringify({ cwd: root, session_id: sid, tool_name: 'Write', tool_input: { file_path: file, content: 'x' } }), encoding: 'utf8', env }));
     };
     const rows = () => {
@@ -5299,7 +5302,7 @@ test('guard-cross-project-write: R171 review - a tracked old file gets the gener
       const env = { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: acct, HOME: home, USERPROFILE: home, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' };
       delete env.CLAUDE_CODE_PROJECT_DIR_NAME;
       delete env.ALFRED_CODE_WORKSPACE;
-      return legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], { cwd: root,
+      return legacyBlock(hookSpawn([path.join(HOOKS, 'guard-cross-project-write.js')], { cwd: root,
         input: JSON.stringify({ cwd: root, session_id: 'r171-review', tool_name: 'Write', tool_input: { file_path: file, content: 'x' } }), encoding: 'utf8', env }));
     };
     const old = path.join(api, '.claude', 'settings.local.json');
@@ -5351,7 +5354,7 @@ test('guard-cross-project-write: R068 past 200 characters a child\'s write into 
     const write = (file) => {
       const env = { ...process.env, CLAUDE_PROJECT_DIR: api, CLAUDE_CONFIG_DIR: acct, HOME: home, USERPROFILE: home, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' };
       delete env.CLAUDE_CODE_PROJECT_DIR_NAME; delete env.ALFRED_CODE_WORKSPACE;
-      return legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], { cwd: api, input: JSON.stringify({ cwd: api, tool_name: 'Write', tool_input: { file_path: file, content: 'x' } }), encoding: 'utf8', env }));
+      return legacyBlock(hookSpawn([path.join(HOOKS, 'guard-cross-project-write.js')], { cwd: api, input: JSON.stringify({ cwd: api, tool_name: 'Write', tool_input: { file_path: file, content: 'x' } }), encoding: 'utf8', env }));
     };
     for (const made of [false, true]) {
       if (made) for (const p of [ws, api]) fs.mkdirSync(mem(p), { recursive: true });
@@ -5525,7 +5528,7 @@ test('guard-cross-project-write: a root with its own autoMemoryDirectory under a
   const S = UIDX == null ? null : `/tmp/claude-${UIDX}`;
   const BASE = S && path.join(S, `alfred-t-${process.pid}`);
   const made = S && !fs.existsSync(S);
-  const run = (root, payload) => legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
+  const run = (root, payload) => legacyBlock(hookSpawn([path.join(HOOKS, 'guard-cross-project-write.js')], {
     input: JSON.stringify(payload), encoding: 'utf8',
     env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' },
   })).status;
@@ -5960,7 +5963,7 @@ test('guards ask (D3): the proof receipts still decide, the missing one asks, an
   fs.appendFileSync(path.join(dir, 'a.txt'), 'more\n');
   spawnSync('git', ['-C', dir, 'commit', '-qam', 'work'], { encoding: 'utf8' });
   const head = spawnSync('git', ['-C', dir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
-  const push = (extra = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-ungated-commit.js')], {
+  const push = (extra = {}) => hookSpawn([path.join(HOOKS, 'guard-ungated-commit.js')], {
     input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git push' }, transcript_path: REVIEWED, ...extra }),
     encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
   assert.equal(verdictOf(push()), 'ask', 'B32: no PUSH-GATE receipt asks');
@@ -5982,7 +5985,7 @@ test('guards ask (D3): the proof receipts still decide, the missing one asks, an
       + `lands. A remote already gated (branch protection) can turn this half off: guard-ungated-commit:push in ALFRED_CODE_HOOKS_OFF.`, `B32 ${permission_mode}`);
   }
   const commitDir = scratchRepo();
-  const commit = (extra = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-ungated-commit.js')], {
+  const commit = (extra = {}) => hookSpawn([path.join(HOOKS, 'guard-ungated-commit.js')], {
     input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git commit -am x' }, transcript_path: REVIEWED, ...extra }),
     encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: commitDir }, cwd: commitDir });
   assert.equal(verdictOf(commit()), 'ask', 'B36: no COMMIT-GATE receipt asks');
@@ -6000,7 +6003,7 @@ test('guard-cross-project-write: a seat past its boundary asks in default and is
   try {
     const env = { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' };
     const seat = { agent_id: 'seat1', agent_type: 'Explore' };
-    const fire = (payload) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], { input: JSON.stringify({ session_id: RC, cwd: root, ...seat, ...payload }), encoding: 'utf8', env, cwd: root });
+    const fire = (payload) => hookSpawn([path.join(HOOKS, 'guard-cross-project-write.js')], { input: JSON.stringify({ session_id: RC, cwd: root, ...seat, ...payload }), encoding: 'utf8', env, cwd: root });
     const write = { tool_name: 'Write', tool_input: { file_path: path.join(otherRoot, 'src', 'a.ts') } };
     const script = { tool_name: 'Bash', tool_input: { command: `bash ${huge}` } };
     for (const [name, payload, re] of [['B24', write, /A subagent never writes outside/], ['B28', script, /A subagent never runs a command this guard could not read/]]) {
@@ -6244,9 +6247,19 @@ test('E1-2c: the cross-project guard judges unlink of an outside file', () => {
   assert.equal(xpBash('unlink build/old.txt'), 0, 'unlink inside the project passes');
   // E-batch M6: an allowed root that does NOT hold the project - the temp root's place on a real machine - proves the pass
   const scratch = fs.mkdtempSync(path.join(TMP, 'xp-scratch-'));
-  const inScratch = (command) => legacyBlock(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command } }),
+  const inScratch = (command) => legacyBlock(hookSpawn([path.join(HOOKS, 'guard-cross-project-write.js')], { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command } }),
     encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: scratch } })).status;
   assert.equal(inScratch(`unlink ${path.join(scratch, 'f.txt')}`), 0, 'unlink in an allowed root apart from the project passes');
   assert.equal(inScratch(`shred -u ${path.join(scratch, 'f.txt')}`), 0, 'and so does shred');
   assert.equal(inScratch(`unlink ${path.join(XP_OTHER, 'f.txt')}`), 2, 'while the sibling project stays blocked');
+});
+
+// Session audit 2, L2-30: one full run hung for 3 hours in a hook spawn that had no timeout. Every spawn of node in this
+// file goes through hookSpawn, which bounds it and fails by name on a timeout or a signal.
+test('L2-30: no spawn of node in this file runs without hookSpawn and its timeout', () => {
+  const source = fs.readFileSync(__filename, 'utf8');
+  const needle = ['spawnSync', '(process.execPath,'].join('');
+  const bare = source.split('\n').filter((line) => line.includes(needle) && !line.startsWith('const hookSpawn'));
+  assert.deepStrictEqual(bare, [], 'every node spawn uses hookSpawn');
+  assert.match(source, /const SPAWN_TIMEOUT_MS = 30000;/);
 });
