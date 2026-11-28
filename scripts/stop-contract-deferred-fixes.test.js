@@ -136,3 +136,35 @@ test('L2-29: a Stop held for another reason still carries the note for an unreco
     assert.strictEqual(noAuto.status, 2);
     assert.doesNotMatch(noAuto.stderr, /on record/, 'no auto line, no note');
 });
+
+// ---- group (b): grade items ----
+
+test('L2-20: each grade is paired with the pass in its own clause', () =>
+{
+    assert.strictEqual(answeredByAuto('The spec 95/100 (pass 90), plan 60/100 (pass 50). Accept both?'), true, 'both pass');
+    assert.strictEqual(waitsOn('The spec 95/100 (pass 90), plan 40/100 (pass 50). Accept both?'), true, 'the plan is under its own pass');
+    assert.strictEqual(waitsOn('The spec 85/100 (pass 90), plan 60/100 (pass 50). Accept both?'), true, 'the spec is under its own pass');
+    assert.strictEqual(answeredByAuto('The spec scored 95 of 100 (pass 90), plan scored 60 of 100 (pass 50). Accept both?'), true, 'the "of 100" form pairs too');
+});
+
+test('L2-21a: a grade with no pass named is judged against the scoring level, else 90', () =>
+{
+    assert.strictEqual(waitsOn('The plan scored 60/100. Accept it?'), true, 'under the default level 80');
+    assert.strictEqual(answeredByAuto('The plan scored 85/100. Accept it?'), true, 'over the default level 80');
+    assert.strictEqual(waitsOn('The plan scored 85/100. Accept it?', PICK, { ALFRED_CODE_SCORING_LEVEL: '90' }), true, 'under a level of 90');
+    assert.strictEqual(answeredByAuto('The plan scored 92/100. Accept it?', PICK, { ALFRED_CODE_SCORING_LEVEL: '90' }), true, 'over a level of 90');
+});
+
+test('L2-22: "The pass score is 90" in a sentence of its own is the pass of the grade before it', () =>
+{
+    assert.strictEqual(waitsOn('The plan scored 85/100. The pass score is 90. Accept it?'), true, '85 under 90, over the default 80');
+    assert.strictEqual(answeredByAuto('The plan scored 95/100. The pass score is 90. Accept it?'), true, '95 over 90');
+});
+
+test('L2-23: a count of unit tests, findings, cases or assertions is no grade', () =>
+{
+    for (const noun of ['unit tests', 'findings', 'cases', 'assertions', 'failing tests'])
+        assert.strictEqual(answeredByAuto(`The plan scored 45 of 50 ${noun}. Next?`), true, noun);
+    assert.strictEqual(waitsOn('The plan scored 45 of 50. Next?'), true, 'control: a bare "45 of 50" is a grade under its pass');
+    assert.strictEqual(waitsOn('The plan scored 45 of 50 and tests pass. Next?'), true, 'a connector is no filler word');
+});

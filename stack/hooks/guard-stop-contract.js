@@ -3577,37 +3577,58 @@ const DRAFT_WORD_RE = /(?<![\w-])(?:inline-plan|plan|spec|design|draft)\b/i;
 const GRADE_RE = /\b(\d{1,3})\s*\/\s*100\b/g;
 const GRADE_WORD = '(?:scor(?:e|es|ed)|grade[sd]?)';
 // a count of other things ('45 of 50 tests') is no grade: one closed set of count nouns, checked right after M
-const COUNT_NOUNS = 'tests|tasks|checks|retries|steps|files|items|workers|rounds';
+// one word may stand before the noun ('45 of 50 unit tests'); a connector there is no filler ('45 of 50 and tests pass' is a grade)
+const COUNT_NOUNS = 'tests|tasks|checks|retries|steps|files|items|workers|rounds|findings|cases|assertions';
+const COUNT_FILLER = String.raw`(?:(?!(?:and|or|but|then|with|while|so)\b)[\w-]+\s+)?`;
 const GRADE_LEAD = '(?::\\s*|\\s+)(?:(?:is|was|at|of)\\s+)?';
 const GRADE_LEVEL_RE = new RegExp(`\\b${GRADE_WORD}${GRADE_LEAD}(\\d{1,3})\\s*\\(\\s*(?:pass(?:ing)?|level)\\b`, 'gi');
-const GRADE_OF_RE = new RegExp(`\\b(${GRADE_WORD}|cap(?:ped)?)${GRADE_LEAD}(\\d{1,3})\\s+(?:out\\s+)?of\\s+(\\d{1,3})\\b(?!\\s+(?:${COUNT_NOUNS})\\b)`, 'gi');
-const PASS_LEVEL_RE = /\b(?:pass(?:ing)?|level)(?:\s+(?:level|score|mark))?\s*[:=]?\s*(\d{1,3})\b/gi;
+const GRADE_OF_RE = new RegExp(`\\b(${GRADE_WORD}|cap(?:ped)?)${GRADE_LEAD}(\\d{1,3})\\s+(?:out\\s+)?of\\s+(\\d{1,3})\\b(?!\\s+${COUNT_FILLER}(?:${COUNT_NOUNS})\\b)`, 'gi');
+const PASS_LEVEL_RE = /\b(?:pass(?:ing)?|level)(?:\s+(?:level|score|mark))?\s*[:=]?\s*(?:(?:is|was|of|at)\s+)?(\d{1,3})\b/gi;
+// A grade is paired with the pass in its own clause: a clause ends at a ';', at a comma outside parentheses and at 'and' before the
+// next draft ('spec 95/100 (pass 90), plan 60/100 (pass 50)').
+const CLAUSE_SPLIT_RE = /\s*;\s*|,(?![^()]*\))\s*|\s+and\s+(?=(?:the\s+)?(?:inline-plan|plan|spec|design|draft)\b)/i;
+const PASS_MAX = 100;
+const SCORING_LEVEL_FALLBACK = 90;
+const passLevelsIn = (text) => [...String(text).matchAll(PASS_LEVEL_RE)].map((hit) => Number(hit[1])).filter((level) => level >= OF_PASS_MIN && level <= PASS_MAX);
+// The pass a grade meets when no sentence names one: the scoring level the prelude reads, else 90.
+function defaultPassLevel()
+{
+    try { return require('./hook-prelude.js').scoringLevel(); } catch { return SCORING_LEVEL_FALLBACK; }
+}
 const SENTENCE_SPLIT_RE = /(?<=[.!?])\s+|\n+/;
 const OF_PASS_MIN = 50;
 function gradeUnderPass(question)
 {
     const text = String(question || '');
     if (!DRAFT_WORD_RE.test(text)) return false;
-    const grades = [...text.matchAll(GRADE_RE)].map((hit) => Number(hit[1]));
-    grades.push(...[...text.matchAll(GRADE_LEVEL_RE)].map((hit) => Number(hit[1])));
+    // each entry is one grade out of 100 and the passes its own clause (else its sentence) names; none -> the question's, then the default
+    const entries = [];
     for (const sentence of text.split(SENTENCE_SPLIT_RE))
     {
-        const passes = [...sentence.matchAll(PASS_LEVEL_RE)].map((hit) => Number(hit[1]));
-        for (const [, word, got, of] of sentence.matchAll(GRADE_OF_RE))
+        const sentencePasses = passLevelsIn(sentence);
+        for (const clause of sentence.split(CLAUSE_SPLIT_RE))
         {
-            const grade = Number(got);
-            const max = Number(of);
-            if (/^cap/i.test(word) && max >= 100) continue;
-            // a pass the sentence names is the pass level and M only the maximum - but only a pass of 50 or more and at most M: a round
-            // ('pass 2') or a tree level ('level 3') is no pass
-            const named = passes.filter((level) => level >= OF_PASS_MIN && level <= max);
-            if (named.length) { if (max === 100) grades.push(grade); else if (named.some((level) => grade < level)) return true; }
-            else if (max < 100 && max >= OF_PASS_MIN && grade < max && DRAFT_WORD_RE.test(sentence)) return true;
-            else if (max === 100) grades.push(grade);
+            const clausePasses = passLevelsIn(clause);
+            const passes = clausePasses.length ? clausePasses : sentencePasses;
+            for (const hit of clause.matchAll(GRADE_RE)) entries.push({ grade: Number(hit[1]), passes });
+            for (const hit of clause.matchAll(GRADE_LEVEL_RE)) entries.push({ grade: Number(hit[1]), passes });
+            for (const [, word, got, of] of clause.matchAll(GRADE_OF_RE))
+            {
+                const grade = Number(got);
+                const max = Number(of);
+                if (/^cap/i.test(word) && max >= 100) continue;
+                // a pass the clause names is the pass level and M only the maximum - but only a pass of 50 or more and at most M: a round
+                // ('pass 2') or a tree level ('level 3') is no pass
+                const named = passes.filter((level) => level <= max);
+                if (named.length) { if (max === 100) entries.push({ grade, passes: named }); else if (named.some((level) => grade < level)) return true; }
+                else if (max < 100 && max >= OF_PASS_MIN && grade < max && DRAFT_WORD_RE.test(sentence)) return true;
+                else if (max === 100) entries.push({ grade, passes: [] });
+            }
         }
     }
-    const levels = [...text.matchAll(PASS_LEVEL_RE)].map((hit) => Number(hit[1]));
-    return grades.some((grade) => levels.some((level) => grade < level));
+    const questionPasses = passLevelsIn(text);
+    const fallback = questionPasses.length ? questionPasses : [defaultPassLevel()];
+    return entries.some(({ grade, passes }) => (passes.length ? passes : fallback).some((level) => grade < level));
 }
 function outwardAsk(question, own, pickLabel = '')
 {

@@ -886,15 +886,16 @@ test('auto-mode asks: a hold label is answered when its act sits inside a deferr
 });
 
 // B10 (T12): a grade under its pass level, in a question naming a plan, spec or design, is never auto-answered - the `plan-approval`
-// rule says a draft under the pass score waits. Another output's grade (the scoring skill's continue ask, R19) is answered as before.
+// rule says a draft under the pass score waits - with no pass named, the scoring level (default 80) is the pass (L2-21a). Another output's grade (the scoring skill's continue ask, R19) is answered as before.
 test('auto-mode asks: a plan, spec or design graded under its pass level waits; a grade at or over it is answered (B10, T12)', () =>
 {
     const p = project();
     autoStamp(p, 'b10');
     for (const question of ['The inline-plan scored 60/100 (level 90). Next?', 'The plan scored 75/100 after round 3, pass 90. Next?',
-        'The spec scored 89/100, pass level 90. Next?', 'The design draft scored 60/100 (level 90). Next?'])
+        'The spec scored 89/100, pass level 90. Next?', 'The design draft scored 60/100 (level 90). Next?',
+        'The plan scored 60/100. Next?'])
         assert.strictEqual(answered(ask(p, 'b10', [q(question, ['Accept it at 60 (Recommended)', 'Revise'])])), null, `waits: ${question}`);
-    for (const question of ['The plan scored 92/100 (level 90). Next?', 'The plan scored 90/100, pass 90. Next?', 'The plan scored 60/100. Next?', 'Pass 90 tests this run. Next?',
+    for (const question of ['The plan scored 92/100 (level 90). Next?', 'The plan scored 90/100, pass 90. Next?', 'The plan scored 85/100. Next?', 'Pass 90 tests this run. Next?',
         'The designer-plan scored 60/100 (level 90). Next?', 'The report scored 60/100 (level 90). Next?'])
         assert.deepStrictEqual(answered(ask(p, 'b10', [q(question, ['Build it (Recommended)', 'Revise'])])), { [question]: 'Build it (Recommended)' }, question);
 });
