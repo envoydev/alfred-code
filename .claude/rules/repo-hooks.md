@@ -787,8 +787,9 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     in a walk or a diff is judged by the same key and shape test (`storeValueMasked`); a line of the store that is no pair is still
     masked whole. The SessionStart note adds `Shown in output, not masked ...: <keys>` - names only - so the user can rename a key. The
     input guard's `SECRET_KEY_SOURCE` (lint holds it equal to `meta/environment.json`) is untouched: `OUTPUT_CREDENTIAL_WORDS` is the
-    masker's alone. Accepted: a short secret under a key that names no credential prints (the spec's risk row). Known and pre-existing:
-    `${POSTGRES_PASSWORD:-acme}` (a placeholder with a default) prints unmasked. The line pass
+    masker's alone. Accepted: a short secret under a key that names no credential prints (the spec's risk row). The default inside a
+    `${POSTGRES_PASSWORD:-acme}` placeholder is its value and is masked, and a whitespace `password=x` pair in a
+    store value is masked like the `;` form (deferred-findings wave 2026-11-28). The line pass
     reads a line out of the store - a walk's `<path>/.secrets:N:` (either name)
     prefix, `git grep`'s, a diff header naming it - by the same rule (audit
     2026-10-20 H3: a walk through the store and a diff of a tracked store printed every value raw).
