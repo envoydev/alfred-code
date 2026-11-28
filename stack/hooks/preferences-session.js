@@ -148,6 +148,15 @@ const SHELL_READ = /^(?:cat|bat|less|more|nl|type|get-content|gc|head|tail|grep|
 // name, or another plugin's, gets nothing.
 const JUDGE = /^(?:[\w-]*solution-designer|[\w-]+-verifier|code-quality-analyzer|security-auditor|integration-reviewer|output-scoring)$/;
 const ARCH_SEAT = /^architecture-analyzer$/;
+// The built-in seats that never write: they get no push at their start (C10, 2026-11-27). A closed set - any other built-in,
+// general-purpose among them, may edit.
+const READ_ONLY_BUILTINS = Object.freeze(['Explore', 'Plan', 'claude-code-guide', 'statusline-setup']);
+// A seat definition's own `tools:` entry (a line, or a list of `- tool` lines under it) inside its frontmatter, the edit
+// tools that make a seat write, and the grant of every tool.
+const SEAT_FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---/;
+const SEAT_TOOLS_ENTRY = /^tools:[ \t]*([^\n]*(?:\n[ \t]+-[^\n]*)*)/m;
+const SEAT_EDIT_TOOL = /(?:^|[\s,"'[-])(?:Edit|Write|MultiEdit|NotebookEdit)(?=$|[\s,"'\]])/;
+const SEAT_ALL_TOOLS = /^["']?\*["']?$/;
 const STAMP_BYTES = 64 * 1024;
 // The locked keys the seed carries, for an install whose seed is not beside this hook.
 const KNOWN_LOCKED = /^(?:consent|checkpoint|safety|attribution|checks)$/;
@@ -961,6 +970,19 @@ function seatDocs(ctx, type, arch) {
   if (ARCH_SEAT.test(seat) && arch) return { defs: CODE_DOCS.filter((d) => d.key === 'ARCHITECTURE'), kind: 'architecture' };
   return null;
 }
+// Whether a seat is handed the code preferences at its start (C10): a judge or the architecture seat, as before; a stack
+// or project seat whose definition grants an edit tool, lists no tools or lists `*`; a built-in or unresolved seat unless its
+// type is a read-only built-in. `seat` is what `seatOf` returned.
+function seatGetsPush(seat, type) {
+  const name = String(type || '').replace(/^alfred-code:/, '');
+  if (JUDGE.test(name) || ARCH_SEAT.test(name)) return true;
+  if (seat === 'other' || !seat || typeof seat.frontmatter !== 'string') return !READ_ONLY_BUILTINS.includes(String(type || ''));
+  const block = SEAT_FRONTMATTER.exec(seat.frontmatter);
+  const entry = block ? SEAT_TOOLS_ENTRY.exec(block[1]) : null;
+  if (!entry) return true;
+  const tools = entry[1].trim();
+  return !tools || SEAT_ALL_TOOLS.test(tools) || SEAT_EDIT_TOOL.test(tools);
+}
 const runOf = (name) => { const n = String(name || '').trim().replace(/^\//, ''); return RUN_NAME.test(n) ? n : ''; };
 // A run starts where the transcript stood when it was recorded, and ends at the user's next typed turn - any but the run's
 // own command row (the user's answer of 2026-10-22, 'Transcript check at the hold'): read only at an architecture
@@ -1365,9 +1387,15 @@ function main() {
     return;
   }
   if (input.hook_event_name === 'SubagentStart') {
-    const tools = NO_ORDER_SEAT.test(String(input.agent_type || '')) ? '' : toolsText(ctx, seatOf(ctx, input.agent_type));
+    const resolved = seatOf(ctx, input.agent_type);
+    const tools = NO_ORDER_SEAT.test(String(input.agent_type || '')) ? '' : toolsText(ctx, resolved);
     const main = loadMarks(recordFiles(ctx, input.session_id, 'main'));
-    const seat = seatDocs(ctx, input.agent_type, runKinds(main.run, main.part).arch && runLive(main));
+    // The architecture seat outside an architecture run keeps getting nothing (the user's ruling of 2026-10-22); every other
+    // seat that can write gets the code docs and, with an agent_id, the read mark.
+    const bareType = String(input.agent_type || '').replace(/^alfred-code:/, '');
+    const named = ARCH_SEAT.test(bareType) || JUDGE.test(bareType);
+    const seat = seatDocs(ctx, input.agent_type, runKinds(main.run, main.part).arch && runLive(main))
+      || (!named && seatGetsPush(resolved, input.agent_type) ? { defs: CODE_DOCS, kind: 'code' } : null);
     const docs = seat ? seatPush(ctx, input.agent_id ? files : null, seat, seat.kind === 'architecture' ? { arch: true } : {}) : '';
     const text = [docs, tools, hostText()].filter(Boolean).join('\n\n');
     if (text) emit('SubagentStart', { additionalContext: text });
@@ -1491,7 +1519,7 @@ function main() {
   emit('PreToolUse', { block: true, permissionDecisionReason: reasons.join('\n\n') }, input);
 }
 
-module.exports = { hostLines, parseDoc, scopeOf, clean, codeNeeds, codeReason, gitReason, gitWrites, exempt, contextOf, relOf, personalPush, seatPush, seatDocs, shellMarks, shellReads, memoryLine, CODE_DOCS, GIT_DOC, PERSONAL_DOC, INLINE_CAP, PUSH_CAP, MEMORY_ROOM };
+module.exports = { seatGetsPush, hostLines, parseDoc, scopeOf, clean, codeNeeds, codeReason, gitReason, gitWrites, exempt, contextOf, relOf, personalPush, seatPush, seatDocs, shellMarks, shellReads, memoryLine, CODE_DOCS, GIT_DOC, PERSONAL_DOC, INLINE_CAP, PUSH_CAP, MEMORY_ROOM };
 Object.assign(module.exports, { ownerOf, pathLine, withPathLine, shellTargets });
 if (require.main === module) {
   try { main(); if (PUSH && !WROTE) emit('PreToolUse', { additionalContext: '' }); } catch { /* fail open: a hand-over hook never blocks on its own error */ }

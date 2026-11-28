@@ -1009,7 +1009,10 @@ test('G5b: the output-scoring seat is handed the code docs at its start, like a 
         const r = p.hook({ hook_event_name: 'SubagentStart', session_id: sid(), agent_id: 'agent-9', agent_type: 'alfred-code:output-scoring' });
         assert.match(String(out(r).additionalContext || ''), /a handler validates/);
         assert.match(String(out(r).additionalContext || ''), /put behaviour on the type/);
-        assert.doesNotMatch(String(out(p.hook({ hook_event_name: 'SubagentStart', session_id: sid(), agent_id: 'agent-8', agent_type: 'other:output-scoring' })).additionalContext || ''), /a handler validates/);
+        // C10: a seat of another plugin has no definition here, so it is handed the docs as any seat that may write - but it is no judge: its Reads are never held.
+        const foreign = sid();
+        p.hook({ hook_event_name: 'SubagentStart', session_id: foreign, agent_id: 'agent-8', agent_type: 'other:output-scoring' });
+        assert.ok(!heldRead(p.hook(pre('Read', { file_path: path.join(p.root, 'src/app.ts') }, foreign, { agent_id: '8', agent_type: 'other:output-scoring' }))));
     }
     finally { p.rm(); }
 });
@@ -1033,8 +1036,10 @@ test('G5: a solution designer and a verifier are handed the code docs at their s
         assert.strictEqual(p.hook(sub('web-angular-verifier')).stdout, '', 'bare, with no stamp recording the copy: no seat of the stack\'s');
         p.write('.claude/alfred-code.stamp', 'seats-route: copy\nlibrary-agents: web-angular-verifier=0a1b\n');
         assert.match(String(out(p.hook(sub('web-angular-verifier'))).additionalContext || ''), /a handler validates/, 'bare too, where the stamp records the copy');
-        for (const type of ['general-purpose', 'alfred-code:web-angular-implementer', 'Explore', 'agent-sdk-dev:agent-sdk-verifier-py', 'other:code-verifier', 'other:aspnet-solution-designer'])
-            assert.strictEqual(p.hook(sub(type)).stdout, '', `${type}: only the stack's own seats, bare or alfred-code:`);
+        assert.strictEqual(p.hook(sub('Explore')).stdout, '', 'a read-only built-in gets nothing');
+        // C10: any other seat that may write - a built-in, a stack implementer, a seat of another plugin - is handed the docs at its start.
+        for (const type of ['general-purpose', 'alfred-code:web-angular-implementer', 'agent-sdk-dev:agent-sdk-verifier-py', 'other:code-verifier', 'other:aspnet-solution-designer'])
+            assert.match(String(out(p.hook(sub(type))).additionalContext || ''), /put behaviour on the type/, `${type}: a seat that may write is handed them`);
         assert.strictEqual(p.hook(sub('alfred-code:aspnet-solution-designer'), { ALFRED_CODE_HOOKS_OFF: 'preferences-session' }).stdout, '');
     }
     finally { p.rm(); }
@@ -1058,13 +1063,15 @@ test('the finding seats - the code-quality analyzer, the security auditor, the i
             assert.ok(heldRead(r), `${type}: its first Read brings the next part`);
             assert.match(heldText(r), /Follow them in every decision and finding/);
         }
-        for (const type of ['alfred-code:code-style-analyzer', 'alfred-code:test-coverage-analyzer', 'alfred-code:issue-diagnoser-ci', 'alfred-code:evidence-gatherer', 'other:code-quality-analyzer-lite', 'someplugin:security-auditor', 'other:integration-reviewer', 'other:code-quality-analyzer'])
+        for (const type of ['alfred-code:code-style-analyzer', 'alfred-code:test-coverage-analyzer', 'alfred-code:issue-diagnoser-ci', 'alfred-code:evidence-gatherer'])
             assert.strictEqual(small.hook(sub(type)).stdout, '', type);
-        // Another plugin's seat under one of these names is not the stack's: no push, and its Reads are never held.
+        // Another plugin's seat under one of these names is not the stack's judge (C10: it has no definition here, so it is handed the docs as a seat that may write): its Reads are never held.
+        for (const type of ['other:code-quality-analyzer-lite', 'someplugin:security-auditor', 'other:integration-reviewer', 'other:code-quality-analyzer'])
+            assert.match(String(out(small.hook(sub(type))).additionalContext || ''), /a handler validates/, type);
         for (const type of ['someplugin:security-auditor', 'other:aspnet-verifier'])
         {
             const s = sid();
-            assert.strictEqual(big.hook(sub(type, s)).stdout, '', type);
+            big.hook(sub(type, s));
             assert.ok(!heldRead(big.hook(pre('Read', { file_path: path.join(big.root, 'src/app.ts') }, s, { agent_id: 'f1', agent_type: type }))), `${type}: its Read passes`);
         }
     }
@@ -1392,7 +1399,7 @@ test('architecture-analyzer is handed the architecture entries alone in an archi
         assert.deepStrictEqual(seen.sort((a, b) => a - b), Array.from({ length: 14 }, (_, i) => i + 1), 'every architecture entry once');
         assert.ok(!texts.some((t) => /put behaviour on the type/.test(t)), 'the code doc never');
         const start = (session, extra = who) => big.hook({ hook_event_name: 'SubagentStart', session_id: session, ...extra });
-        assert.strictEqual(start(qualityRun(big), { agent_id: 'x', agent_type: 'other:architecture-analyzer' }).stdout, '', 'another plugin\'s analyzer gets nothing');
+        assert.match(String(out(start(qualityRun(big), { agent_id: 'x', agent_type: 'other:architecture-analyzer' })).additionalContext || ''), /put behaviour on the type/, 'another plugin\'s analyzer is no architecture seat (C10: it is handed the code docs as a seat that may write)');
         assert.strictEqual(start(qualityRun(big), { agent_id: 'x', agent_type: 'architecture-analyzer' }).stdout, '', 'bare with no stamp: nothing');
         // Outside a quality run - none, the map capture typed or called, a scoping pass - nothing, and no read is held.
         const quiet = (s, label) => {
