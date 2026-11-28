@@ -13,6 +13,8 @@ const call = (over = {}) => nvmPathWarning({
     home: HOME,
     platform: 'darwin',
     exists: () => false,
+    nvmDir: '',
+    realpath: (p) => p,
     ...over,
 });
 
@@ -74,6 +76,50 @@ test('missing or empty inputs give no line and never throw', () =>
     assert.match(call({ exists: () => { throw new Error('boom'); }, pathEnv: `${CURRENT_BIN}` }), /one nvm version folder/);
 });
 
+const OPT_NVM = '/opt/nvm';
+const OPT_EXEC = `${OPT_NVM}/versions/node/v24.11.0/bin/node`;
+
+test('L1-21: a custom NVM_DIR holding the node gets the warning, named with that folder', () =>
+{
+    const line = call({ execPath: OPT_EXEC, nvmDir: OPT_NVM, pathEnv: `${OPT_NVM}/versions/node/v24.11.0/bin:/usr/bin` });
+    assert.match(line, /one nvm version folder \(\/opt\/nvm\/versions\/node\/v24\.11\.0\)/);
+    assert.match(line, /\/opt\/nvm\/current\/bin/);
+    assert.match(line, /nvm alias default v24\.11\.0/);
+});
+
+test('L1-21: a custom NVM_DIR whose current link holds a node on PATH gives no line', () =>
+{
+    const bin = `${OPT_NVM}/current/bin`;
+    assert.equal(call({ execPath: OPT_EXEC, nvmDir: OPT_NVM, pathEnv: `${bin}:/usr/bin`, exists: (p) => p === `${bin}/node` }), null);
+});
+
+test('L1-21: a node outside both the default and the custom nvm folder gives no line', () =>
+{
+    assert.equal(call({ execPath: '/opt/other/versions/node/v24.11.0/bin/node', nvmDir: OPT_NVM }), null);
+});
+
+test('L1-21: a symlinked HOME warns when the node path is the real one', () =>
+{
+    const realOf = (p) => p.replace(/^\/home\/x/, '/data/x');
+    const line = call({ home: '/home/x', execPath: '/data/x/.nvm/versions/node/v24.11.0/bin/node', pathEnv: '/home/x/.nvm/versions/node/v24.11.0/bin:/usr/bin', realpath: realOf });
+    assert.match(line, /one nvm version folder \(~\/\.nvm\/versions\/node\/v24\.11\.0\)/);
+});
+
+test('L1-21: a symlinked HOME with the current link on PATH, spelled either way, gives no line', () =>
+{
+    const realOf = (p) => p.replace(/^\/home\/x/, '/data/x');
+    const execPath = '/data/x/.nvm/versions/node/v24.11.0/bin/node';
+    assert.equal(call({ home: '/home/x', execPath, pathEnv: '/home/x/.nvm/current/bin:/usr/bin', realpath: realOf, exists: (p) => p === '/home/x/.nvm/current/bin/node' }), null);
+    assert.equal(call({ home: '/home/x', execPath, pathEnv: '/data/x/.nvm/current/bin:/usr/bin', realpath: realOf, exists: (p) => p === '/data/x/.nvm/current/bin/node' }), null);
+});
+
+test('L1-21: a realpath that throws leaves the plain comparison', () =>
+{
+    const throws = () => { throw new Error('ENOENT'); };
+    assert.match(call({ realpath: throws }), /one nvm version folder/);
+    assert.equal(call({ realpath: throws, execPath: '/opt/homebrew/bin/node' }), null);
+});
+
 test('linux reads the same rule as macOS', () =>
 {
     assert.match(call({ platform: 'linux', home: '/home/x', execPath: '/home/x/.nvm/versions/node/v22.1.0/bin/node' }), /v22\.1\.0/);
@@ -103,6 +149,7 @@ for (const action of ['install', 'update'])
 
 test('install prints no nvm line for a node outside the nvm versions folder', POSIX_ONLY, () =>
 {
-    const r = seedRun('install', 'rule markdown-docs\n', {});
+    // NVM_DIR is read since L1-21, so a machine that runs nvm must not hand the run its own folder.
+    const r = seedRun('install', 'rule markdown-docs\n', { env: { NVM_DIR: undefined } });
     assert.doesNotMatch(r.out, /nvm version folder/);
 });
