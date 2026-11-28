@@ -2087,3 +2087,31 @@ test('SG1-F1: a heredoc-written script that passes the environment to a child ru
   const after = masked(node, { response: said('flag=1 1\n') });
   assert.deepStrictEqual([after.status, after.out], [0, ''], 'the masker leaves the output alone');
 });
+
+// Fix wave 2026-11-28 (L1-10, L1-11): a store value may hide a credential in a `${VAR:-default}` default, or in a
+// whitespace-separated pair; the masker has to name the part a command prints.
+const printedAfterMask = (text) => { const r = masked('node print-it.js', { response: said(text) }); return r.out === '' ? text : answer(r).updatedToolOutput.stdout; };
+test('L1-10: the default inside ${VAR:-x} of a store value is the value - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-acmeSecret9} prints masked', () => {
+  withA3Store(() => {
+    assert.strictEqual(printedAfterMask('login acmeSecret9 ok\n'), `login ${SET('acmeSecret9')} ok\n`);
+  }, 'POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-acmeSecret9}\n');
+});
+test('L1-10: a ${VAR} with no default, a blank default and a variable default stay unmasked', () => {
+  withA3Store(() => {
+    const text = 'a ${DB_PASSWORD} b ${DB_PASSWORD:-} c ${DB_PASSWORD:-$OTHER} d\n';
+    assert.strictEqual(printedAfterMask(text), text);
+  }, 'DB_PASSWORD=${DB_PASSWORD}\nDB_PASSWORD=${DB_PASSWORD:-}\nDB_PASSWORD=${DB_PASSWORD:-$OTHER}\n');
+});
+test('L1-11: a store connection string with whitespace-separated pairs masks its password part (PG_DSN=host=db user=app password=ab12xyz99)', () => {
+  withA3Store(() => {
+    assert.strictEqual(printedAfterMask('login ab12xyz99 ok\n'), `login ${SET('ab12xyz99')} ok\n`);
+  }, 'PG_DSN=host=db user=app password=ab12xyz99\n');
+});
+test('L1-11: a whitespace pair under a key that names no credential is masked too (DB_URL), and a placeholder after it is not', () => {
+  withA3Store(() => {
+    assert.strictEqual(printedAfterMask('login ab12xyz99 ok\n'), `login ${SET('ab12xyz99')} ok\n`);
+  }, 'DB_URL=host=db user=app password=ab12xyz99\n');
+  withA3Store(() => {
+    assert.strictEqual(printedAfterMask('see ${DB_PW}\n'), 'see ${DB_PW}\n');
+  }, 'DB_URL=host=db user=app password=${DB_PW}\n');
+});

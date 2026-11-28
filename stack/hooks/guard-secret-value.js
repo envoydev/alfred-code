@@ -97,8 +97,13 @@ const WALK_LAST = /^(?:\.venv|venv|\.tox|\.nox|__pycache__|vendor|target|dist|bu
 // A variable REFERENCE is no value either (2.1.6): `$NPM_TOKEN` in a CI file (an upper-case name - `$ecret` is a
 // password), `%API_KEY%` in a Windows config, a workflow's `${{secrets.X}}`, a Helm or Jinja `{{.Values.x}}`, an
 // Octopus `#{X}`, an Azure DevOps or MSBuild `$(X)` and a maven-filtered `@x@`.
+// A `${VAR:-default}` (also `-`, `:=`, `=`) is read as its default (L1-10): the default is what prints when VAR is unset, so a live
+// default makes the whole value live and a blank or reference default leaves it a placeholder.
+const DEFAULT_EXPANSION = /^\$\{[A-Za-z_]\w*:?[-=]([^}]*)\}$/;
+const defaultOf = (v) => { const m = typeof v === 'string' ? DEFAULT_EXPANSION.exec(v.trim()) : null; return m ? m[1] : null; };
 const isPlaceholder = (v) => typeof v === 'string'
-  && /^(?:\$\{[^}]*\}|\$\{\{[^}]*\}\}|\{\{[^}]*\}\}|#\{[^}]*\}|\$\([\w.-]+\)|@[\w.-]+@|\$[A-Z_][A-Z0-9_]*|%[A-Za-z_]\w*%)$/.test(v.trim());
+  && /^(?:\$\{[^}]*\}|\$\{\{[^}]*\}\}|\{\{[^}]*\}\}|#\{[^}]*\}|\$\([\w.-]+\)|@[\w.-]+@|\$[A-Z_][A-Z0-9_]*|%[A-Za-z_]\w*%)$/.test(v.trim())
+  && !isLive(defaultOf(v));
 const isLive = (v) => typeof v === 'string' && v.trim() !== '' && !isPlaceholder(v);
 
 // CONTENT tells that a credential-shaped KEY is not holding a credential - the false positives the
@@ -188,17 +193,20 @@ const storeValueMasked = (key, value) => isLive(value) && (keyHidesValue(key, va
 // in the redacted view whose header promised no value enters the chat. The value is judged like any other -
 // a `${VAR}` placeholder or a template word is not live - and only the password part is masked.
 const EMBEDDED_PAIR = /((?:^|[;,])\s*(?:password|pwd)\s*=\s*)([^;,]*)/gi;
+// L1-11: a pair after a blank (`host=db user=app password=x`, libpq's DSN) ends at the next blank; the `;` and `,` pairs above keep their own reading.
+const EMBEDDED_SPACE_PAIR = /((?<=[^;,\s])\s+(?:password|pwd)\s*=\s*)(?!<set \()([^;,\s]*)/gi;
 const EMBEDDED_URL = /(\b[a-z][a-z0-9+.-]*:\/\/[^\s:/@]*:)([^@\s/]+)(?=@)/gi;
 // A `Bearer <token>` under any key (SG1 Change 1; RFC 6750 section 2.1's b64token): the space excused the whole value
 // as a sample, so the token alone is judged - a known shape, or a credential-like token with no sample tell.
 const EMBEDDED_BEARER = /(\bBearer +)([A-Za-z0-9\-._~+/]+=*)(?![A-Za-z0-9\-._~+/=$%{#])/gi;
 const bearerToken = (t) => isLive(t) && (SECRET_SHAPE.test(t) || (credentialLike(t) && holdsCredential('password', t)));
 const embeddedCredential = (v) => typeof v === 'string'
-  && ([...v.matchAll(EMBEDDED_PAIR), ...v.matchAll(EMBEDDED_URL)].some((m) => holdsCredential('password', m[2]))
+  && ([...v.matchAll(EMBEDDED_PAIR), ...v.matchAll(EMBEDDED_SPACE_PAIR), ...v.matchAll(EMBEDDED_URL)].some((m) => holdsCredential('password', m[2]))
     || [...v.matchAll(EMBEDDED_BEARER)].some((m) => bearerToken(m[2])));
 const maskBearer = (v, mask) => v.replace(EMBEDDED_BEARER, (all, head, tok) => (bearerToken(tok) ? head + mask(tok) : all));
 const maskEmbedded = (v, mask) => maskBearer(v
   .replace(EMBEDDED_PAIR, (all, head, val) => (holdsCredential('password', val) ? head + mask(val) : all))
+  .replace(EMBEDDED_SPACE_PAIR, (all, head, val) => (holdsCredential('password', val) ? head + mask(val) : all))
   .replace(EMBEDDED_URL, (all, head, val) => (holdsCredential('password', val) ? head + mask(val) : all)), mask);
 // A file-SHAPE tell: a basename ending .example / .sample / .template / .dist ships the KEYS, never
 // the values - judging it blocks the one file a session legitimately reads to learn what to fill in.
@@ -1607,9 +1615,11 @@ function valuesOf(file, { every = false } = {}) {
     for (const line of text.split(LINES)) {
       const m = COMMENT_LINE.test(line) ? null : line.match(DOTENV_LINE);
       if (!m) continue;
-      const v = unquote(m[2]);
+      const raw = unquote(m[2]);
+      const v = defaultOf(raw) ?? raw;   // L1-10: what a `${VAR:-x}` prints is its default
       // A3: the store gives a value only when its key names a credential (2 characters or more) or the value looks like one
-      if (store) { if (storeValueMasked(m[1], v)) put(m[1], v, keyHidesValue(m[1], v)); else maskEmbedded(v, (x) => put(m[1], x, true)); continue; }
+      // L1-11: a password inside a value is named whether or not the whole value is hidden (a DSN's key hides it whole, the print shows the part)
+      if (store) { if (storeValueMasked(m[1], v)) put(m[1], v, keyHidesValue(m[1], v)); maskEmbedded(v, (x) => put(m[1], x, true)); continue; }
       if (all ? isLive(v) : maskable(m[1], v)) put(m[1], v); else maskEmbedded(v, (x) => put(m[1], x));
     }
     return out;
