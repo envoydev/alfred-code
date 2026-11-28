@@ -35,6 +35,25 @@
 // exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unparseable.
 const fs = require('fs');
 
+// C16 (session audit 2026-11-27, N01): a close that logs `auto: <question> -> <choice>` says auto-run answered an ask. One line is
+// one answer, and one auto-answer ledger row holds a whole ask, so the lines are counted against the ENTRIES of each row's
+// `detail.answers`. A fenced span is a quoted template, never a line of the close. The one reply-line pattern of this hook.
+const AUTO_LINE_RE = /^[ \t]*(?:[-*+][ \t]+)?\**auto\**[ \t]*:[^\n]*->/gim;
+const AUTO_LINE_FENCE_RE = /(`{3,}|~{3,})[\s\S]*?(?:\1|$)/g;
+const AUTO_LINE_NOTE = 'The close lists an `auto:` answer that the hook ledger does not hold: no auto-run answer is on record for this - say what really happened.';
+// True when the reply's `auto:` lines outnumber the answers the auto-answer rows hold (rows are ledger rows, any kind).
+function unrecordedAutoLines(reply, rows) {
+  const lines = (String(reply || '').replace(AUTO_LINE_FENCE_RE, '\n').match(AUTO_LINE_RE) || []).length;
+  if (!lines) return false;
+  const recorded = (Array.isArray(rows) ? rows : []).reduce((sum, row) => {
+    const answers = row && row.kind === 'auto-answer' && row.detail && row.detail.answers;
+    return sum + (answers && typeof answers === 'object' ? Object.keys(answers).length : 0);
+  }, 0);
+  return lines > recorded;
+}
+module.exports = { unrecordedAutoLines };
+if (require.main !== module) return; // a test requires the check above; the hook's own run reads stdin below
+
 // STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in every
 // hook. Fail-open on purpose - no prelude, no project dir or a malformed settings file all leave
 // this hook running.
@@ -151,6 +170,27 @@ if (cursorOff) process.exit(0);
   };
 })();
 
+// C16: when this session's run began (the run marker's `at:` line, else its mtime); 0 with no marker - the session's start.
+function runStartMs() {
+  try {
+    const marker = runMarkerOf(payload);
+    if (!marker) return 0;
+    const at = Date.parse((/^at:[ \t]*(\S+)/m.exec(fs.readFileSync(marker, 'utf8')) || [])[1]);
+    return Number.isFinite(at) ? at : fs.statSync(marker).mtimeMs;
+  } catch { return 0; }
+}
+// C16: this session's auto-answer rows of the hook-blocks ledger written at or after `sinceMs`. An absent ledger holds none.
+function autoAnswerRowsSince(sinceMs) {
+  const path = require('path');
+  const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+  const dir = (() => { try { return require('./layout.js').statsPath(root, ['hook-blocks']); } catch { return path.resolve(root, docsRootEnv(), 'hook-blocks'); } })();
+  let text = '';
+  try { text = fs.readFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), 'utf8'); } catch (err) { if (err && err.code === 'ENOENT') return []; throw err; }
+  return text.split('\n').flatMap((line) => {
+    if (!line.includes('auto-answer')) return [];
+    try { const r = JSON.parse(line); return r && r.kind === 'auto-answer' && !(Date.parse(r.ts) < sinceMs) ? [r] : []; } catch { return []; }
+  });
+}
 // Whether a hook asked the user about this call: a block row of the hook-blocks ledger that carries the call's id and says `ask`
 // (`decision: 'ask'` on a guard's block row, `mode: 'ask'` on the secret guard's own row). The ledger is a file the model can write:
 // a forged row makes one declined ask count as a hook's refusal and nothing more.
@@ -2649,6 +2689,19 @@ if (payload.hook_event_name === 'Stop') {
   // fences the same way - this is the same rule for the contract check.
   const prose = text.replace(/(`{3,})[\s\S]*?\1/g, ' ');
   const tail = prose.slice(-1500); // the offer lives at the end of the turn
+  // C16: one note when the close's `auto:` lines outnumber the auto-answer rows since the run marker's start (the session's start
+  // with no marker). Context on exit 0 only (Stop's `hookSpecificOutput.additionalContext`, code.claude.com/docs/en/hooks) - never an
+  // exit 2 or a `decision: block`. It is written in the exit handler, since this Stop path has many exits and no other stdout write.
+  if (!payload.agent_id) {
+    try {
+      if (unrecordedAutoLines(text, autoAnswerRowsSince(runStartMs()))) {
+        process.on('exit', (code) => {
+          if (code !== 0) return;
+          try { fs.writeSync(1, JSON.stringify({ hookSpecificOutput: { hookEventName: 'Stop', additionalContext: AUTO_LINE_NOTE } })); } catch { /* a lost note costs nothing */ }
+        });
+      }
+    } catch { /* fail-open: the close goes out unnoted */ }
+  }
   // The DONE half is read over the whole close, bounded at 16KB (re-verify 3 R3-m11: a done claim 1,600 characters up
   // hid a 'push when you say so' stall); the pending half, the question and the exemptions stay on the tail.
   const closeWhole = closeProse(prose.slice(-16 * 1024));
