@@ -1066,15 +1066,18 @@ function databaseOf(word, readOnly) {
 // injected so the decision stays a pure function.
 function interpreterPaths(argv, cwd, valueOptions = new Set(), exists = fs.existsSync) {
   const paths = [];
+  // L1-15 (r1): the filesystem root alone is no project path as the value of a flag (`--base=/`, `--base /`).
+  const isRootValue = (word) => { const abs = resolveTarget(nativePath(expandTilde(word)), cwd); return path.parse(abs).root === abs; };
   for (let at = 0; at < argv.length; at++) {
     const word = argv[at];
     if (word.startsWith('-')) {
       // L1-15: `--db=<path>` names the path as `--db <path>` does; a value option of the interpreter (`--eval=code`) stays code.
       const split = word.match(/^(--[^=\s]+)=(.+)$/s);
-      if (split && !valueOptions.has(split[1]) && exists(resolveTarget(nativePath(expandTilde(split[2])), cwd))) paths.push(split[2]);
+      if (split && !valueOptions.has(split[1]) && !isRootValue(split[2]) && exists(resolveTarget(nativePath(expandTilde(split[2])), cwd))) paths.push(split[2]);
       else if (valueOptions.has(word)) at++;
       continue;
     }
+    if (at > 0 && argv[at - 1].startsWith('-') && word && isRootValue(word)) continue;
     if (word && exists(resolveTarget(nativePath(expandTilde(word)), cwd))) paths.push(word);
   }
   return paths;

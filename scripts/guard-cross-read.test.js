@@ -699,6 +699,16 @@ test('L1-15: an interpreter option spelled --name=<path> asks as --name <path> d
   passes(fx, bash(`node --eval=${db}`), {}, 'a value option of the interpreter is code, not a path');
 }));
 
+test('L1-15 (r1): a flag value that is the filesystem root alone is no path word, in both spellings', { skip: WINDOWS && 'POSIX paths' }, withFixture((fx) => {
+  passes(fx, bash('node build.js --base=/'), {}, 'one word, --base=/');
+  passes(fx, bash('node build.js --base /'), {}, 'two words, --base /');
+  passes(fx, bash('python3 serve.py --root=/'), {}, 'one word, --root=/');
+  passes(fx, bash('python3 serve.py --root /'), {}, 'two words, --root /');
+  const { db } = outsideDb(fx);
+  asks(fx, bash(`node build.js --base=${db}`), {}, 'keep: a real outside path in one word');
+  asks(fx, bash(`node build.js --base ${db}`), {}, 'keep: a real outside path in two words');
+}));
+
 // L1-16 runs on POSIX here with the Windows variables set by the test; the Windows leg itself is NOT RUN on a Windows host.
 test('L1-16: a script under a Windows system folder named by ProgramFiles, ProgramFiles(x86), SystemRoot or windir is exempt', withFixture((fx) => {
   const folders = { ProgramFiles: 'Program Files', 'ProgramFiles(x86)': 'Program Files (x86)', SystemRoot: 'Windows', windir: 'WinDir' };
