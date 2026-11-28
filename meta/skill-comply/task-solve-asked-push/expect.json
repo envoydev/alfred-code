@@ -6,7 +6,7 @@
     "stack/skills/habits-commit-checkpoint/SKILL.md"
   ],
   "extracted": "2026-11-28",
-  "note": "N04 of the 2026-11-27 session audit: the user asked 'can we publish?', the agent proposed the publish, the user said 'Do the update', and the push ask still marked 'Hold - push later' - the publish waited 34 minutes. A replay is one prompt, so each level carries that sequence as the user's own recap in one turn; the workspace holds one verified local commit that is not pushed, beside a bare origin. What is graded is the push ask itself: it opens 'You asked for this push', the push is the marked option listed first, and no ask marks Hold. Print mode has no AskUserQuestion, so an ask counts as the tool call or as the same text in the reply. The first-position check is the order of the lines in the ask text, which the matcher reads with the m flag. Under auto-run a marked push still waits for the user (guard-fresh-session-start.js), so the replay runs with auto-run off. task-solve has no skip rule for typed words (the checkpoint's does, for words that name this publish), so 'Do the update' after the agent's own push proposal gets the asked template. The push is graded as the marked option listed first: a Hold listed before it fails. Every step is bound to this fixture (session: false). Run only the offline check and --dry-run; --live is a billed nested session and waits for the user's word.",
+  "note": "N04 of the 2026-11-27 session audit: the user asked 'can we publish?', the agent proposed the publish, the user said 'Do the update', and the push ask still marked 'Hold - push later' - the publish waited 34 minutes. A replay is one prompt, so each level carries that sequence as the user's own recap in one turn; the workspace holds one verified local commit that is not pushed, beside a bare origin. What is graded is the push ask itself: it opens 'You asked for this push', the push is the marked option listed first, and no ask marks Hold. Print mode has no AskUserQuestion, so an ask counts as the tool call or as the same text in the reply. The first-position check is the order of the lines in the ask text, which the matcher reads with the m flag. Under auto-run a marked push still waits for the user (guard-fresh-session-start.js), so the replay runs with auto-run off. task-solve skips the ask for typed words that name this push, as the checkpoint does, and 'Do the update' only gives a go-ahead to the agent's own push proposal, so it gets the asked template. The push is graded as the marked option listed first: a Hold listed before it fails. Every step is bound to this fixture (session: false). Run only the offline check and --dry-run; --live is a billed nested session and waits for the user's word.",
   "run": {
     "max_turns": 20,
     "stacks": [
@@ -92,7 +92,7 @@
       "id": "asked-template",
       "session": false,
       "from": "stack/skills/task-solve/SKILL.md",
-      "quote": "Where the user's typed words in this exchange asked for this push, a go-ahead to your own push proposal included, ask:",
+      "quote": "Where they only gave a go-ahead to your own push proposal, ask:",
       "graders": [
         {
           "type": "tool_used",

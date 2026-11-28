@@ -228,7 +228,7 @@ line names: a POINTER for the user to type, never a call.
    - 'Hold - review the diff first' - nothing is committed; the diff stays as it is
    ```
 
-   A deferred item or follow-up is a SECOND question in the same AskUserQuestion call, never an
+   A deferred item or follow-up is a SECOND question in the same call, never an
    option beside the diff's:
 
    ```ask
@@ -246,7 +246,7 @@ line names: a POINTER for the user to type, never a call.
    - 'Push now' - the checkpoint's publish half takes this answer as its confirmation
    ```
 
-   Where the user's typed words in this exchange asked for this push, a go-ahead to your own push proposal included, ask:
+   Typed words for this push skip the ask and become the `authorized:` line. Where they only gave a go-ahead to your own push proposal, ask:
 
    ```ask
    You asked for this push: <sha> to <remote>.
