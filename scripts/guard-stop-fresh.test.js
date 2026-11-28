@@ -407,6 +407,13 @@ test('L1-07: a finite storybook command is no server, so a wait on it passes', (
   for (const command of ['npm run storybook', 'npx storybook dev -p 6006', 'start-storybook -p 6006', 'storybook', 'cd ui && storybook dev'])
     assert.equal(closeOver(`l107-srv-${command.replace(/\W+/g, '-')}`, bgShell('l107s', command), RUNNING_CLOSE).status, 2, `a server: ${command}`);
 });
+// Deferred-findings wave 2026-11-28 L1-07 (r1): a dev server run through a package filter or a monorepo runner is still a server.
+test('L1-07 (r1): a storybook dev server under a package filter, a prefix or nx / turbo is a server', () => {
+  for (const command of ['pnpm --filter ui storybook', 'npm --prefix ui run storybook', 'nx run ui:storybook', 'turbo run storybook'])
+    assert.equal(closeOver(`l107r1-srv-${command.replace(/\W+/g, '-')}`, bgShell('l107r1s', command), RUNNING_CLOSE).status, 2, `a server: ${command}`);
+  for (const command of ['npm run test-storybook', 'grep -rn storybook src', 'npx storybook build', 'pnpm run build-storybook', 'pnpm --filter ui test-storybook', 'npm install -D storybook', 'nx run ui:build-storybook'])
+    assert.equal(closeOver(`l107r1-fin-${command.replace(/\W+/g, '-')}`, bgShell('l107r1f', command), RUNNING_CLOSE).status, 0, `a finite run: ${command}`);
+});
 test('B11: a background shell past 60 min counts no more, whatever its timeout says', () => {
   const at = (name, minutesAgo, input) => closeOver(`b11-${name}`, agedShell('b11a', LANES, minutesAgo, input), WAITING_CLOSE).status;
   assert.equal(at('fresh', 5), 0, 'started 5 min ago');

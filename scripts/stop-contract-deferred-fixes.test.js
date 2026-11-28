@@ -168,3 +168,57 @@ test('L2-23: a count of unit tests, findings, cases or assertions is no grade', 
     assert.strictEqual(waitsOn('The plan scored 45 of 50. Next?'), true, 'control: a bare "45 of 50" is a grade under its pass');
     assert.strictEqual(waitsOn('The plan scored 45 of 50 and tests pass. Next?'), true, 'a connector is no filler word');
 });
+
+// ---- deferred-findings wave 2026-11-28, round 1 ----
+
+test('L1-03 (r1): a noun phrase inside the deferral is no act of the pick, so the hold is answered', () =>
+{
+    const held = [
+        'Hold the push until CI is green and the deploy until Monday',
+        'Defer the merge until review and the deploy until the freeze ends',
+        'Hold the push until CI passes and the release until Friday',
+        'Hold until the push and deploy jobs finish',
+        'Skip it until the tests and the merge are done',
+    ];
+    for (const label of held)
+        assert.strictEqual(answeredByAuto('Which route?', [opt(`${label} (Recommended)`), opt('Revise')]), true, label);
+    assert.strictEqual(waitsOn('Which route?', [opt('Hold the push until green and deploy now (Recommended)'), opt('Revise')]), true, 'keep: a bare act after the deferral waits');
+    assert.strictEqual(answeredByAuto('Which route?', [opt('Hold the push until green (Recommended)'), opt('Revise')]), true, 'keep: a pure hold is answered');
+});
+
+test('X-1 (r1): "Let me know if you would rather I push it now" and its kin hand the decision back', () =>
+{
+    const decisions = [
+        "Let me know if you'd rather I push it now.",
+        "Let me know if that's OK and I'll push.",
+        'Let me know if this looks right before I push.',
+        "Let me know if you're happy for me to push.",
+        'Let me know if the push should go out now.',
+    ];
+    for (const line of decisions) assert.ok(holds(`Done: the lint run is clean.\n\n${line}`), line);
+    assert.ok(passes('Done: the lint run is clean.\n\nLet me know if I missed anything.'), 'a courtesy, like its Tell me twin');
+    assert.ok(passes('Done: the lint run is clean.\n\nLet me know if I should have pushed.'), 'past tense');
+    assert.ok(holds('Done: the lint run is clean.\n\nLet me know if you want X.'), 'keep: you want');
+    assert.ok(holds('Done: the lint run is clean.\n\nLet me know if I should push.'), 'keep: I should');
+    assert.ok(holds('Done: the lint run is clean.\n\nLet me know when the review is back.'), 'keep: when');
+    assert.ok(passes('Done: the lint run is clean.\n\nLet me know if it happens again.'), 'keep: it happens again');
+    assert.ok(passes('Done: the lint run is clean.\n\nLet me know if anything breaks.'), 'keep: anything breaks');
+});
+
+test('L2-21a (r1): a count of 30/100 endpoints is no grade, a grade word or the draft word before N/100 is', () =>
+{
+    assert.strictEqual(answeredByAuto('The plan migrates 30/100 endpoints first. Build it?'), true, 'a count after a verb');
+    assert.strictEqual(answeredByAuto('The spec phase 1 covers 25/100 services. Approve?'), true, 'a count after covers');
+    assert.strictEqual(waitsOn('The plan scored 60/100. Accept it?'), true, 'keep: scored');
+    assert.strictEqual(waitsOn('The plan 60/100. Accept it?'), true, 'the draft word right before the grade');
+    assert.strictEqual(waitsOn('The plan graded 60/100. Accept it?'), true, 'graded');
+});
+
+test('SLOW PATH (r1): a 100KB run of commas in an ask ends under 500 ms of the clause split', () =>
+{
+    const started = Date.now();
+    const r = ask(`The plan ${','.repeat(100000)} Accept it?`, PICK);
+    const ms = Date.now() - started;
+    assert.ok(r.status === 0 || r.status === 2, `the hook ran (${r.status})`);
+    assert.ok(ms < 500, `took ${ms} ms`);
+});

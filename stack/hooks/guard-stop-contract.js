@@ -395,7 +395,7 @@ const FRESH_RE = new RegExp(`${FRESH_CUE}[^.!?\\n]{0,80}${FRESH_PHRASE}|${FRESH_
 // this parity scope can stop here.' - the user typed 'Do recommendation' 2 minutes later, 6ed392a5).
 // ...and the front-loaded offer 'Next I can drive the wizard in the browser, or pull the attachment first.' (audit 2026-10-20
 // C45, fcafd69c L275: a decision left in prose, answered 18 s later with no ask).
-const PROSE_ASK_RE = /\b(say the word|say go|if you say (?:yes|go|ok|so)\b|just say so|or let me [a-z]|want me to (?:[^.?!\n]|\.(?!\s|$)){0,80}\?|shall i (?:[^.?!\n]|\.(?!\s|$)){0,80}\?|should i (?:[^.?!\n]|\.(?!\s|$)){0,80}\?|(?<!\bnot )(?<!\bnever )your call\b|let me know (?:when\b|(?:if|whether)\s+(?:i|we|to|you(?:'d)?\s+(?:want|like|prefer))\b)|give me the word|tell me (if|when|whether) you want|tell me which\b|(?:tell|let) me (?:know )?(?:if|whether) (?:i|we) (?:should(?!\s+have\b)|shall)\b|confirm (you want|whether|if|that you)\b|or i can [^.\n]{0,60}\binstead\b|paste (this|that|it) and i'?ll|run this to unblock|i'?ll [^.\n]{0,60}(the moment|as soon as|once) you\b|worth your decision|say ['"‘’“”][^'"‘’“”\n]{1,24}['"‘’“”],? (?:when|whenever|once|if|and i)\b|if you(?:'d)? (?:want|like|prefer)\b[^.\n]{0,100}, i (?:can|could)\b|i (?:can|could) [^.\n]{0,100}\b(?:if|whenever) you(?:'d)? (?:want|like|prefer)\b|i can [^.\n]{0,80}\bnext,? or\b|(?<=(?:^|[.!?\n])\s{0,3})next,? i (?:can|could) [^.\n]{0,160}\bor\b|my recommendation is to\b[^\n]{0,240}\botherwise\b)/i;
+const PROSE_ASK_RE = /\b(say the word|say go|if you say (?:yes|go|ok|so)\b|just say so|or let me [a-z]|want me to (?:[^.?!\n]|\.(?!\s|$)){0,80}\?|shall i (?:[^.?!\n]|\.(?!\s|$)){0,80}\?|should i (?:[^.?!\n]|\.(?!\s|$)){0,80}\?|(?<!\bnot )(?<!\bnever )your call\b|let me know (?:when\b|(?:if|whether)\s+(?:(?:i|we)\s+(?:should(?!\s+have\b)|shall)\b|to\b|you(?:'d|\s+would)\s+rather\b|you(?:'re|\s+are)\s+(?:happy|ok|okay|fine)\s+(?:with|for)\b|you(?:'d|\s+would)?\s+(?:want|like|prefer)\b|[^.?!\n]{0,120}?(?:\b(?:and|then)\s+i'?ll\s+(?:push|merge|commit|deploy|release|ship|publish)\b|\bbefore\s+(?:i|we)\s+(?:push|merge|commit|deploy|release|ship|publish)\b|\bshould\s+go\s+out\b)))|give me the word|tell me (if|when|whether) you want|tell me which\b|(?:tell|let) me (?:know )?(?:if|whether) (?:i|we) (?:should(?!\s+have\b)|shall)\b|confirm (you want|whether|if|that you)\b|or i can [^.\n]{0,60}\binstead\b|paste (this|that|it) and i'?ll|run this to unblock|i'?ll [^.\n]{0,60}(the moment|as soon as|once) you\b|worth your decision|say ['"‘’“”][^'"‘’“”\n]{1,24}['"‘’“”],? (?:when|whenever|once|if|and i)\b|if you(?:'d)? (?:want|like|prefer)\b[^.\n]{0,100}, i (?:can|could)\b|i (?:can|could) [^.\n]{0,100}\b(?:if|whenever) you(?:'d)? (?:want|like|prefer)\b|i can [^.\n]{0,80}\bnext,? or\b|(?<=(?:^|[.!?\n])\s{0,3})next,? i (?:can|could) [^.\n]{0,160}\bor\b|my recommendation is to\b[^\n]{0,240}\botherwise\b)/i;
 // A RETROSPECTIVE '(your call)' is a note about a decision the user already took, not an offer of
 // one: 'Requirement recorded: 90% line coverage after exclusions (your call).' was blocked as an
 // ask on a close that held no question at all (measured). The discriminator is narrow on purpose -
@@ -606,7 +606,7 @@ const NEVER_ENDS_RE = /\b(?:(?<!\/)dev|dev(?!\/)|serve|server|start|watch|previe
 // than BACKGROUND_STALE_MS (`backgroundStale`; the call's `timeout` is no bound for it): a server nobody listed, or a hung
 // command, then holds only until that limit. FINITE_RE, the old gate, is gone.
 const BACKGROUND_STALE_MS = 60 * 60 * 1000;
-const NEVER_ENDS_EXTRA_RE = /\s-w\b|--watch\w*|\bdocker\s+run\b[^;&|\n]*\s(?:-p|--publish)\b|\bvite\b(?!\s+build)|(?:(?:^|[;&|]\s*|\b(?:npx|bunx|dlx|exec)\s+)storybook\b|\bstorybook\s+dev\b|(?<![\w-])start-storybook\b|\b(?:npm|pnpm|yarn)\s+(?:run\s+)?storybook\b)(?![\s:-]build\b)|\bjupyter\s+(?:notebook|lab)\b|\bkubectl\s+proxy\b|\bssh\b[^;&|\n]*\s-N\b|\bng\s+test\b(?![^;&|]*--watch=false)|\blogs?\s+-f\b|port-forward|\bngrok\b|runserver/;
+const NEVER_ENDS_EXTRA_RE = /\s-w\b|--watch\w*|\bdocker\s+run\b[^;&|\n]*\s(?:-p|--publish)\b|\bvite\b(?!\s+build)|(?:(?:^|[;&|]\s*|\b(?:npx|bunx|dlx|exec)\s+)storybook\b|\bstorybook\s+dev\b|(?<![\w-])start-storybook\b|\b(?:npm|pnpm|yarn)\b(?![^;&|\n]*\s(?:install|i|add|ci|remove|uninstall|update|up)\b)[^;&|\n]*?\s(?:run\s+)?storybook\b(?![-\w])|\b(?:nx|turbo)\s+run\s+(?:\S*:)?storybook\b(?![-\w]))(?![\s:-]build\b)|\bjupyter\s+(?:notebook|lab)\b|\bkubectl\s+proxy\b|\bssh\b[^;&|\n]*\s-N\b|\bng\s+test\b(?![^;&|]*--watch=false)|\blogs?\s+-f\b|port-forward|\bngrok\b|runserver/;
 // A CI watch ENDS with the run it watches (`gh run watch`, `gh pr checks --watch`): read as a never-ending watcher, a close
 // waiting on an armed one was blocked while it ran for 9 more minutes (audit 2026-10-10 C15, bba03dad).
 // On any forge it is the concept (forge.js `pipeline.watch`: `gh run watch`, `glab ci status --live`, a CLI nobody
@@ -3533,13 +3533,16 @@ function actsOnQuestion(label)
 const HOLD_ALONE_RE = /^(?:(?:it|them|both|all)\s*)?(?:(?:for\s+)?now|here)?$/i;
 // The cut ends at the next 'and <act>' or 'then <act>' after the deferral, and that tail stays the pick's own act: 'Hold the push until
 // green and deploy now' holds the push and deploys (session audit 2026-11-27, L1-03).
-const AUTO_DEFERRAL_END_RE = new RegExp(String.raw`\b(?:and|then)\s+(?:then\s+)?((?:the\s+)?${AUTO_DEFER_ACT}\b[\s\S]*)`, 'i');
+// The tail is a bare imperative act ('and deploy now'), never a noun phrase inside the deferral: no article ('and the deploy until
+// Monday', 'and the merge are done') and no noun after the act word ('the push and deploy jobs finish') - deferred-findings wave r1.
+const AUTO_DEFER_ACT_NOUNS = String.raw`(?:jobs?|steps?|stages?|checks?|pipelines?|workflows?|runs?|tasks?|phases?|windows?)`;
+const AUTO_DEFERRAL_END_RE = new RegExp(String.raw`\b(?:and|then)\s+(?:then\s+)?(${AUTO_DEFER_ACT}\b(?!\s+${AUTO_DEFER_ACT_NOUNS}\b)[\s\S]*)`, 'i');
 const cutAtDeferral = (text) =>
 {
     const at = text.search(AUTO_DEFERRAL_RE);
     if (at < 0) return text;
     const tail = AUTO_DEFERRAL_END_RE.exec(text.slice(at));
-    return tail ? `${text.slice(0, at)} ${tail[1]}` : text.slice(0, at);
+    return tail ? `${text.slice(0, at)} ${cutAtDeferral(tail[1])}` : text.slice(0, at);
 };
 // A pick's DESCRIPTION may say the outward act is held (session audit 2026-11-27 B14, replayed over session eb8ad61b: 5 asks whose
 // pick said 'the publish stays your word' waited for an away user). Only two held shapes are cut, and only inside one clause: an
@@ -3575,6 +3578,8 @@ function holdLabel(label)
 // the same sentence names a draft ('cap' and 'capped' count only there). 'step 2 of 5' and 'scored 3 of 4 checks' stay no grade.
 const DRAFT_WORD_RE = /(?<![\w-])(?:inline-plan|plan|spec|design|draft)\b/i;
 const GRADE_RE = /\b(\d{1,3})\s*\/\s*100\b/g;
+// what a grade follows in its clause: a grade word ('scored', 'graded', 'rated', 'score of') or the draft word itself
+const GRADE_LEAD_RE = new RegExp(String.raw`(?:\b(?:scor(?:e|es|ed)|grade[sd]?|rated?)(?:\s+(?:of|at|is|was))?|(?<![\w-])(?:inline-plan|plan|spec|design|draft))\s*:?\s*$`, 'i');
 const GRADE_WORD = '(?:scor(?:e|es|ed)|grade[sd]?)';
 // a count of other things ('45 of 50 tests') is no grade: one closed set of count nouns, checked right after M
 // one word may stand before the noun ('45 of 50 unit tests'); a connector there is no filler ('45 of 50 and tests pass' is a grade)
@@ -3586,7 +3591,7 @@ const GRADE_OF_RE = new RegExp(`\\b(${GRADE_WORD}|cap(?:ped)?)${GRADE_LEAD}(\\d{
 const PASS_LEVEL_RE = /\b(?:pass(?:ing)?|level)(?:\s+(?:level|score|mark))?\s*[:=]?\s*(?:(?:is|was|of|at)\s+)?(\d{1,3})\b/gi;
 // A grade is paired with the pass in its own clause: a clause ends at a ';', at a comma outside parentheses and at 'and' before the
 // next draft ('spec 95/100 (pass 90), plan 60/100 (pass 50)').
-const CLAUSE_SPLIT_RE = /\s*;\s*|,(?![^()]*\))\s*|\s+and\s+(?=(?:the\s+)?(?:inline-plan|plan|spec|design|draft)\b)/i;
+const CLAUSE_SPLIT_RE = /\s*;\s*|,(?![^()\n]{0,200}\))\s*|\s+and\s+(?=(?:the\s+)?(?:inline-plan|plan|spec|design|draft)\b)/i;
 const PASS_MAX = 100;
 const SCORING_LEVEL_FALLBACK = 90;
 const passLevelsIn = (text) => [...String(text).matchAll(PASS_LEVEL_RE)].map((hit) => Number(hit[1])).filter((level) => level >= OF_PASS_MIN && level <= PASS_MAX);
@@ -3610,7 +3615,7 @@ function gradeUnderPass(question)
         {
             const clausePasses = passLevelsIn(clause);
             const passes = clausePasses.length ? clausePasses : sentencePasses;
-            for (const hit of clause.matchAll(GRADE_RE)) entries.push({ grade: Number(hit[1]), passes });
+            for (const hit of clause.matchAll(GRADE_RE)) entries.push({ grade: Number(hit[1]), passes, bare: !GRADE_LEAD_RE.test(clause.slice(0, hit.index)) });
             for (const hit of clause.matchAll(GRADE_LEVEL_RE)) entries.push({ grade: Number(hit[1]), passes });
             for (const [, word, got, of] of clause.matchAll(GRADE_OF_RE))
             {
@@ -3628,7 +3633,9 @@ function gradeUnderPass(question)
     }
     const questionPasses = passLevelsIn(text);
     const fallback = questionPasses.length ? questionPasses : [defaultPassLevel()];
-    return entries.some(({ grade, passes }) => (passes.length ? passes : fallback).some((level) => grade < level));
+    // against the default level alone, an N/100 counts only after a grade word or the draft word ('covers 25/100 services' is a count)
+    return entries.some(({ grade, passes, bare }) => !(bare && !passes.length && !questionPasses.length)
+        && (passes.length ? passes : fallback).some((level) => grade < level));
 }
 function outwardAsk(question, own, pickLabel = '')
 {
