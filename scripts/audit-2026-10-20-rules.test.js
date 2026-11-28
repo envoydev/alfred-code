@@ -102,3 +102,9 @@ test('row 4: the answer-budget entry names the rule as owner and the analyzer as
     assert.deepStrictEqual(entry.sites.map((s) => s.file).sort(), ['scripts/analyze-usage.js', 'stack/hooks/communication-reminder.js']);
     assert.match(entry._note, /The rule is canonical/);
 });
+
+// Session audit 2, L1-28: commit 84696dd5 cut this line while it trimmed the rule; no later rule or skill carries it.
+test("L1-28: the interaction rule leads with the recommendation, never with 'it depends'", () =>
+{
+    assert.match(injected('alfred-interaction'), /Recommendation first, then why - never open with 'it depends'\./);
+});
