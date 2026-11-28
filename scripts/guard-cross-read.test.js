@@ -36,6 +36,9 @@ function fixture() {
 function envOf(fx, extra = {}) {
   const env = scrubbed();
   for (const k of STRIPPED) delete env[k];
+  // Windows names are case-free, and a child handed two spellings of one name ('PROGRAMFILES', 'ProgramFiles') keeps the
+  // first in sort order - the runner's own value, not the test's (CI Windows leg, 2026-11-28)
+  if (process.platform === 'win32') for (const k of Object.keys(env)) if (Object.keys(extra).some((x) => x.toLowerCase() === k.toLowerCase())) delete env[k];
   return { ...env, HOME: fx.home, USERPROFILE: fx.home, TMPDIR: fx.tmp, TEMP: fx.tmp, TMP: fx.tmp, CLAUDE_PROJECT_DIR: fx.proj, ...extra };
 }
 function run(fx, payload, env = {}, session = 'xr') {
