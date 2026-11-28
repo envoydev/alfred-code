@@ -38,6 +38,10 @@ function envOf(fx, extra = {}) {
   for (const k of STRIPPED) delete env[k];
   // Windows names are case-free, and a child handed two spellings of one name ('PROGRAMFILES', 'ProgramFiles') keeps the
   // first in sort order - the runner's own value, not the test's (CI Windows leg, 2026-11-28)
+  // Windows also sets a 64-bit child's ProgramFiles from ProgramW6432 as it starts it (measured on a Windows 11 VM, x64
+  // node 26), so a test value for ProgramFiles reaches the hook only beside the same ProgramW6432
+  const programFiles = Object.keys(extra).find((x) => x.toLowerCase() === 'programfiles');
+  if (process.platform === 'win32' && programFiles) extra = { ProgramW6432: extra[programFiles], ...extra };
   if (process.platform === 'win32') for (const k of Object.keys(env)) if (Object.keys(extra).some((x) => x.toLowerCase() === k.toLowerCase())) delete env[k];
   return { ...env, HOME: fx.home, USERPROFILE: fx.home, TMPDIR: fx.tmp, TEMP: fx.tmp, TMP: fx.tmp, CLAUDE_PROJECT_DIR: fx.proj, ...extra };
 }
