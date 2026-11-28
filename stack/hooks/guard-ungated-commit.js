@@ -1180,7 +1180,7 @@ function quoteTyped(quote, scan, gate) {
 const partPlace = (part) => new RegExp(`(?<![\\p{L}\\p{N}])${part.split(' ').join('[^\\p{L}\\p{N}]+')}(?![\\p{L}\\p{N}])`, 'giu');
 // A line break ends a sentence here, since the clause reader would otherwise run two lines into one.
 const turnView = (text, gate) => ({ raw: straightText(String(text).replace(LINE_BREAKS, '. ')), own: gate === 'PUSH-GATE' ? CLASS_PUSH : CLASS_COMMIT, clean: null, bounds: null });
-// True when an own-class act verb that lies whole inside [from, to) of the turn is refused by its clause.
+// True when an own-class act verb or a generic yes that lies whole inside [from, to) of the turn is refused by its clause.
 function actRefusedIn(view, from, to) {
   if (view.clean === null) {
     view.clean = view.raw.replace(POSITIVE_IDIOM, (m) => ' '.repeat(m.length));
@@ -1191,7 +1191,8 @@ function actRefusedIn(view, from, to) {
     for (let m = scanner.exec(view.clean); m && m.index + m[0].length <= to; m = scanner.exec(view.clean)) {
       const slices = actSlices(view.clean, view.bounds, m);
       // 'hold off on the push' names the noun after a stop word: that is the refusal, not a noun use
-      if (!view.own.test(m[0].trim()) || (actIsNoun(slices, m) && !STOP_BEFORE.test(slices.before))) continue;
+      const word = m[0].trim();
+      if (!(view.own.test(word) || GENERIC_CONSENT.test(word)) || (actIsNoun(slices, m) && !STOP_BEFORE.test(slices.before))) continue;
       if (actNegated(view.clean, view.bounds, m, slices)) return true;
     }
   }

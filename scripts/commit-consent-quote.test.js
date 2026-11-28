@@ -164,6 +164,19 @@ test("a quote 'push it' cut out of a typed 'push it later' meets the ask", () =>
   refused([typedRow('push it later', '10:00:00')], 'push it', NOT_TYPED);
 });
 
+test("a quote 'go ahead' cut out of a typed \"don't go ahead yet, I want to read the diff\" meets the ask", () => {
+  refused([typedRow("don't go ahead yet, I want to read the diff", '10:00:00')], 'go ahead', NOT_TYPED);
+});
+
+test("typed 'yes, do it' and quoted 'do it' pass: a generic yes nobody refused", () => {
+  passes([typedRow('yes, do it', '10:00:00')], 'do it');
+});
+
+test("typed \"commit it, don't go ahead with the push\" and quoted 'commit it' pass on the COMMIT-GATE", () => {
+  const r = commitGateWith([typedRow("commit it, don't go ahead with the push", '10:00:00')], 'commit it');
+  assert.equal(r.status, 0, r.stderr);
+});
+
 test("a quote 'commit this' cut out of a typed 'do not commit this' meets the ask on the COMMIT-GATE", () => {
   const r = commitGateWith([typedRow('do not commit this', '10:00:00')], 'commit this');
   assert.equal(r.status, 2, 'the commit is held');
