@@ -53,7 +53,10 @@ On any non-trivial diff, before committing or presenting, in order:
    each commit of a split - 'each commit builds' needs a run per commit.
 
 6. **Receipt.** Write the receipt below with `receipt.js`, then commit, read `git log -1 --stat` back
-   into the close, then clear it.
+   into the close, then clear it. Before you write the message, run `git log -5` and compare the new
+   message's body shape (indent, bullet marks, trailer lines) with the last 5 commits and follow it.
+   A trailer line is the user's own kind, such as `Refs:`; an agent co-author line or any trace of the
+   agent is never added.
 
 **Scope - the session's own change.** What was untracked before this change began is not part of
 it: the docs hook lists it at session start, once per HEAD (`<data root>/state/sessions/untracked-at-start-<HEAD

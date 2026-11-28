@@ -572,3 +572,10 @@ test('N04: the asked push template in task-solve has a reason on each option, an
     assert.ok(read('stack/skills/task-solve/references/step-mechanics.md').includes('**Doc-drift awareness** - one line at most in the close report, never auto-run'), 'and sits in step-mechanics');
     assert.strictEqual(shared()['flow-doc-drift-awareness'].owner.file, 'stack/skills/task-solve/references/step-mechanics.md');
 });
+
+// C14 (session audit 2026-11-27, second pass): a commit body drifted from the indent and bullet marks of the user's own commits.
+test("C14: the commit checkpoint's message step compares the body shape with the last 5 commits and keeps the no-trace rule", () => {
+    const cp = flat(skill('habits-commit-checkpoint'));
+    assert.ok(cp.includes("compare the new message's body shape (indent, bullet marks, trailer lines) with the last 5 commits and follow it."), 'the shape sentence');
+    assert.ok(cp.includes("A trailer line is the user's own kind, such as `Refs:`; an agent co-author line or any trace of the agent is never added."), 'the sentence never overrides the commits rule');
+});
