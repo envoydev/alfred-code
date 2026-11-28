@@ -121,7 +121,8 @@ test('RU-06: the always-on set keeps caps only on the FIRST-action shape, the se
     for (const [name, phrases] of Object.entries(kept))
         for (const p of phrases) assert.ok(inj(name).includes(p), `${name} keeps '${p}'`);
     const ACRONYMS = new Set(['AGENTS', 'ADR', 'SDK', 'JSON', 'YAML', 'OS', 'ESM', 'XML', 'API', 'CI', 'PII', 'PR', 'MCP', 'DB', 'BLOCKER', 'MATERIAL', 'MINOR',
-        'ASD']);   // ASD-STE100, the writing standard alfred-interaction names (2026-11-19)
+        'ASD',   // ASD-STE100, the writing standard alfred-interaction names (2026-11-19)
+        'UI']);   // the quality gates' UI-change line (session audit 2, C12)
     let caps = 0;
     for (const name of ['alfred-docs-root', 'alfred-interaction', 'alfred-navigation', 'alfred-preferences', 'alfred-quality-gates', 'alfred-security'])
     {

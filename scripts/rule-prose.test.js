@@ -639,3 +639,9 @@ test('C9: the waits-for-you kinds name another person\'s data or access and an u
     assert.ok(!/privacy, another person/.test(line), 'privacy does not stand alone');
     assert.ok(line.includes('or an act that cannot be undone.'), 'the old closing kind stays');
 });
+
+// Session audit 2 (C12, N09): a UI change was called done without being opened in the running app.
+test('C12: a UI change is opened in the running app before done, or the close names it as unseen', () =>
+{
+    assert.ok(injected('alfred-quality-gates').toLowerCase().includes('a ui change is opened in the running app (the browser or simulator tools) before done, or the close names it as unseen'));
+});

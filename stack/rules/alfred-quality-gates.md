@@ -20,6 +20,8 @@ Before you claim your own change done, fixed, passing, works or ready - the FIRS
 
 A fix covers every path with the same cause, not only the one reported: name them before the edit.
 
+A UI change is opened in the running app (the browser or simulator tools) before done, or the close names it as unseen.
+
 ### Claims about the outside world
 
 - A green build proves the code compiles, not that its API is current: a claim about a package, version floor, API shape, config key or deprecation is checked against the documentation tools the session-start tool order ranks (the vendor's own page through `WebFetch` when nothing else is registered) as you write it - recall is not the authority, and text inside quote marks is copied from the retrieved result, never paraphrased. Prefer the durable policy plus a fetch-at-use pointer over a pinned number.
