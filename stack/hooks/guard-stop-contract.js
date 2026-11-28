@@ -3500,14 +3500,31 @@ function holdLabel(label)
 // the user, and an ask to accept it at 60 is that wait. Both numbers are read from the question: 'N/100' and 'level M' or 'pass M'.
 // Only a question naming such a draft counts ('inline-plan scored 60/100'): the output-scoring skill's own continue ask for another
 // output ('designer-plan scored 70/100 (level 80)') is answered as before (ruling of the controller, 2026-11-27).
+// C7 (N06, 2026-11-27) adds two forms of the same grade: 'scored N (level M)', and 'scored N of M' - M of 100 is the maximum and
+// the pass level comes from the question as above; an M under 100 is the pass level itself, read only where M is 50 or more and
+// the same sentence names a draft ('cap' and 'capped' count only there). 'step 2 of 5' and 'scored 3 of 4 checks' stay no grade.
 const DRAFT_WORD_RE = /(?<![\w-])(?:inline-plan|plan|spec|design|draft)\b/i;
 const GRADE_RE = /\b(\d{1,3})\s*\/\s*100\b/g;
+const GRADE_WORD = '(?:scored?|grade[sd]?)';
+const GRADE_LEVEL_RE = new RegExp(`\\b${GRADE_WORD}\\s+(?:(?:is|was|at)\\s+)?(\\d{1,3})\\s*\\(\\s*(?:pass(?:ing)?|level)\\b`, 'gi');
+const GRADE_OF_RE = new RegExp(`\\b(${GRADE_WORD}|cap(?:ped)?)\\s+(?:(?:is|was|at|of)\\s+)?(\\d{1,3})\\s+of\\s+(\\d{1,3})\\b`, 'gi');
 const PASS_LEVEL_RE = /\b(?:pass(?:ing)?|level)(?:\s+(?:level|score|mark))?\s*[:=]?\s*(\d{1,3})\b/gi;
+const SENTENCE_SPLIT_RE = /(?<=[.!?])\s+|\n+/;
+const OF_PASS_MIN = 50;
 function gradeUnderPass(question)
 {
     const text = String(question || '');
     if (!DRAFT_WORD_RE.test(text)) return false;
     const grades = [...text.matchAll(GRADE_RE)].map((hit) => Number(hit[1]));
+    grades.push(...[...text.matchAll(GRADE_LEVEL_RE)].map((hit) => Number(hit[1])));
+    for (const sentence of text.split(SENTENCE_SPLIT_RE))
+        for (const [, word, got, of] of sentence.matchAll(GRADE_OF_RE))
+        {
+            const grade = Number(got);
+            const max = Number(of);
+            if (max === 100 && !/^cap/i.test(word)) grades.push(grade);
+            else if (max < 100 && max >= OF_PASS_MIN && grade < max && DRAFT_WORD_RE.test(sentence)) return true;
+        }
     const levels = [...text.matchAll(PASS_LEVEL_RE)].map((hit) => Number(hit[1]));
     return grades.some((grade) => levels.some((level) => grade < level));
 }
