@@ -258,6 +258,27 @@ test('csharp: a plugin-namespaced skill name matches; an edit before the load an
     assert.deepStrictEqual(failing(sc.grade(expectOf('csharp'), csharpRun({ testing: false }))), ['testing-before-test-edit']);
 });
 
+// --- the proposal review ----------------------------------------------------------------------------
+// Session audit 2 (C8): the review left the always-on rule for a skill, so a user-proposed design must load it first.
+function proposalRun({ loaded = 'habits-evaluate-proposal', skillFirst = true, reply = 'BLOCKER: float dollars drift - 0.1 + 0.2 is not 0.3, so the invoice total is off by a cent. Keep cents and format at print time.' } = {})
+{
+    const rows = [user('My design for the cart: keep prices as float dollars and round only when the invoice prints.')];
+    if (!skillFirst) rows.push(say('Understood, reading the cart first.'));
+    if (loaded) rows.push(tool('Skill', { skill: loaded }));
+    rows.push(tool('Read', { file_path: '/work/project/src/cart.js' }), say(reply));
+    return jsonl(rows);
+}
+
+test('proposal review: the Skill call first and a ranked objection lead pass; an agreement or a late load fails', () =>
+{
+    const exp = expectOf('habits-evaluate-proposal');
+    assert.deepStrictEqual(failing(sc.grade(exp, proposalRun())), []);
+    assert.deepStrictEqual(failing(sc.grade(exp, proposalRun({ loaded: 'alfred-code:habits-evaluate-proposal' }))), [], 'the core-scoped spelling');
+    assert.deepStrictEqual(failing(sc.grade(exp, proposalRun({ skillFirst: false }))), ['skill-first']);
+    assert.deepStrictEqual(failing(sc.grade(exp, proposalRun({ loaded: null }))), ['skill-first']);
+    assert.deepStrictEqual(failing(sc.grade(exp, proposalRun({ reply: 'Great idea, simpler than cents. Go ahead.' }))).sort(), ['no-sunk-cost-agreement', 'objection-first']);
+});
+
 // --- the root-cause loop ----------------------------------------------------------------------------
 // R72's owed A/B: a run that reaches a FAILURE and a fix before any stop, so 'one hypothesis per
 // change' and 'verification quoted before done' are graded on what the run did, not on a gate.
@@ -626,7 +647,7 @@ test('check: every shipped expectation is valid and its quotes are still in the 
     // answer-budget is no skill: the interaction rule's budget the answer hook injects (audit 2026-10-14 RU06).
     // The task-* fixtures beside task-solve are the 2026-11-03 usage audit's A/Bs (U28-U32), one edited step each.
     // The tier4-* fixtures are the 2026-10-30 audit's Tier 4 rule A/Bs (RU-05 to RU-20), each bound to its fixture.
-    const base = ['answer-budget', 'answer-budget-asked', 'background-wait', 'csharp', 'habits-code-comments', 'habits-commit-checkpoint', 'habits-execution-strategy', 'habits-root-cause', 'mode-output-scoring', 'task-design-measured-ask', 'task-solve', 'task-solve-asked-push', 'task-solve-auto-close', 'task-solve-findings-ask', 'task-verify-code-surface',
+    const base = ['answer-budget', 'answer-budget-asked', 'background-wait', 'csharp', 'habits-code-comments', 'habits-commit-checkpoint', 'habits-evaluate-proposal', 'habits-execution-strategy', 'habits-root-cause', 'mode-output-scoring', 'task-design-measured-ask', 'task-solve', 'task-solve-asked-push', 'task-solve-auto-close', 'task-solve-findings-ask', 'task-verify-code-surface',
         'tier4-compaction', 'tier4-db-test', 'tier4-docs-placement', 'tier4-house-voice', 'tier4-red-build', 'tier4-secret-handoff', 'tier4-secret-run'];
     const listed = sc.listSkills();
     for (const name of base) assert.ok(listed.includes(name), `${name} is still shipped`);

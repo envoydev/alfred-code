@@ -1097,6 +1097,28 @@ test('a partial --selection on install takes the locked always-on rules and skil
     assert.deepStrictEqual(steps[1], []);
 });
 
+// Session audit 2 (C8): habits-evaluate-proposal is a new always skill. An install of the last release does not hold it,
+// so the update must add it: an install, the skill dropped from disk (what an older install looks like), then the update.
+test('an update over an install that lacks a newly added always skill copies it back', require('./seed-sandbox.js').POSIX_ONLY, () =>
+{
+    const { seedRun } = require('./seed-sandbox.js');
+    const NEW = 'habits-evaluate-proposal';
+    const skillAt = (repo) => path.join(repo, '.claude', 'skills', NEW);
+    let after = null;
+    const { steps, outs } = seedRun(['install', 'update', 'update'], 'skill csharp\nrule markdown-docs\nhook none\n', {
+        plugins: JSON.stringify([{ id: 'alfred-code@envoydev', version: '2.0.0', scope: 'project', enabled: true }]),
+        args: [['--scope', 'project'], ['--scope', 'project', '--installed-only'], ['--scope', 'project', '--installed-only']],
+        each: (repo) =>
+        {
+            const here = fs.existsSync(path.join(skillAt(repo), 'SKILL.md'));
+            if (after === null) { fs.rmSync(skillAt(repo), { recursive: true, force: true }); after = 'dropped'; }
+            return here;
+        },
+    });
+    assert.deepStrictEqual(steps, [true, true, true], 'on disk after the install, after the update that follows the drop and after the re-run');
+    assert.match(outs[1], new RegExp(`skill ${NEW}`), 'the update names it');
+});
+
 // Seats left the core plugin: every picked seat is linked under its bare name, so a roster written while the core
 // carried them (`alfred-code:<seat>`) is re-spelled bare - whether or not a project copy sits beside it.
 test('respellRosterSeats: a core-prefixed seat in the roster becomes bare, other plugins and prose stay', () =>

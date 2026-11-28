@@ -41,7 +41,8 @@ test('row 2 + S9: the budget spares a baseline close line, and step by step lift
 // Row 3: three pros and three cons per candidate in prose blew the budget; a table is exempt.
 test('row 3: candidates compare in a table', () =>
 {
-    const rule = injected('alfred-interaction');
+    // 2026-11-28 (session audit 2, C8): the proposal review moved from the interaction rule to its own skill
+    const rule = fs.readFileSync(path.join(__dirname, '..', 'stack', 'skills', 'habits-evaluate-proposal', 'SKILL.md'), 'utf8');
     assert.match(rule, /Choosing between candidates: a table of at most 3 pros and 3 cons each, then recommend one with the reason\./);
 });
 

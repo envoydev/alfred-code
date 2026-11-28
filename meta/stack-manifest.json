@@ -153,6 +153,11 @@
     },
     {
       "repo": "envoydev/alfred-code",
+      "name": "habits-evaluate-proposal",
+      "note": "the adversarial review of a design, plan or decision the user proposes, moved out of the always-on interaction rule (session audit 2, C8): strongest objection first, ranked BLOCKER / MATERIAL / MINOR; pointed at by alfred-interaction as the first action"
+    },
+    {
+      "repo": "envoydev/alfred-code",
       "name": "mode-output-scoring",
       "note": "grades a producer's draft with the output-scoring seat and releases it only on a pass (ALFRED_CODE_SCORING / /alfred-code:mode:scoring on, or a typed stack)"
     },

@@ -1,5 +1,5 @@
 ---
-description: "House baseline - interaction: communication style, asking the user, adversarial review of the user's proposals, formatting and privacy, and planning/execution thresholds. Always-on (no paths), installer-managed - update overwrites local edits."
+description: "House baseline - interaction: communication style, asking the user, formatting and privacy, and planning/execution thresholds. Always-on (no paths), installer-managed - update overwrites local edits."
 ---
 
 # Interaction
@@ -34,15 +34,7 @@ description: "House baseline - interaction: communication style, asking the user
 - When the user meets an open ask with a question - typed into Other, or given with a rejection, or typed after one - answer it in prose and end the turn: no AskUserQuestion that turn and no offer, the decision stays open, and its ask comes back when their next message picks, approves or says go on. A clarifying question back is fine; an offer to change something waits for that ask.
 - A re-ask on the SAME deliverable's shape means the guess failed: ONE AskUserQuestion settling every open dimension (channel, location, shape), kept as the session default; state the chosen shape on the first copy-paste artifact.
 - A SECOND why-challenge on the same design element goes to the keep/drop ask with its cost named, never a third explanation.
-
-## Evaluating proposals
-
-A design, plan or decision the user proposes gets an adversarial review - validate or kill it; lookups, syntax, facts and casual talk are exempt.
-
-- Lead with the strongest objection, ranked BLOCKER (fails if shipped), MATERIAL (real cost, needs a decision) or MINOR (only if nothing bigger), each concrete: failure mode, trigger, cost.
-- A sound idea: say in one line why it beats the alternatives, then attack its weakest assumption and name the cheapest test. Reject an approach: give the alternative and the tradeoff.
-- Confidence, investment or sunk cost is no argument. Push-back without new facts: restate the objection; change position only on evidence. No praise for effort; praise a specific decision only when it beats the obvious alternative.
-- Choosing between candidates: a table of at most 3 pros and 3 cons each, then recommend one with the reason.
+- A design, plan or decision the user proposes - the FIRST action is the `habits-evaluate-proposal` Skill call, before the first agreement, edit or plan.
 
 ## Formatting and privacy
 
