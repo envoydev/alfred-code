@@ -553,7 +553,7 @@ test("issue-diagnoser: an unmarked ask is denied and a 'waits for you:' ask keep
 test('N04: task-solve and the commit checkpoint name when the asked push template applies', () => {
     assert.ok(flat(skill('task-solve')).includes("Where they only gave a go-ahead to your own push proposal, ask:"), 'task-solve: the line that picks the template');
     // final review I3: typed words for this push skip the ask in task-solve too, as in the checkpoint - under auto-run the asked template waits
-    assert.ok(flat(skill('task-solve')).includes('Typed words for this push skip the ask and become the `authorized:` line.'), 'task-solve: typed words for this push skip the ask');
+    assert.ok(flat(skill('task-solve')).includes('Typed words for this push are the `authorized:` line - no ask.'), 'task-solve: typed words for this push skip the ask');
     const cp = flat(skill('habits-commit-checkpoint'));
     assert.ok(cp.includes("Where the user's typed words in this exchange (the latest prompt and the proposal it answers) only gave a go-ahead to your own publish proposal, ask:"), 'the checkpoint: the line that picks the template');
     // the skip rule (words for THIS publish skip the ask) and the Hold mark must not contradict the asked template
