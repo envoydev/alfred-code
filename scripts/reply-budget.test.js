@@ -269,3 +269,31 @@ test('a 950-character reply of plain prose and a 4-sentence lead still get the n
     assert.match(check(four).note, /lead sentences: 4/);
     assert.match(check(`${four}\nProgress: done with all of it.`).note, /lead sentences: 4/);
 });
+
+test('bold, numbered, plus-marked, underscored and lowercase field lines are not counted', () => {
+    const lead = 'The build is green. The tests pass now. Lint is clean too.';
+    const forms = ['**Result**: ', '1. Result: ', '2) Progress: ', '+ Cleanup: ', '__Result:__ ', 'result: ', '**Deferred by you:** ', '- **Leftovers**: ', 'CLEANUP: '];
+    for (const form of forms) {
+        assert.strictEqual(check(`${lead}\n${form}${'a'.repeat(1000)}`).note, null, form);
+    }
+    assert.match(check(`${lead}\nResults: ${'a'.repeat(1000)}`).note, /^Last reply/);
+});
+
+test('bullets right after a bare field label belong to the field, indented or not, up to a blank or non-bullet line', () => {
+    const lead = 'The build is green. The tests pass now.';
+    const items = Array.from({ length: 4 }, (_, i) => `- item ${i} ${'a'.repeat(300)}`).join('\n');
+    const indented = items.replace(/^/gm, '  ');
+    for (const label of ['Leftovers:', '**Leftovers:**', '- Leftovers:', 'Deferred by you:']) {
+        assert.strictEqual(check(`${lead}\n${label}\n${items}`).note, null, label);
+        assert.strictEqual(check(`${lead}\n${label}\n${indented}`).note, null, label);
+    }
+    assert.match(check(`${lead}\nLeftovers:\n${items}\n\n- ${'b'.repeat(900)}`).note, /^Last reply/);
+    assert.match(check(`${lead}\nLeftovers:\n- one\nA plain line follows.\n- ${'b'.repeat(900)}`).note, /^Last reply/);
+    assert.match(check(`${lead}\nNotes:\n${items}`).note, /^Last reply/);
+});
+
+test('a Checks line inside a code block does not exempt the reply', () => {
+    const long = 'a'.repeat(1200);
+    assert.match(check(`${long}\n\`\`\`\nChecks: lint passed\n\`\`\``).note, /^Last reply/);
+    assert.strictEqual(check(`${long}\nChecks: lint passed\n\`\`\`\ncode\n\`\`\``).note, null);
+});
