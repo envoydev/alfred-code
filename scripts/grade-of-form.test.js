@@ -84,8 +84,18 @@ test('a named pass is the pass level, and M is the maximum (C7 fix 1)', () =>
     for (const question of ['The plan scored 85 of 90 (pass 80). Next?', 'The plan scored 70 of 80 (pass 70). Next?',
         'The plan scored 60 of 90 (max 100, pass 60). Next?'])
         assert.ok(answered(question), `answered: ${question}`);
-    for (const question of ['The plan scored 6 of 10 (pass 9). Next?', 'The plan scored 60 of 90 (max 100, pass 70). Next?'])
+    assert.ok(waitsOnGrade('The plan scored 60 of 90 (max 100, pass 70). Next?'), 'a pass over the grade waits');
+});
+
+// Round 2: a round word is no pass. A named pass counts only at 50 or more and at most M; below that the no-pass rule applies.
+test('a round or tree level below 50 is no named pass, so the grade still waits (C7 round 2)', () =>
+{
+    for (const question of ['The plan scored 60 of 90 on pass 2. Next?', 'The plan scored 80 of 90 after fix pass 2. Next?',
+        'The plan scored 60 of 90 at level 3 of the tree. Next?'])
         assert.ok(waitsOnGrade(question), `waits: ${question}`);
+    // a pass over M is no pass of this grade either; '6 of 10 (pass 9)' falls under the bound (M under 50) and no longer waits
+    assert.ok(waitsOnGrade('The plan scored 60 of 90 (pass 95). Next?'), 'a pass over M is ignored, no-pass rule waits');
+    assert.ok(answered('The plan scored 6 of 10 (pass 9). Next?'), 'pass 9 is under 50, M under 50: no grade');
 });
 
 test('a count noun after M makes the match no grade (C7 fix 3)', () =>

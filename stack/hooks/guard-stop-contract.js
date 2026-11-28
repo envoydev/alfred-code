@@ -3522,13 +3522,15 @@ function gradeUnderPass(question)
     grades.push(...[...text.matchAll(GRADE_LEVEL_RE)].map((hit) => Number(hit[1])));
     for (const sentence of text.split(SENTENCE_SPLIT_RE))
     {
-        const named = [...sentence.matchAll(PASS_LEVEL_RE)].map((hit) => Number(hit[1]));
+        const passes = [...sentence.matchAll(PASS_LEVEL_RE)].map((hit) => Number(hit[1]));
         for (const [, word, got, of] of sentence.matchAll(GRADE_OF_RE))
         {
             const grade = Number(got);
             const max = Number(of);
             if (/^cap/i.test(word) && max >= 100) continue;
-            // a pass the sentence names is the pass level, and M is only the maximum
+            // a pass the sentence names is the pass level and M only the maximum - but only a pass of 50 or more and at most M: a round
+            // ('pass 2') or a tree level ('level 3') is no pass
+            const named = passes.filter((level) => level >= OF_PASS_MIN && level <= max);
             if (named.length) { if (max === 100) grades.push(grade); else if (named.some((level) => grade < level)) return true; }
             else if (max < 100 && max >= OF_PASS_MIN && grade < max && DRAFT_WORD_RE.test(sentence)) return true;
             else if (max === 100) grades.push(grade);
