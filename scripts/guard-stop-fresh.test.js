@@ -399,6 +399,14 @@ test('B11: a background run no list names is live work, and a server or watcher 
   assert.equal(closeOver('b11-sb-build', bgShell('b11b', 'npx storybook build'), RUNNING_CLOSE).status, 0, 'a storybook build ends');
   assert.equal(closeOver('b11-up-d', bgShell('b11u', 'docker compose up -d --wait'), RUNNING_CLOSE).status, 0, 'up with -d exits when the services are up: live work');
 });
+// Session audit 2026-11-27 L1-07: storybook is a server only as the command (`storybook dev`, `start-storybook`, `npm run storybook`);
+// a finite `npm run test-storybook` or `grep storybook` ends, so a wait on it is a wait on work.
+test('L1-07: a finite storybook command is no server, so a wait on it passes', () => {
+  for (const command of ['npm run test-storybook', 'npx test-storybook --ci', 'grep -rn storybook src', 'npm run build-storybook', 'npx storybook build'])
+    assert.equal(closeOver(`l107-fin-${command.replace(/\W+/g, '-')}`, bgShell('l107f', command), RUNNING_CLOSE).status, 0, `a finite run: ${command}`);
+  for (const command of ['npm run storybook', 'npx storybook dev -p 6006', 'start-storybook -p 6006', 'storybook', 'cd ui && storybook dev'])
+    assert.equal(closeOver(`l107-srv-${command.replace(/\W+/g, '-')}`, bgShell('l107s', command), RUNNING_CLOSE).status, 2, `a server: ${command}`);
+});
 test('B11: a background shell past 60 min counts no more, whatever its timeout says', () => {
   const at = (name, minutesAgo, input) => closeOver(`b11-${name}`, agedShell('b11a', LANES, minutesAgo, input), WAITING_CLOSE).status;
   assert.equal(at('fresh', 5), 0, 'started 5 min ago');

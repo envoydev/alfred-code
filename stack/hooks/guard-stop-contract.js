@@ -395,7 +395,7 @@ const FRESH_RE = new RegExp(`${FRESH_CUE}[^.!?\\n]{0,80}${FRESH_PHRASE}|${FRESH_
 // this parity scope can stop here.' - the user typed 'Do recommendation' 2 minutes later, 6ed392a5).
 // ...and the front-loaded offer 'Next I can drive the wizard in the browser, or pull the attachment first.' (audit 2026-10-20
 // C45, fcafd69c L275: a decision left in prose, answered 18 s later with no ask).
-const PROSE_ASK_RE = /\b(say the word|say go|if you say (?:yes|go|ok|so)\b|just say so|or let me [a-z]|want me to (?:[^.?!\n]|\.(?!\s|$)){0,80}\?|shall i (?:[^.?!\n]|\.(?!\s|$)){0,80}\?|should i (?:[^.?!\n]|\.(?!\s|$)){0,80}\?|(?<!\bnot )(?<!\bnever )your call\b|let me know (when|if|whether)|give me the word|tell me (if|when|whether) you want|tell me which\b|(?:tell|let) me (?:know )?(?:if|whether) (?:i|we) (?:should|shall)\b|confirm (you want|whether|if|that you)\b|or i can [^.\n]{0,60}\binstead\b|paste (this|that|it) and i'?ll|run this to unblock|i'?ll [^.\n]{0,60}(the moment|as soon as|once) you\b|worth your decision|say ['"‘’“”][^'"‘’“”\n]{1,24}['"‘’“”],? (?:when|whenever|once|if|and i)\b|if you(?:'d)? (?:want|like|prefer)\b[^.\n]{0,100}, i (?:can|could)\b|i (?:can|could) [^.\n]{0,100}\b(?:if|whenever) you(?:'d)? (?:want|like|prefer)\b|i can [^.\n]{0,80}\bnext,? or\b|(?<=(?:^|[.!?\n])\s{0,3})next,? i (?:can|could) [^.\n]{0,160}\bor\b|my recommendation is to\b[^\n]{0,240}\botherwise\b)/i;
+const PROSE_ASK_RE = /\b(say the word|say go|if you say (?:yes|go|ok|so)\b|just say so|or let me [a-z]|want me to (?:[^.?!\n]|\.(?!\s|$)){0,80}\?|shall i (?:[^.?!\n]|\.(?!\s|$)){0,80}\?|should i (?:[^.?!\n]|\.(?!\s|$)){0,80}\?|(?<!\bnot )(?<!\bnever )your call\b|let me know (?:when\b|(?:if|whether)\s+(?:i|we|to|you(?:'d)?\s+(?:want|like|prefer))\b)|give me the word|tell me (if|when|whether) you want|tell me which\b|(?:tell|let) me (?:know )?(?:if|whether) (?:i|we) (?:should(?!\s+have\b)|shall)\b|confirm (you want|whether|if|that you)\b|or i can [^.\n]{0,60}\binstead\b|paste (this|that|it) and i'?ll|run this to unblock|i'?ll [^.\n]{0,60}(the moment|as soon as|once) you\b|worth your decision|say ['"‘’“”][^'"‘’“”\n]{1,24}['"‘’“”],? (?:when|whenever|once|if|and i)\b|if you(?:'d)? (?:want|like|prefer)\b[^.\n]{0,100}, i (?:can|could)\b|i (?:can|could) [^.\n]{0,100}\b(?:if|whenever) you(?:'d)? (?:want|like|prefer)\b|i can [^.\n]{0,80}\bnext,? or\b|(?<=(?:^|[.!?\n])\s{0,3})next,? i (?:can|could) [^.\n]{0,160}\bor\b|my recommendation is to\b[^\n]{0,240}\botherwise\b)/i;
 // A RETROSPECTIVE '(your call)' is a note about a decision the user already took, not an offer of
 // one: 'Requirement recorded: 90% line coverage after exclusions (your call).' was blocked as an
 // ask on a close that held no question at all (measured). The discriminator is narrow on purpose -
@@ -606,7 +606,7 @@ const NEVER_ENDS_RE = /\b(?:(?<!\/)dev|dev(?!\/)|serve|server|start|watch|previe
 // than BACKGROUND_STALE_MS (`backgroundStale`; the call's `timeout` is no bound for it): a server nobody listed, or a hung
 // command, then holds only until that limit. FINITE_RE, the old gate, is gone.
 const BACKGROUND_STALE_MS = 60 * 60 * 1000;
-const NEVER_ENDS_EXTRA_RE = /\s-w\b|--watch\w*|\bdocker\s+run\b[^;&|\n]*\s(?:-p|--publish)\b|\bvite\b(?!\s+build)|(?<!build-)\bstorybook\b(?!\s+build)|\bjupyter\s+(?:notebook|lab)\b|\bkubectl\s+proxy\b|\bssh\b[^;&|\n]*\s-N\b|\bng\s+test\b(?![^;&|]*--watch=false)|\blogs?\s+-f\b|port-forward|\bngrok\b|runserver/;
+const NEVER_ENDS_EXTRA_RE = /\s-w\b|--watch\w*|\bdocker\s+run\b[^;&|\n]*\s(?:-p|--publish)\b|\bvite\b(?!\s+build)|(?:(?:^|[;&|]\s*|\b(?:npx|bunx|dlx|exec)\s+)storybook\b|\bstorybook\s+dev\b|(?<![\w-])start-storybook\b|\b(?:npm|pnpm|yarn)\s+(?:run\s+)?storybook\b)(?![\s:-]build\b)|\bjupyter\s+(?:notebook|lab)\b|\bkubectl\s+proxy\b|\bssh\b[^;&|\n]*\s-N\b|\bng\s+test\b(?![^;&|]*--watch=false)|\blogs?\s+-f\b|port-forward|\bngrok\b|runserver/;
 // A CI watch ENDS with the run it watches (`gh run watch`, `gh pr checks --watch`): read as a never-ending watcher, a close
 // waiting on an armed one was blocked while it ran for 9 more minutes (audit 2026-10-10 C15, bba03dad).
 // On any forge it is the concept (forge.js `pipeline.watch`: `gh run watch`, `glab ci status --live`, a CLI nobody
@@ -2690,16 +2690,19 @@ if (payload.hook_event_name === 'Stop') {
   const prose = text.replace(/(`{3,})[\s\S]*?\1/g, ' ');
   const tail = prose.slice(-1500); // the offer lives at the end of the turn
   // C16: one note when the close's `auto:` lines outnumber the auto-answer rows since the run marker's start (the session's start
-  // with no marker). Context on exit 0 only (Stop's `hookSpecificOutput.additionalContext`, code.claude.com/docs/en/hooks) - never an
-  // exit 2 or a `decision: block`. The note continues the turn once, like a hold, but is not shown as an error; its own continuation
+  // with no marker). Context on exit 0 (Stop's `hookSpecificOutput.additionalContext`, code.claude.com/docs/en/hooks) - never a
+  // `decision: block` of its own; a Stop held for another reason (exit 2) carries it after the block reason. The note continues the turn once, like a hold, but is not shown as an error; its own continuation
   // (`stop_hook_active`) and a seat's Stop (a seat's reply goes to its dispatcher) get none. It is written in the exit handler,
   // since this Stop path has many exits and no other stdout write.
   if (!payload.agent_id && !payload.stop_hook_active) {
     try {
       if (unrecordedAutoLines(text, autoAnswerRowsSince(runStartMs()))) {
         process.on('exit', (code) => {
-          if (code !== 0) return;
-          try { fs.writeSync(1, JSON.stringify({ hookSpecificOutput: { hookEventName: 'Stop', additionalContext: AUTO_LINE_NOTE } })); } catch { /* a lost note costs nothing */ }
+          // exit 0: context the turn goes on with; exit 2: the Stop is held for another reason, so the note joins the block reason on stderr
+          try {
+            if (code === 0) fs.writeSync(1, JSON.stringify({ hookSpecificOutput: { hookEventName: 'Stop', additionalContext: AUTO_LINE_NOTE } }));
+            else if (code === 2) fs.writeSync(2, `\n${AUTO_LINE_NOTE}\n`);
+          } catch { /* a lost note costs nothing */ }
         });
       }
     } catch { /* fail-open: the close goes out unnoted */ }
@@ -3377,7 +3380,10 @@ function waitsForUser(question)
 // are tied to the user: 'where are you' ends its sentence ('Where are you running the tests?' is about the tests), and 'stay paused'
 // has the run or the user as subject ('Should the watcher stay paused?' is about the watcher).
 const USER_STATE_TAIL = String.raw`(?:\s+(?:yet|(?:right\s+)?now))?\s*(?:[?!.]|$)`;
-const USER_STATE_RE = new RegExp(String.raw`\bwhere (?:are|were) you${USER_STATE_TAIL}|\bare you (?:back|there|away|around)${USER_STATE_TAIL}`
+// 'Are you back from lunch?' is the same question as 'Are you back?': the are-you branch takes one short 'from / at / with + 1-3 words'
+// before the tail. 'where are you' does not ('Where are you with the migration?' is about the migration).
+const USER_STATE_BACK_TAIL = String.raw`(?:\s+(?:from|at|with)\s+[\w'-]+(?:\s+[\w'-]+){0,2})?${USER_STATE_TAIL}`;
+const USER_STATE_RE = new RegExp(String.raw`\bwhere (?:are|were) you${USER_STATE_TAIL}|\bare you (?:back|there|away|around)${USER_STATE_BACK_TAIL}`
   + String.raw`|\bshould I wait for you\b|\b(?:should|shall|must) (?:I|we) (?:(?:stay|remain) paused|keep (?:it|this|the run|us|me) paused)\b`
   + String.raw`|^\s*stay paused\s*[?!.]*\s*$|^\s*stay paused\b[^?!.]*\buntil you\b`, 'i');
 const USER_STEP_VERBS = new Set(['type', 'run', 'do', 'push', 'commit', 'paste', 'send', 'click', 'open', 'start', 'restart', 'decide',
@@ -3525,7 +3531,16 @@ function actsOnQuestion(label)
 // now'), a later clause with a deferral is the held act and is cut whole ('Hold, push after CI passes', 'Hold - publish when rooms
 // are empty'). A clause opening with 'then' is the next act and is kept.
 const HOLD_ALONE_RE = /^(?:(?:it|them|both|all)\s*)?(?:(?:for\s+)?now|here)?$/i;
-const cutAtDeferral = (text) => { const at = text.search(AUTO_DEFERRAL_RE); return at < 0 ? text : text.slice(0, at); };
+// The cut ends at the next 'and <act>' or 'then <act>' after the deferral, and that tail stays the pick's own act: 'Hold the push until
+// green and deploy now' holds the push and deploys (session audit 2026-11-27, L1-03).
+const AUTO_DEFERRAL_END_RE = new RegExp(String.raw`\b(?:and|then)\s+(?:then\s+)?((?:the\s+)?${AUTO_DEFER_ACT}\b[\s\S]*)`, 'i');
+const cutAtDeferral = (text) =>
+{
+    const at = text.search(AUTO_DEFERRAL_RE);
+    if (at < 0) return text;
+    const tail = AUTO_DEFERRAL_END_RE.exec(text.slice(at));
+    return tail ? `${text.slice(0, at)} ${tail[1]}` : text.slice(0, at);
+};
 // A pick's DESCRIPTION may say the outward act is held (session audit 2026-11-27 B14, replayed over session eb8ad61b: 5 asks whose
 // pick said 'the publish stays your word' waited for an away user). Only two held shapes are cut, and only inside one clause: an
 // outward act word DIRECTLY followed by 'waits for you' (or 'for your word', 'OK', 'go'; a wait on CI or a build is no hold), 'stays held', 'is' or 'stays your word', or 'asks you later' / 'asks you first'
@@ -4012,7 +4027,7 @@ if (payload.tool_name === 'AskUserQuestion') {
         if (dropHandoff) reasons.push('a fresh-session hand-off where a fresh session does not pay back with the cache warm');
         global.BLOCK_DETAIL = { branch: 'ask-voice', voice: voice.map((v) => v.split(' (')[0]), numbers: !!numbers, other: typeIntoOther, unmarked, misMarked, newCycle: !!newCycle, blind: !!blind, noReview: !!noReview, compactFresh, pointsAbove, dropHandoff };
         denied = true;
-        blockCall(payload, `Blocked: this AskUserQuestion carries ${reasons.join('; ')}.`
+        blockCall(payload, `Blocked: this AskUserQuestion carries ${reasons.join('; ')}.${autoAskWaits ? ' This ask waits for the user. Their answer is their own: never report it as an auto-run pick.' : ''}`
           + (voice.length ? ` The house voice (alfred-interaction.md) covers an ask's question, header, labels and descriptions, and the user reads them as written.` : '')
           + (typeIntoOther ? ` A picked option returns only its LABEL - a value the user must type goes in plain prose that ends the turn, and the ask carries what they can PICK (${pickLabels}).` : '')
           + (unmarked ? ` Mark the recommended option '(Recommended)' and list it first. A question that must wait for the user - a hard stop, a rule every later session follows, privacy or another person's data or access, money, deleting data on the user's machine that the user did not name and this run did not make, an act that cannot be undone - still marks its safe option, and opens 'waits for you: <why>'; auto-run never answers it.` : '')
