@@ -149,3 +149,29 @@ test('a typed row carrying only isVisibleInTranscriptOnly stays a typed turn', (
   const visible = JSON.stringify({ type: 'user', timestamp: '2026-11-27T10:05:00Z', isVisibleInTranscriptOnly: true, message: { role: 'user', content: 'what does X do?' } });
   meetsAsk([typed('commit it', '10:00:00'), visible]);
 });
+
+// Final review I1: a sibling hook's Stop hold is a user row that starts 'Stop hook feedback:'; it is the harness's, no typed turn,
+// and it took the user's 'commit it' away from the trivial exit.
+const stopFeedback = (at) => typed('Stop hook feedback:\n[alfred-code guard-stop-contract] the close lists a pending item', at);
+test("a sibling hook's 'Stop hook feedback:' row after 'fix the typo and commit it' leaves that word standing", () => {
+  passes([typed('fix the typo and commit it', '10:00:00'), stopFeedback('10:02:00')]);
+});
+
+// Final review I2: a message the user types while the model works is a `queued_command` attachment row, not a user row.
+const queued = (prompt, at, human = true) => JSON.stringify({ type: 'attachment', timestamp: `2026-11-27T${at}Z`, attachment: { type: 'queued_command', prompt,
+  commandMode: human ? 'prompt' : 'task-notification', origin: { kind: human ? 'human' : 'task-notification' }, ...(human ? { humanTurn: true } : {}) } });
+test("'fix the typo' then a queued 'commit it' lets the commit through", () => {
+  passes([typed('fix the typo', '10:00:00'), queued('commit it', '10:02:00')]);
+});
+test("'fix the typo and commit it' then a queued 'wait, do not commit' meets the commit ask", () => {
+  meetsAsk([typed('fix the typo and commit it', '10:00:00'), queued('wait, do not commit', '10:02:00')]);
+});
+test("a queued row whose origin is not human is no typed turn: 'commit it' stays the latest", () => {
+  passes([typed('commit it', '10:00:00'), queued('<task-notification>\n<status>completed</status>\n</task-notification>', '10:02:00', false)]);
+});
+test("a queued non-human row holding 'commit it' gives no consent", () => {
+  meetsAsk([typed('fix the typo', '10:00:00'), queued('commit it', '10:02:00', false)]);
+});
+test('a queued human prompt in text blocks is read as a typed turn', () => {
+  passes([typed('fix the typo', '10:00:00'), queued([{ type: 'text', text: 'commit it' }], '10:02:00')]);
+});

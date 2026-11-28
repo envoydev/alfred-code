@@ -990,6 +990,21 @@ function transcriptScan() {
           _scan.labels.add(normQuote(lbl));
         }
       }
+      // A message the user typed while the model worked is a `queued_command` attachment, not a user row (final review I2): a
+      // human-origin one is a typed turn, so its 'commit it' gives consent and its 'wait, do not commit' takes it back. A task
+      // notice or any other origin is the harness's. Same transcript file; discard-consent.js reads these rows too.
+      if (line.includes('"queued_command"') && line.length < 256 * 1024) {
+        let row;
+        try { row = JSON.parse(line); } catch { row = null; }
+        const att = row && row.type === 'attachment' && row.attachment;
+        if (att && att.type === 'queued_command' && att.origin && att.origin.kind === 'human') {
+          const text = textOf(att.prompt);
+          if (text.trim() && !harnessRow(text)) {
+            _scan.typed.push(normQuote(text));
+            _scan.typedRaw.push({ text, ts: tsOf(row) });
+          }
+        }
+      }
       // A turn the user TYPED: a user row whose content is text, never a tool_result (an ask's answer is the
       // harness's row) and never a meta row (a skill body, a command expansion).
       if (/"type"\s*:\s*"user"/.test(line) && !line.includes('"tool_result"') && line.length < 256 * 1024) {
@@ -1005,7 +1020,7 @@ function transcriptScan() {
           const args = ((/<command-args>([\s\S]*?)<\/command-args>/.exec(text) || [])[1] || '').trim();
           if (args) _scan.typed.push(normQuote(args));
           _scan.typedRaw.push({ text: args, ts: tsOf(row) });
-        } else if (!/^\s*<(?:command-name|local-command|bash-|task-notification)/.test(text) && !harnessRow(text) && text) {
+        } else if (!/^\s*<(?:command-name|local-command|bash-|task-notification)/.test(text) && !harnessRow(text) && !/^\s*Stop hook feedback:/.test(text) && text) {   // a sibling hook's Stop hold is the harness's row (final review I1)
           _scan.typed.push(normQuote(text));
           _scan.typedRaw.push({ text, ts: tsOf(row) });
         }

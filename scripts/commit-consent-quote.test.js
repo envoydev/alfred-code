@@ -222,3 +222,13 @@ test('a COMMIT-GATE quote no typed turn holds meets the ask', () => {
   assert.equal(r.status, 2, 'the commit is held');
   assert.match(r.stderr, NOT_TYPED);
 });
+
+// Final review I2: a message typed while the model works is a `queued_command` attachment; a quote of it is the user's own words.
+const queuedRow = (prompt, at, human = true) => JSON.stringify({ type: 'attachment', timestamp: `2026-11-27T${at}Z`, attachment: { type: 'queued_command', prompt,
+  commandMode: human ? 'prompt' : 'task-notification', origin: { kind: human ? 'human' : 'task-notification' }, ...(human ? { humanTurn: true } : {}) } });
+test('a quote of a queued human message opens the gate', () => {
+  passes([typedRow('keep going', '10:00:00'), queuedRow(`also ${QUOTE}`, '10:01:00')]);
+});
+test('a quote held only by a queued non-human row meets the ask', () => {
+  refused([typedRow('keep going', '10:00:00'), queuedRow(`also ${QUOTE}`, '10:01:00', false)], QUOTE, NOT_TYPED);
+});
