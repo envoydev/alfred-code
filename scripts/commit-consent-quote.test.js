@@ -146,8 +146,57 @@ test("typed 'Push it.' and quoted 'push it' match: case is no part of the words"
   passes([typedRow('Push it.', '10:00:00')], 'push it');
 });
 
-// DEFERRED (round 2 ruling): a quote cut out of a refusal - typed 'don't push it', quoted 'push it' - passes the match. Only a
-// reader of the user's clause could close it, and that is a new parser. The quote's own words still go through consentIn.
+// A quote cut out of the user's refusal is no consent (C17): an act verb of the gate's own class that the quote takes from the
+// typed turn is read with the turn's clause around it, by the same negation test consentIn uses.
+test("a quote 'push it' cut out of a typed \"don't push it yet\" meets the ask", () => {
+  refused([typedRow("don't push it yet", '10:00:00')], 'push it', NOT_TYPED);
+});
+
+test("a quote 'push to main' cut out of a typed 'please never push to main' meets the ask", () => {
+  refused([typedRow('please never push to main', '10:00:00')], 'push to main', NOT_TYPED);
+});
+
+test("a quote 'push' cut out of a typed 'hold off on the push' meets the ask", () => {
+  refused([typedRow('hold off on the push', '10:00:00')], 'push', NOT_TYPED);
+});
+
+test("a quote 'push it' cut out of a typed 'push it later' meets the ask", () => {
+  refused([typedRow('push it later', '10:00:00')], 'push it', NOT_TYPED);
+});
+
+test("a quote 'commit this' cut out of a typed 'do not commit this' meets the ask on the COMMIT-GATE", () => {
+  const r = commitGateWith([typedRow('do not commit this', '10:00:00')], 'commit this');
+  assert.equal(r.status, 2, 'the commit is held');
+  assert.match(r.stderr, NOT_TYPED);
+});
+
+test("a quote 'push it' cut out of an ask answer \"don't push it yet\" that a person typed meets the ask", () => {
+  refused([answerRow("don't push it yet", 'user_temporary', '10:00:00')], 'push it', NOT_TYPED);
+});
+
+test("a refusal of the commit on the other line of a typed turn does not refuse a later 'push it' line", () => {
+  passes([typedRow("don't commit yet\nok, push it", '10:00:00')], 'push it');
+});
+
+test("a refused 'commit' in a typed turn leaves a quote of its push on the PUSH-GATE", () => {
+  passes([typedRow("don't commit it, push it", '10:00:00')], 'push it');
+});
+
+test("typed \"don't push it yet. ok, now push it\" and quoted 'push it' pass: the second place is read", () => {
+  passes([typedRow("don't push it yet. ok, now push it", '10:00:00')], 'push it');
+});
+
+test("typed 'no need to wait, push it' and quoted 'push it' pass", () => {
+  passes([typedRow('no need to wait, push it', '10:00:00')], 'push it');
+});
+
+test("typed \"don't forget to push it\" and quoted 'push it' pass", () => {
+  passes([typedRow("don't forget to push it", '10:00:00')], 'push it');
+});
+
+test('a run-on typed sentence past 1,000 characters with no stop, ending in push it, holds the quote', () => {
+  passes([typedRow(`ok ${'and some more words '.repeat(60)}and push it`, '10:00:00')], 'push it');
+});
 
 test("a quote from a longer turn passes: typed 'ok, push it. don't merge yet'", () => {
   passes([typedRow("ok, push it. don't merge yet", '10:00:00')], 'push it');
@@ -157,7 +206,7 @@ test("a refusing sentence earlier in the turn does not hide a later one that con
   passes([typedRow("don't push it yet. ok, push it now", '10:00:00')], 'push it now');
 });
 
-// Matching is whole words in order and reads no clause of the typed turn: honest consent is never refused for what else it says.
+// Matching is whole words in order, and the turn is read only around the act verb the quote takes: what else the turn says refuses nothing.
 test("typed \"commit and push, don't merge\" and quoted 'commit and push' pass on the PUSH-GATE", () => {
   passes([typedRow("commit and push, don't merge", '10:00:00')], 'commit and push');
 });
@@ -214,6 +263,12 @@ function commitGateWith(rows, quote) {
 
 test('a COMMIT-GATE quote the user typed opens the gate', () => {
   const r = commitGateWith([typedRow('please commit it now', '10:00:00')], 'commit it');
+  assert.equal(r.status, 0, r.stderr);
+});
+
+test("a quote whole from a typed 'Commit now but edit commit messages not to ...' passes: a noun use of commit is no refused act", () => {
+  const said = 'Commit now but edit commit messages not to have this tab movement at commit description';
+  const r = commitGateWith([typedRow(said, '10:00:00')], said);
   assert.equal(r.status, 0, r.stderr);
 });
 

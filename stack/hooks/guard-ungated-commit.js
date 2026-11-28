@@ -735,6 +735,9 @@ const CLASS_COMMIT = /^(?:commit|land)/i;
 const CLASS_PUSH = /^(?:push|publish|release|ship|merge|land)|\bPR\b|pull|^(?:open|create|raise|submit)/i;
 const GENERIC_CONSENT = /^(?:go ahead|do it|approve[ds]?|yes)/i;
 const CONSENT_QUOTE_CAP = 1000;
+const LINE_BREAKS = /\s*[\r\n]+\s*/g;
+// Global copies of the act verb patterns, each reset by its reader before a scan.
+const ACT_SCANNERS = [CONSENT_VERB, CONSENT_PR].map((re) => new RegExp(re.source, `${re.flags.replace('g', '')}g`));
 // A typed turn is judged one sentence at a time, so the cap above bounds a sentence and not a long message (N01, 2026-11-27).
 const SENTENCE_END = /[.!?\n]+/;
 // The match key of a quote and of a typed turn (C3): curly quotes straight, the ellipsis sign as three dots, every non-word
@@ -756,33 +759,48 @@ function boundAfter(bounds, i) {
 // A quote holding any letter outside ASCII: the lists cannot read it, so it is no consent (the header, ENGLISH ONLY).
 const foreignQuote = (text) => /[^\x00-\x7f]/.test(String(text).replace(/[^\p{L}]/gu, ''));
 const FOREIGN_HINT = ' - the gate reads a quote in English only; ask with AskUserQuestion (English labels) and write the picked option as `answered: <the chosen label>`';
-function consentIn(text, gate, detail) {
-  if (text.length > CONSENT_QUOTE_CAP || foreignQuote(text)) return false;
-  const clean = text.replace(POSITIVE_IDIOM, (m) => ' '.repeat(m.length));
+// The sorted clause bounds of a text, the clause around an index, and the slices of one act verb match - shared by consentIn and the
+// quote reader, so one negation test reads both.
+function clauseBoundsOf(clean) {
   const bounds = [0];
   for (const b of clean.matchAll(CLAUSE_END)) bounds.push(b.index + b[0].length);
   bounds.push(clean.length + 1);
-  const clauseOf = (i) => {
-    const k = boundAfter(bounds, i);
-    return [bounds[k - 1] || 0, Math.min(k < bounds.length ? bounds[k] : clean.length, clean.length)];
-  };
+  return bounds;
+}
+function actSlices(clean, bounds, m) {
+  const k = boundAfter(bounds, m.index);
+  const a = bounds[k - 1] || 0;
+  const z = Math.min(k < bounds.length ? bounds[k] : clean.length, clean.length);
+  return { z, clause: clean.slice(a, z), before: clean.slice(a, m.index), after: clean.slice(m.index + m[0].length, z) };
+}
+// Is this match no act: the verb used as a noun ('the push', 'commit messages') or in a question about the past ('why did you push').
+function actIsNoun({ clause, before, after }, m) {
+  if ((NOUN_BEFORE.test(before) && !ACT_BEFORE.test(before)) || WHY_CLAUSE.test(clause)) return true;
+  return /^commit$/i.test(m[0].trim()) && NOUN_AFTER.test(after);
+}
+// Is this act verb match refused: a negation, a stop, a deferral, the user keeping the act, or a bare 'no' answer after it.
+function actNegated(clean, bounds, m, slices) {
+  const { z, clause, before, after } = slices;
+  const nk = boundAfter(bounds, z);
+  const nextEnd = nk < bounds.length ? bounds[nk] : undefined;
+  const answeredNo = nextEnd !== undefined && ANSWERED_NO.test(clean.slice(z, nextEnd));
+  return answeredNo || NEGATION_BEFORE.test(before) || STOP_BEFORE.test(before) || NEGATION_AFTER.test(after)
+    || BARE_NO_AFTER.test(after) || DEFERRAL_CLAUSE.test(clause) || (CI_DEFERRAL.test(clause) && !MERGE_VERB.test(m[0].trim())) || USER_KEEPS.test(clause);
+}
+function consentIn(text, gate, detail) {
+  if (text.length > CONSENT_QUOTE_CAP || foreignQuote(text)) return false;
+  const clean = text.replace(POSITIVE_IDIOM, (m) => ' '.repeat(m.length));
+  const bounds = clauseBoundsOf(clean);
   const own = gate === 'PUSH-GATE' ? CLASS_PUSH : CLASS_COMMIT;
   let ownHit = false;
   let otherHit = false;
   let genericHit = false;
   for (const re of [CONSENT_VERB, CONSENT_PR]) {
     for (const m of clean.matchAll(new RegExp(re.source, `${re.flags.replace('g', '')}g`))) {
-      const [a, z] = clauseOf(m.index);
-      const clause = clean.slice(a, z);
-      const before = clean.slice(a, m.index);
-      const after = clean.slice(m.index + m[0].length, z);
-      if ((NOUN_BEFORE.test(before) && !ACT_BEFORE.test(before)) || WHY_CLAUSE.test(clause)) continue;
-      if (/^commit$/i.test(m[0].trim()) && NOUN_AFTER.test(after)) continue;
-      const nk = boundAfter(bounds, z);
-      const nextEnd = nk < bounds.length ? bounds[nk] : undefined;
-      const answeredNo = nextEnd !== undefined && ANSWERED_NO.test(clean.slice(z, nextEnd));
-      const negated = answeredNo || NEGATION_BEFORE.test(before) || STOP_BEFORE.test(before) || NEGATION_AFTER.test(after)
-        || BARE_NO_AFTER.test(after) || DEFERRAL_CLAUSE.test(clause) || (CI_DEFERRAL.test(clause) && !MERGE_VERB.test(m[0].trim())) || USER_KEEPS.test(clause);
+      const slices = actSlices(clean, bounds, m);
+      const { after } = slices;
+      if (actIsNoun(slices, m)) continue;
+      const negated = actNegated(clean, bounds, m, slices);
       const word = m[0].trim();
       if (negated && own.test(word)) { if (detail) detail.refused = true; return false; }
       if (negated || STATEMENT_AFTER.test(after)) continue;
@@ -1148,21 +1166,50 @@ function isOwnOptionLabel(span) {
 // Is this quote the user's own words (C3, N02)? Its parts (the quote cut at '...') are whole words of one turn the user typed
 // (a slash command's args included; a side agent's note, a peer message and a compaction summary are no typed turn) or of
 // an ask answer a person gave - an answer a hook gave (`user` false) is nobody's words. The quote's own consent is judged
-// apart by consentIn; this reads no clause of the typed turn, so a quote cut out of a refusal still matches (deferred).
-function quoteTyped(quote, scan) {
+// apart by consentIn. A part's place in the turn is read too (C17): an act verb of the gate's own class inside the place,
+// refused by the turn's own clause around it ('don't push it yet'), makes it no place - a quote cut out of a refusal is not
+// the user's yes. The turn has no cap and no foreign-letter check: those stay on the quote.
+function quoteTyped(quote, scan, gate) {
   const parts = straightText(quote).split(ELLIPSIS_GAP).map(matchKey).filter(Boolean);
   if (!parts.length) return false;
+  const places = parts.map(partPlace);
   const turns = [...scan.typedRaw.map((t) => t.text), ...scan.answers.filter((a) => a.user).map((a) => a.text)];
-  return turns.some((text) => turnHolds(matchKey(text), parts));
+  return turns.some((text) => turnHolds(turnView(text, gate), places));
 }
-// Each part sits at its first whole-word place after the end of the one before it: one pass, no backtracking.
-function turnHolds(key, parts) {
-  const padded = ` ${key} `;
+// The part's key words with any run of non-word characters between them, whole words only: the key holds letters and digits.
+const partPlace = (part) => new RegExp(`(?<![\\p{L}\\p{N}])${part.split(' ').join('[^\\p{L}\\p{N}]+')}(?![\\p{L}\\p{N}])`, 'giu');
+// A line break ends a sentence here, since the clause reader would otherwise run two lines into one.
+const turnView = (text, gate) => ({ raw: straightText(String(text).replace(LINE_BREAKS, '. ')), own: gate === 'PUSH-GATE' ? CLASS_PUSH : CLASS_COMMIT, clean: null, bounds: null });
+// True when an own-class act verb that lies whole inside [from, to) of the turn is refused by its clause.
+function actRefusedIn(view, from, to) {
+  if (view.clean === null) {
+    view.clean = view.raw.replace(POSITIVE_IDIOM, (m) => ' '.repeat(m.length));
+    view.bounds = clauseBoundsOf(view.clean);
+  }
+  for (const scanner of ACT_SCANNERS) {
+    scanner.lastIndex = from;
+    for (let m = scanner.exec(view.clean); m && m.index + m[0].length <= to; m = scanner.exec(view.clean)) {
+      const slices = actSlices(view.clean, view.bounds, m);
+      // 'hold off on the push' names the noun after a stop word: that is the refusal, not a noun use
+      if (!view.own.test(m[0].trim()) || (actIsNoun(slices, m) && !STOP_BEFORE.test(slices.before))) continue;
+      if (actNegated(view.clean, view.bounds, m, slices)) return true;
+    }
+  }
+  return false;
+}
+// Each part sits at its first place that no refusal covers, after the end of the one before it: one pass, no backtracking.
+function turnHolds(view, places) {
   let from = 0;
-  for (const part of parts) {
-    const at = padded.indexOf(` ${part} `, from);
-    if (at === -1) return false;
-    from = at + part.length + 1;
+  for (const place of places) {
+    place.lastIndex = from;
+    let end = -1;
+    let m = place.exec(view.raw);
+    while (m && end === -1) {
+      if (!actRefusedIn(view, m.index, m.index + m[0].length)) end = m.index + m[0].length;
+      else { place.lastIndex = m.index + 1; m = place.exec(view.raw); }
+    }
+    if (end === -1) return false;
+    from = end;
   }
   return true;
 }
@@ -1414,7 +1461,7 @@ function judgeReceipt(body, opts) {
       r.problem = `the authorized: quote is character-identical to an option label THIS run wrote - that is the model's sentence, not the user's. Consent given by picking an option is spelled \`answered: <the chosen label>\` instead${answerHint()}`;
       return r;
     }
-    if (!quoteTyped(authorized, transcriptScan())) {
+    if (!quoteTyped(authorized, transcriptScan(), opts && opts.gate)) {
       r.problem = `the authorized: quote (${JSON.stringify(authorized).slice(0, 60)}) is not in any message the user typed - quote the user's own words, or ask`;
       return r;
     }

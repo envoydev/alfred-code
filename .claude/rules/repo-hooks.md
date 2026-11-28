@@ -1087,7 +1087,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     merge: 'merge it once CI is green' consents), the user keeping the act ('I'll push it myself') or a
     statement about the verb refuses it, and only its own gate; 'commit' leading a noun ('commit messages', 'at commit
     description') is the noun and neither consents nor refuses (E-batch U26b). Opening a pull request ('open the PR') is
-    consent; a question, a negation or the PR's description / template / page is not (H3).
+    consent; a question, a negation or the PR's description / template / page is not (H3). A quote cut out of the user's refusal is no typed consent (C17, 2026-11-28): `quoteTyped` places each part of the quote at its first place in a typed turn that holds no refused act verb of the gate's own class - the same `actNegated` test `consentIn` uses, read over the turn's clauses, a line break ending a sentence - so typed 'don't push it yet' gives a quote of 'push it' no place, while 'don't push it yet. ok, push it' and 'commit and push, don't merge' keep theirs; no cap and no foreign-letter check on the turn, one pass with no backtracking.
   - `guard-stop-contract.js` (`Stop` + `SubagentStop`; PreToolUse `SubagentHandback` - the output-scoring seal, below; PreToolUse `AskUserQuestion` - its notes INJECTED, and a
     PreToolUse note lands beside the tool result, which for an ask is the user's ANSWER, so each is worded for that
     moment ('the ask just answered ... verify, re-ask if it moved'); the ask's own SHAPE is FIXED IN PLACE when every reason is
