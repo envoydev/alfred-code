@@ -144,8 +144,8 @@ const SHELL_READ = /^(?:cat|bat|less|more|nl|type|get-content|gc|head|tail|grep|
 // code-quality analyzer, the security auditor and the integration reviewer - and the output scoring, which grades a plan
 // against the docs its producer read, handed the code docs. The architecture
 // analyzer, which reports smells, is handed the architecture doc alone (the user's ruling of 2026-10-22). A bare name is
-// the stack's own only where the install stamp records its copy (the copy route); a project's own agent of the same
-// name, or another plugin's, gets nothing.
+// the stack's own only where the install stamp records its copy (the copy route). A project's own agent of the same name,
+// or another plugin's, is no judge here: like any seat it gets the code docs only by the C10 rule, `seatGetsPush`.
 const JUDGE = /^(?:[\w-]*solution-designer|[\w-]+-verifier|code-quality-analyzer|security-auditor|integration-reviewer|output-scoring)$/;
 const ARCH_SEAT = /^architecture-analyzer$/;
 // The built-in seats that never write: they get no push at their start (C10, 2026-11-27). A closed set - any other built-in,
@@ -154,7 +154,7 @@ const READ_ONLY_BUILTINS = Object.freeze(['Explore', 'Plan', 'claude-code-guide'
 // A seat definition's own `tools:` entry (a line, or a list of `- tool` lines under it) inside its frontmatter, the edit
 // tools that make a seat write, and the grant of every tool.
 const SEAT_FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---/;
-const SEAT_TOOLS_ENTRY = /^tools:[ \t]*([^\n]*(?:\n[ \t]+-[^\n]*)*)/m;
+const SEAT_TOOLS_ENTRY = /^tools:[ \t]*([^\n]*(?:\n[ \t]*-[^\n]*)*)/m;
 const SEAT_EDIT_TOOL = /(?:^|[\s,"'[-])(?:Edit|Write|MultiEdit|NotebookEdit)(?=$|[\s,"'\]])/;
 const SEAT_ALL_TOOLS = /^["']?\*["']?$/;
 const STAMP_BYTES = 64 * 1024;
@@ -970,13 +970,14 @@ function seatDocs(ctx, type, arch) {
   if (ARCH_SEAT.test(seat) && arch) return { defs: CODE_DOCS.filter((d) => d.key === 'ARCHITECTURE'), kind: 'architecture' };
   return null;
 }
-// Whether a seat is handed the code preferences at its start (C10): a judge or the architecture seat, as before; a stack
-// or project seat whose definition grants an edit tool, lists no tools or lists `*`; a built-in or unresolved seat unless its
-// type is a read-only built-in. `seat` is what `seatOf` returned.
+// Whether a seat is handed the code preferences at its start (C10): a stack judge or the architecture seat (`alfred-code:`
+// spelled, as before); a stack or project seat whose definition grants an edit tool, lists no tools or lists `*`; a built-in
+// or unresolved seat unless its type is a read-only built-in. No type, no push. `seat` is what `seatOf` returned.
 function seatGetsPush(seat, type) {
-  const name = String(type || '').replace(/^alfred-code:/, '');
-  if (JUDGE.test(name) || ARCH_SEAT.test(name)) return true;
-  if (seat === 'other' || !seat || typeof seat.frontmatter !== 'string') return !READ_ONLY_BUILTINS.includes(String(type || ''));
+  if (!type) return false;
+  const name = String(type).replace(/^alfred-code:/, '');
+  if (name !== type && (JUDGE.test(name) || ARCH_SEAT.test(name))) return true;
+  if (seat === 'other' || !seat || typeof seat.frontmatter !== 'string') return !READ_ONLY_BUILTINS.includes(String(type));
   const block = SEAT_FRONTMATTER.exec(seat.frontmatter);
   const entry = block ? SEAT_TOOLS_ENTRY.exec(block[1]) : null;
   if (!entry) return true;
@@ -1118,7 +1119,7 @@ function seatPush(ctx, files, seat, extra = {}) {
       : `The user's code preferences - ${PRECEDENCE}. Name the entry id in each decision or finding it shapes:`,
     ...c.parts,
     ...(c.named.length ? ['', `Not pasted here - read before a decision it bears on: ${nameList(c.named, (sectioned || needs[0]).doc.rel)}.`] : []),
-    ...(c.later.length ? ['', `Not pasted yet, and they bind this work: ${nameList(c.later, c.laterRel)} - your first Read or symbol lookup hands them over, or Read ${c.laterRel} whole.`] : []),
+    ...(c.later.length ? ['', `Not pasted yet, and they bind this ${seat.hold === 'edit' ? 'change' : 'work'}: ${nameList(c.later, c.laterRel)} - ${seat.hold === 'edit' ? 'your first edit is held, and the retry hands them over' : 'your first Read or symbol lookup hands them over'}, or Read ${c.laterRel} whole.`] : []),
   ].join('\n');
 }
 
@@ -1392,10 +1393,10 @@ function main() {
     const main = loadMarks(recordFiles(ctx, input.session_id, 'main'));
     // The architecture seat outside an architecture run keeps getting nothing (the user's ruling of 2026-10-22); every other
     // seat that can write gets the code docs and, with an agent_id, the read mark.
-    const bareType = String(input.agent_type || '').replace(/^alfred-code:/, '');
-    const named = ARCH_SEAT.test(bareType) || JUDGE.test(bareType);
+    const stack = stackSeat(ctx, input.agent_type);
+    const named = ARCH_SEAT.test(stack) || JUDGE.test(stack);
     const seat = seatDocs(ctx, input.agent_type, runKinds(main.run, main.part).arch && runLive(main))
-      || (!named && seatGetsPush(resolved, input.agent_type) ? { defs: CODE_DOCS, kind: 'code' } : null);
+      || (!named && seatGetsPush(resolved, input.agent_type) ? { defs: CODE_DOCS, kind: 'code', hold: 'edit' } : null);
     const docs = seat ? seatPush(ctx, input.agent_id ? files : null, seat, seat.kind === 'architecture' ? { arch: true } : {}) : '';
     const text = [docs, tools, hostText()].filter(Boolean).join('\n\n');
     if (text) emit('SubagentStart', { additionalContext: text });

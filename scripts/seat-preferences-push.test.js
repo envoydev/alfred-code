@@ -106,6 +106,8 @@ test('a preferences file over the shared room gets the pointer only, and the fir
         const session = sessionId();
         const text = pushText(p.hook(startOf(session, 'general-purpose')));
         assert.match(text, /Not pasted yet/, 'the pointer names what did not fit');
+        assert.match(text, /your first edit is held, and the retry hands them over/, 'the pointer names the edit, the one call of this seat that is held');
+        assert.doesNotMatch(text, /first Read or symbol lookup/, 'a seat that is no judge has no held Read');
         assert.doesNotMatch(text, /rule number 14 /, 'the last entry is not pasted');
         assert.ok(isHeld(p.hook(editBy(session, 'src/app.ts', { agent_id: 'g1', agent_type: 'general-purpose' }))), 'the first write is held');
     }
@@ -124,13 +126,60 @@ test('a payload with no agent_id gets the text and no mark', () =>
     finally { p.rm(); }
 });
 
-test('the main session is unchanged: its first edit is still held and handed the docs', () =>
+// What the hook before C10 wrote for this fixture's startup (measured on the parent commit's hook): the main session's start is unchanged.
+const STARTUP_OUTPUT = '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"The user\'s personal preferences - .alfred/docs/preferences/PERSONAL-PREFERENCES.md, pushed at every session start and after each compaction. They bind this session as alfred-preferences.md ranks them:\\n\\n# Personal preferences\\n\\nUpdated: 2026-10-21\\n\\n## P1 - Short answers\\n\\n- Rule: lead with the verdict, at most two bullets.\\n- Scope: every answer"}}';
+const PERSONAL_PREFERENCES = '# Personal preferences\n\nUpdated: 2026-10-21\n\n## P1 - Short answers\n<!-- id: p1 -->\n- Rule: lead with the verdict, at most two bullets.\n- Scope: every answer\n';
+
+test('the main session is unchanged: its startup output is the fixed text and its first edit is still held', () =>
+{
+    const p = project({ 'PERSONAL-PREFERENCES.md': PERSONAL_PREFERENCES, 'PERSONAL-CODE-PREFERENCES.md': PERSONAL, 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE });
+    try
+    {
+        const session = sessionId();
+        const startup = p.hook({ hook_event_name: 'SessionStart', session_id: session, source: 'startup' });
+        assert.strictEqual(startup.stdout, STARTUP_OUTPUT);
+        const held = p.hook(editBy(session, 'src/app.ts', {}));
+        assert.ok(isHeld(held), held.stdout);
+    }
+    finally { p.rm(); }
+});
+
+test('a project seat named like a judge is judged by its own tools line', () =>
 {
     const p = project();
     try
     {
-        const held = p.hook(editBy(sessionId(), 'src/app.ts', {}));
-        assert.ok(isHeld(held), held.stdout);
+        p.write('.claude/agents/my-verifier.md', '---\nname: my-verifier\ntools: Read, Edit, Write\n---\nbody\n');
+        p.write('.claude/agents/my-reader-verifier.md', '---\nname: my-reader-verifier\ntools: Read, Grep\n---\nbody\n');
+        const session = sessionId();
+        assert.match(pushText(p.hook(startOf(session, 'my-verifier', { agent_id: 'v1' }))), PUSH_MARK);
+        assert.ok(!isHeld(p.hook(editBy(session, 'src/app.ts', { agent_id: 'v1', agent_type: 'my-verifier' }))), 'its first write passes');
+        assert.strictEqual(pushText(p.hook(startOf(sessionId(), 'my-reader-verifier', { agent_id: 'v2' }))), '', 'a read-only seat of the same shape gets nothing');
+    }
+    finally { p.rm(); }
+});
+
+test('a tools list written as unindented YAML lines is read', () =>
+{
+    const p = project();
+    try
+    {
+        p.write('.claude/agents/list-reader.md', '---\nname: list-reader\ntools:\n- Read\n- Grep\n---\nbody\n');
+        p.write('.claude/agents/list-editor.md', '---\nname: list-editor\ntools:\n- Read\n- Edit\n---\nbody\n');
+        assert.strictEqual(pushText(p.hook(startOf(sessionId(), 'list-reader'))), '');
+        assert.match(pushText(p.hook(startOf(sessionId(), 'list-editor'))), PUSH_MARK);
+    }
+    finally { p.rm(); }
+});
+
+test('a start with no agent_type gets nothing', () =>
+{
+    const p = project();
+    try
+    {
+        const payload = { hook_event_name: 'SubagentStart', session_id: sessionId(), agent_id: 'g1' };
+        assert.strictEqual(p.hook(payload).stdout, '');
+        assert.strictEqual(p.hook({ ...payload, agent_type: '' }).stdout, '');
     }
     finally { p.rm(); }
 });
@@ -147,5 +196,9 @@ test('seatGetsPush decides by seat kind and type', () =>
     assert.strictEqual(seatGetsPush(frontmatter('tools: *\n'), 'x'), true);
     assert.strictEqual(seatGetsPush(frontmatter(''), 'x'), true);
     assert.strictEqual(seatGetsPush(frontmatter('tools: Read, Grep\n'), 'alfred-code:aspnet-verifier'), true, 'a judge, as today');
-    assert.strictEqual(seatGetsPush(frontmatter('tools: Read\n'), 'architecture-analyzer'), true, 'the architecture seat, as today');
+    assert.strictEqual(seatGetsPush(frontmatter('tools: Read\n'), 'alfred-code:architecture-analyzer'), true, 'the architecture seat, as today');
+    assert.strictEqual(seatGetsPush(frontmatter('tools: Read\n'), 'my-verifier'), false, 'a bare name is no stack judge here: its own tools decide');
+    assert.strictEqual(seatGetsPush(frontmatter('tools: Read, Edit, Write\n'), 'my-verifier'), true);
+    assert.strictEqual(seatGetsPush(frontmatter('tools:\n- Read\n- Grep\n'), 'x'), false);
+    for (const type of ['', undefined, null]) assert.strictEqual(seatGetsPush('other', type), false, `no type: ${type}`);
 });

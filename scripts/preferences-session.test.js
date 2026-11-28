@@ -1011,7 +1011,7 @@ test('G5b: the output-scoring seat is handed the code docs at its start, like a 
         assert.match(String(out(r).additionalContext || ''), /put behaviour on the type/);
         // C10: a seat of another plugin has no definition here, so it is handed the docs as any seat that may write - but it is no judge: its Reads are never held.
         const foreign = sid();
-        p.hook({ hook_event_name: 'SubagentStart', session_id: foreign, agent_id: 'agent-8', agent_type: 'other:output-scoring' });
+        assert.match(String(out(p.hook({ hook_event_name: 'SubagentStart', session_id: foreign, agent_id: 'agent-8', agent_type: 'other:output-scoring' })).additionalContext || ''), /a handler validates/, 'it gets the push');
         assert.ok(!heldRead(p.hook(pre('Read', { file_path: path.join(p.root, 'src/app.ts') }, foreign, { agent_id: '8', agent_type: 'other:output-scoring' }))));
     }
     finally { p.rm(); }
@@ -1033,6 +1033,7 @@ test('G5: a solution designer and a verifier are handed the code docs at their s
         const v = String(out(p.hook(sub('alfred-code:aspnet-verifier'))).additionalContext || '');
         assert.match(v, /put behaviour on the type/, 'a verifier is handed them too');
         assert.match(v, /a handler validates/);
+        p.write('.claude/agents/web-angular-verifier.md', '---\nname: web-angular-verifier\ntools: Read, Grep\n---\nbody\n'); // the project's own read-only agent of that name
         assert.strictEqual(p.hook(sub('web-angular-verifier')).stdout, '', 'bare, with no stamp recording the copy: no seat of the stack\'s');
         p.write('.claude/alfred-code.stamp', 'seats-route: copy\nlibrary-agents: web-angular-verifier=0a1b\n');
         assert.match(String(out(p.hook(sub('web-angular-verifier'))).additionalContext || ''), /a handler validates/, 'bare too, where the stamp records the copy');
@@ -1225,6 +1226,7 @@ test('a bare seat name is the stack\'s own only where the install stamp records 
         const sub = (type, s) => p.hook({ hook_event_name: 'SubagentStart', session_id: s, agent_id: 'b1', agent_type: type });
         const read = (type, s) => p.hook(pre('Read', { file_path: path.join(p.root, 'src/app.ts') }, s, { agent_id: 'b1', agent_type: type }));
         const pushedTo = (type) => { const s = sid(); const r = sub(type, s); return { push: r.stdout !== '', held: heldRead(read(type, s)) }; };
+        for (const own of ['security-auditor', 'aspnet-verifier', 'wpf-verifier']) p.write(`.claude/agents/${own}.md`, `---\nname: ${own}\ntools: Read, Grep\n---\nbody\n`); // the project's own read-only agents
         assert.deepStrictEqual(pushedTo('security-auditor'), { push: false, held: false }, 'no stamp: a project\'s own agent');
         assert.deepStrictEqual(pushedTo('alfred-code:security-auditor'), { push: true, held: true }, 'the plugin spelling needs no stamp');
         p.write('.claude/alfred-code.stamp', 'seats-route: plugin\nlibrary-agents: \n');
@@ -1400,6 +1402,7 @@ test('architecture-analyzer is handed the architecture entries alone in an archi
         assert.ok(!texts.some((t) => /put behaviour on the type/.test(t)), 'the code doc never');
         const start = (session, extra = who) => big.hook({ hook_event_name: 'SubagentStart', session_id: session, ...extra });
         assert.match(String(out(start(qualityRun(big), { agent_id: 'x', agent_type: 'other:architecture-analyzer' })).additionalContext || ''), /put behaviour on the type/, 'another plugin\'s analyzer is no architecture seat (C10: it is handed the code docs as a seat that may write)');
+        big.write('.claude/agents/architecture-analyzer.md', '---\nname: architecture-analyzer\ntools: Read, Grep\n---\nbody\n'); // the project's own read-only agent of that name
         assert.strictEqual(start(qualityRun(big), { agent_id: 'x', agent_type: 'architecture-analyzer' }).stdout, '', 'bare with no stamp: nothing');
         // Outside a quality run - none, the map capture typed or called, a scoping pass - nothing, and no read is held.
         const quiet = (s, label) => {
