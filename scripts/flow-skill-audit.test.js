@@ -567,6 +567,8 @@ test('N04: the asked push template in task-solve has a reason on each option, an
     assert.match(m[2], /^\s*- 'Push now \(Recommended\)' - the checkpoint's publish half takes this answer as its confirmation$/);
     assert.match(m[3], /^\s*- 'Hold - push later' - nothing leaves this machine$/);
     assert.ok(!solve.includes('Doc-drift awareness'), 'the line left the body');
+    assert.ok(flat(solve).includes('then the purge count and the doc-drift close line (`references/step-mechanics.md`)'), "step 6 still cues the doc-drift close line");
+    assert.ok(/^   - /.test(m[2]) && /^   - /.test(m[3]), 'the option lines share one indent');
     assert.ok(read('stack/skills/task-solve/references/step-mechanics.md').includes('**Doc-drift awareness** - one line at most in the close report, never auto-run'), 'and sits in step-mechanics');
     assert.strictEqual(shared()['flow-doc-drift-awareness'].owner.file, 'stack/skills/task-solve/references/step-mechanics.md');
 });

@@ -214,7 +214,7 @@ line names: a POINTER for the user to type, never a call.
 
 6. **CLOSE** - the done gate
    (load `habits-done-gate` - each acceptance criterion, and each Verify or Done-when bullet of a
-   card the ask cited, demonstrated by a run this session, quoted). Record the close: `complete`, `suite:` the final gate's command and quoted result (`--with-open` if a task stays open). The evidence table and `Deviations:` are read from `show --full` - its `## Tasks` and `## Deviations` sections. Purge the notes - `node .claude/hooks/handoff.js purge <feature>` - then the purge count (`references/step-mechanics.md`).
+   card the ask cited, demonstrated by a run this session, quoted). Record the close: `complete`, `suite:` the final gate's command and quoted result (`--with-open` if a task stays open). The evidence table and `Deviations:` are read from `show --full` - its `## Tasks` and `## Deviations` sections. Purge the notes - `node .claude/hooks/handoff.js purge <feature>` - then the purge count and the doc-drift close line (`references/step-mechanics.md`).
    The close stop's `Result:` line carries the receipts - `Completed <date>, notes purged: <names|none>` -
    plus `Deviations: <each Decisions entry that departs from the Asked: words, one apiece | none>`,
    under AUTO the user's first sight of them.
@@ -250,9 +250,8 @@ line names: a POINTER for the user to type, never a call.
 
    ```ask
    You asked for this push: <sha> to <remote>.
-      - 'Push now (Recommended)' - the checkpoint's publish half takes this answer as its confirmation
+   - 'Push now (Recommended)' - the checkpoint's publish half takes this answer as its confirmation
    - 'Hold - push later' - nothing leaves this machine
-
    ```
 
    New scope arriving in-chat after `Completed:` is a NEW cycle in a NEW plan folder (a completed plan takes no further write
