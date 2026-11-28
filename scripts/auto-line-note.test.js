@@ -28,7 +28,7 @@ const HOUR = 3600 * 1000;
 const iso = (ms) => new Date(ms).toISOString();
 
 // One project, one session; `marker` is the run marker's start (ms) or null, `rowsAt` the auto-answer rows as [ms, answers].
-function stop(reply, { marker = null, rows = [], typedAfterRows = false } = {})
+function stop(reply, { marker = null, rows = [], typedAfterRows = false, extra = {} } = {})
 {
     const root = fs.mkdtempSync(path.join(TMP, 'proj-'));
     const sid = `s${++n}`;
@@ -46,7 +46,7 @@ function stop(reply, { marker = null, rows = [], typedAfterRows = false } = {})
     lines.push({ type: 'assistant', timestamp: at, message: { id: `m${n}`, role: 'assistant', content: [{ type: 'text', text: reply }] } });
     fs.writeFileSync(t, lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
     const r = spawnSync(process.execPath, [HOOK], { encoding: 'utf8', cwd: root,
-        input: JSON.stringify({ hook_event_name: 'Stop', session_id: sid, cwd: root, transcript_path: t, last_assistant_message: reply }),
+        input: JSON.stringify({ hook_event_name: 'Stop', session_id: sid, cwd: root, transcript_path: t, last_assistant_message: reply, ...extra }),
         env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'log-')) } });
     let context = '';
     try { context = (JSON.parse(r.stdout).hookSpecificOutput || {}).additionalContext || ''; } catch { /* no JSON: no note */ }
@@ -106,6 +106,7 @@ test('with no run marker a row anywhere in the session counts', () =>
     assert.strictEqual(context, '');
 });
 
+// The check reads no transcript: a typed question writes no run marker and no ledger row, so the window is unchanged. The test pins that.
 test('a mid-run typed question between the row and the close gets none', () =>
 {
     const { context } = stop("Fixed.\n\nAuto: 'Which?' -> 'A'\n", { marker: now - 2 * HOUR, rows: [[now - HOUR, ONE]], typedAfterRows: true });
@@ -143,4 +144,20 @@ test('unrecordedAutoLines counts lines against answers, not rows (the exported c
     assert.strictEqual(unrecordedAutoLines('auto: a -> b', [{ kind: 'auto-ask-waits' }]), true);
     assert.strictEqual(unrecordedAutoLines('```\nauto: a -> b\n```', []), false);
     assert.strictEqual(unrecordedAutoLines('no such line', []), false);
+});
+
+test('the continuation of a note carries no second note (stop_hook_active, fix 1)', () =>
+{
+    const reply = "Fixed.\n\nAuto: 'Which?' -> 'A'\n";
+    assert.ok(stop(reply).context.includes(NOTE), 'control: the first Stop gets the note');
+    const { r, context, out } = stop(reply, { extra: { stop_hook_active: true } });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.strictEqual(context, '', out);
+});
+
+test("a seat's Stop gets no note (agent_id, fix 2)", () =>
+{
+    const { r, context, out } = stop("Fixed.\n\nAuto: 'Which?' -> 'A'\n", { extra: { agent_id: 'seat-1' } });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.strictEqual(context, '', out);
 });

@@ -2691,8 +2691,10 @@ if (payload.hook_event_name === 'Stop') {
   const tail = prose.slice(-1500); // the offer lives at the end of the turn
   // C16: one note when the close's `auto:` lines outnumber the auto-answer rows since the run marker's start (the session's start
   // with no marker). Context on exit 0 only (Stop's `hookSpecificOutput.additionalContext`, code.claude.com/docs/en/hooks) - never an
-  // exit 2 or a `decision: block`. It is written in the exit handler, since this Stop path has many exits and no other stdout write.
-  if (!payload.agent_id) {
+  // exit 2 or a `decision: block`. The note continues the turn once, like a hold, but is not shown as an error; its own continuation
+  // (`stop_hook_active`) and a seat's Stop (a seat's reply goes to its dispatcher) get none. It is written in the exit handler,
+  // since this Stop path has many exits and no other stdout write.
+  if (!payload.agent_id && !payload.stop_hook_active) {
     try {
       if (unrecordedAutoLines(text, autoAnswerRowsSince(runStartMs()))) {
         process.on('exit', (code) => {
