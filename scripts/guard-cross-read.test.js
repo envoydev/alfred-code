@@ -747,3 +747,34 @@ test('a copy to a path past the workspace still asks beside the sqlite3 and inte
   asks(fx, bash(`echo hi > ${relative}.out`), {}, 'a redirect past the workspace');
   passes(fx, bash('cp x x2'), {}, 'a copy inside the project');
 }));
+
+// CI Windows leg, 2026-11-28: the runner's temp folder is an 8.3 short name (RUNNER~1) the target's real path never matches,
+// so a system folder the environment names through another spelling of the same place is still that folder.
+test('L1-16: a system folder the environment names through another spelling of the same place (a link, a short name) is still exempt', withFixture((fx) => {
+  const dir = path.join(fx.outer, 'Program Files');
+  fs.mkdirSync(dir, { recursive: true });
+  const tool = path.join(dir, 'tool.py');
+  fs.writeFileSync(tool, 'x');
+  const link = path.join(fx.outer, 'pf-link');
+  fs.symlinkSync(dir, link, 'junction');
+  passes(fx, bash(`python3 "${tool}"`), { ProgramFiles: link }, 'ProgramFiles names the folder through a link');
+}));
+
+// CI Windows leg, 2026-11-28: a checkout outside HOME (D:\a on the runner) made the sensitive-data runner's own call - node on a
+// script in the hooks folder - an ask naming 'the installed plugins' own code'. Running the plugin's own scripts writes nothing.
+test("a node call on a script in the guards' own hooks folder passes wherever the plugin lives, HOME or not", withFixture((fx) => {
+  const runner = path.join(path.dirname(GUARD), 'guard-secret-value.js');
+  passes(fx, bash(`node "${runner}" --with-sensitive -- "true"`), {}, 'the runner call, the plugin outside HOME');
+  const { db } = outsideDb(fx);
+  asks(fx, bash(`node erase.js ${db}`), {}, 'another path past the workspace still asks');
+}));
+
+test("a hook file handed to another script as an argument is still judged, not taken for the runner", withFixture((fx) => {
+  const hook = path.join(path.dirname(GUARD), 'guard-secret-value.js');
+  const outside = path.join(fx.outer, 'tools', 'rewrite.js');
+  fs.mkdirSync(path.dirname(outside), { recursive: true });
+  fs.writeFileSync(outside, 'x');
+  asks(fx, bash(`node "${outside}" "${hook}"`), {}, 'a script past the workspace that is handed a hook file');
+  fx.put('work/proj/rewrite.js');
+  asks(fx, bash(`node rewrite.js "${hook}"`), {}, 'a project script handed a hook file past the workspace');
+}));

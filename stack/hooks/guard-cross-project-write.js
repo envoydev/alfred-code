@@ -1078,6 +1078,7 @@ function interpreterPaths(argv, cwd, valueOptions = new Set(), exists = fs.exist
       continue;
     }
     if (at > 0 && argv[at - 1].startsWith('-') && word && isRootValue(word)) continue;
+    if (word && paths.script === undefined) paths.script = word;
     if (word && exists(resolveTarget(nativePath(expandTilde(word)), cwd))) paths.push(word);
   }
   return paths;
@@ -1085,10 +1086,12 @@ function interpreterPaths(argv, cwd, valueOptions = new Set(), exists = fs.exist
 const interpreterFamily = (name) => Object.keys(INTERPRETER_FAMILY).find((family) => INTERPRETER_FAMILY[family].test(name)) || INTERPRETER_SHELL_FAMILY;
 // A tool's own folder is no project: a system folder, and a dot-folder or toolchain folder under the home folder (the read
 // half's zone test says which folders under HOME hold projects).
+const HOOKS_DIR = realish(__dirname);
 function toolOwnedPath(abs) {
   const t = realish(abs);
   if (process.platform !== 'win32' && SYSTEM_TOOL_ROOTS.some((root) => inside(t, root))) return true;
-  if (WINDOWS_SYSTEM_ROOT_ENV.some((name) => path.isAbsolute(process.env[name] || '') && inside(t, process.env[name]))) return true;
+  // the folder as the disk spells it: an environment value may name it through a link or a Windows 8.3 short name (RUNNER~1)
+  if (WINDOWS_SYSTEM_ROOT_ENV.some((name) => path.isAbsolute(process.env[name] || '') && inside(t, realish(process.env[name])))) return true;
   return Boolean(crossRead && HOME_REAL && inside(t, HOME_REAL) && fold(t) !== fold(HOME_REAL) && !inReadZone(t));
 }
 // The arguments a command word's own words carry, dequoted and expanded the way `judge` expands them.
@@ -1122,9 +1125,13 @@ function judgeDatabaseAndInterpreterCalls() {
       }
       const base = anchorAt(index);
       if (!base) continue;
-      for (const word of interpreterPaths(argv, base, INTERPRETER_VALUE_OPTIONS[interpreterFamily(cand.name)])) {
+      const paths = interpreterPaths(argv, base, INTERPRETER_VALUE_OPTIONS[interpreterFamily(cand.name)]);
+      for (const word of paths) {
         const abs = resolveTarget(nativePath(expandTilde(word)), base);
         if (allowed(abs) || toolOwnedPath(abs) || readAsked(word, index)) continue;
+        // the script the interpreter runs from the guards' own folder (the sensitive-data runner) runs plugin code and writes
+        // nothing, wherever the plugin lives; a hook file passed as an ARGUMENT is still judged
+        if (word === paths.script && inside(realish(abs), HOOKS_DIR)) continue;
         judge(word, index, `a ${cand.name} ${INTERPRETER_PATH_WHAT}`, cand.name);
       }
     }
