@@ -9,7 +9,13 @@ const REPLY_MAX_LEAD_SENTENCES = 3;
 const MIN_SENTENCE_WORDS = 3;
 // The lift words of the budget line itself (BUDGET_TEXT in communication-reminder.js), so the note never contradicts it.
 const LIFT_PATTERN = /\b(?:in detail|step by step|teach me|walk me through|eli5|write a plan)\b/i;
-const CLOSE_LINE_PATTERN = /^\s*(?:[-*]\s*)?\*{0,2}Checks:/m;
+// The field lines the communication rule and the skills require in a close. One closed set: a line that starts with one
+// of these labels (after list markers, spaces and bold marks) is outside the budget, with its wrapped lines.
+const FIELD_LABELS = Object.freeze(['Result', 'Progress', 'Leftovers', 'Deferred by you', 'Checks', 'Cleanup']);
+const CLOSE_LABEL = 'Checks';
+const labelPattern = (labels) => new RegExp(`^\\s*(?:[-*]\\s*)?\\*{0,2}(?:${labels.join('|')}):`);
+const FIELD_LINE_PATTERN = labelPattern(FIELD_LABELS);
+const CLOSE_LINE_PATTERN = new RegExp(labelPattern([CLOSE_LABEL]).source, 'm');
 const CODE_BLOCK_PATTERN = /```[\s\S]*?```/g;
 const INLINE_CODE_PATTERN = /`[^`]*`/g;
 const INLINE_CODE_STAND_IN = 'X';
@@ -17,7 +23,7 @@ const TABLE_ROW_START = '|';
 const HEADING_START = '#';
 const BULLET_PATTERN = /^\s*(?:[-*]|\d+[.)])\s+/;
 const CONTINUATION_PATTERN = /^[ \t]+\S/;
-const SENTENCE_BREAK = /(?<=[.!?:])\s+/;
+const SENTENCE_BREAK = /(?<=[.!?])\s+/;
 const WORD_GAP = /\s+/;
 const NEWLINE = '\n';
 // A turn nobody typed opens with one of these where its transcript entry records no origin.
@@ -29,10 +35,21 @@ const TEXT_PART = 'text';
 const TURN_RUNNING_PARTS = Object.freeze(['tool_use', 'tool_result']);
 const TRANSCRIPT_TAIL_STEPS = Object.freeze([512 * 1024, 2 * 1024 * 1024, 8 * 1024 * 1024, 32 * 1024 * 1024]);
 
+// The lines that are not field lines; a field line's wrapped lines - indented, up to the next blank line - go with it.
+function withoutFieldLines(text) {
+  let inField = false;
+  return text.split(NEWLINE).filter((line) => {
+    if (line.trim() === '') inField = false;
+    else if (FIELD_LINE_PATTERN.test(line)) inField = true;
+    else if (!(inField && CONTINUATION_PATTERN.test(line))) inField = false;
+    return !inField;
+  }).join(NEWLINE);
+}
+
 function proseOf(reply) {
   const withoutBlocks = reply.replace(CODE_BLOCK_PATTERN, '');
   const withoutTables = withoutBlocks.split(NEWLINE).filter((line) => !line.trimStart().startsWith(TABLE_ROW_START)).join(NEWLINE);
-  return withoutTables.replace(INLINE_CODE_PATTERN, INLINE_CODE_STAND_IN);
+  return withoutFieldLines(withoutTables).replace(INLINE_CODE_PATTERN, INLINE_CODE_STAND_IN);
 }
 
 // The sentences outside the bullets; a bullet's wrapped lines - indented, up to the next blank line - are the bullet's.
