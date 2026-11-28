@@ -1205,7 +1205,9 @@ function interpreterPathWords(command) {
   const words = [];
   for (const w of shellReader.commandWords(command)) {
     if (w.argv.some((a) => INLINE_FLAG.test(a))) return [];
-    words.push(...w.argv.filter((a) => !a.startsWith('-') && /[\\/]/.test(a) && !/^[a-z][\w+.-]*:\/\//i.test(a)));
+    // L1-17: a `--name=value` flag names its value as the next word would
+    words.push(...w.argv.map((a) => (a.startsWith('--') ? a.replace(/^--[^=\s]*=/, '') : a))
+      .filter((a) => !a.startsWith('-') && /[\\/]/.test(a) && !/^[a-z][\w+.-]*:\/\//i.test(a)));
   }
   return words;
 }

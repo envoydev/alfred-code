@@ -2648,6 +2648,18 @@ test('B16: a write under .alfred/ draws no docs hold, a stdin script naming test
   } finally { r.rm(); }
 });
 
+// L1-17 (fix wave 2026-11-28): a `--out=.alfred/...` flag value names the path as `--out .alfred/...` does.
+test('L1-17: a --name=<path> flag value under .alfred/ draws no docs hold, and one aimed at a project file still does', () => {
+  const r = prefsRepo();
+  try {
+    const script = (flags) => `python3 -I - ${flags} <<'PYEOF'\nimport sys\nopen(sys.argv[2], 'w').write('see tests/ for the cases')\nPYEOF`;
+    assert.ok(!blocked(r.hook(pre('Bash', { command: script('--out=.alfred/state/sessions/scoring/x.draft.md') }, sid()))), 'the one-word flag over the plugin state');
+    assert.ok(!blocked(r.hook(pre('Bash', { command: script('--out .alfred/state/sessions/scoring/x.draft.md') }, sid()))), 'the two-word flag (control)');
+    assert.ok(denied(r.hook(pre('Bash', { command: script('--out=src/Api/Orders/Refund.cs') }, sid()))), 'the same flag aimed at a project file is held');
+    assert.ok(denied(r.hook(pre('Bash', { command: script('--out=.alfred/state/x.md --copy=src/Api/Orders/Refund.cs') }, sid()))), 'one project path among the flag values is held');
+  } finally { r.rm(); }
+});
+
 // Wave T16: `.alfred/docs/` holds the user's own docs, a project file in this respect (layout.underStateOnly); only the rest of
 // `.alfred/` is the plugin's state.
 test('B16: a write under .alfred/docs/ gets the docs hold, and one under .alfred/state/ still does not', () => {
