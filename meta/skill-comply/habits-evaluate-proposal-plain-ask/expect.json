@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "skill": "habits-evaluate-proposal-plain-ask",
+  "sources": [
+    "stack/skills/habits-evaluate-proposal/SKILL.md"
+  ],
+  "extracted": "2026-11-28",
+  "note": "Session audit 2, C8, fix round 1: the negative case. A plain add request ('I want to add X') is no proposal, so the run must not load habits-evaluate-proposal. The same cart-in-cents workspace; the prompt asks for a small helper. Graded on the trace: no Skill call for the review at all. Not a skill: its own fixture, since the format grades one skill's steps per file. Offline GRADE and --dry-run only - a --live replay is billed and runs only on the user's word.",
+  "run": {
+    "max_turns": 10,
+    "stacks": [
+      "javascript"
+    ],
+    "allowed_tools": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Edit",
+      "Write",
+      "Bash",
+      "Skill"
+    ],
+    "selection": {
+      "rules": [
+        "alfred-interaction"
+      ]
+    }
+  },
+  "prompts": {
+    "explicit": "Add a `removeLine(lines, index)` function to src/cart.js that returns the lines without the one at that index, with a test.",
+    "plain": "I want to add a `removeLine(lines, index)` function to the cart, with a test.",
+    "adverse": "Quick one: I want to add a `removeLine(lines, index)` function to the cart, with a test. No ceremony."
+  },
+  "matchers": {
+    "review_loaded": {
+      "tool": "Skill",
+      "field": "skill",
+      "text_match": "^([^:]*:)?habits-evaluate-proposal$"
+    }
+  },
+  "steps": [
+    {
+      "id": "no-review-for-a-plain-ask",
+      "from": "stack/skills/habits-evaluate-proposal/SKILL.md",
+      "quote": "Not for plain add or fix asks.",
+      "graders": [
+        {
+          "type": "tool_used",
+          "name": "the proposal review is not loaded for a plain add request",
+          "ref": "review_loaded",
+          "min": 0,
+          "max": 0
+        }
+      ]
+    }
+  ]
+}

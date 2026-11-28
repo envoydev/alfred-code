@@ -1097,25 +1097,47 @@ test('a partial --selection on install takes the locked always-on rules and skil
     assert.deepStrictEqual(steps[1], []);
 });
 
-// Session audit 2 (C8): habits-evaluate-proposal is a new always skill. An install of the last release does not hold it,
-// so the update must add it: an install, the skill dropped from disk (what an older install looks like), then the update.
+// Session audit 2 (C8): habits-evaluate-proposal is a new always skill. An install of the last release holds neither
+// its folder nor its name in the stamp's picked-skills and library-skills lines, so the update must add it: an install,
+// the skill dropped from disk and from both stamp lines (what an older install looks like), then the update.
 test('an update over an install that lacks a newly added always skill copies it back', require('./seed-sandbox.js').POSIX_ONLY, () =>
 {
     const { seedRun } = require('./seed-sandbox.js');
+    const stamp = require('./install/stamp.js');
     const NEW = 'habits-evaluate-proposal';
+    const shipped = fs.readFileSync(path.join(ROOT_DIR, 'stack', 'skills', NEW, 'SKILL.md'), 'utf8');
     const skillAt = (repo) => path.join(repo, '.claude', 'skills', NEW);
-    let after = null;
+    const stampOf = (repo) => stamp.stampPath({ scope: 'project', projectRoot: repo });
+    const copied = (repo) => { try { return fs.readFileSync(path.join(skillAt(repo), 'SKILL.md'), 'utf8') === shipped; } catch { return false; } };
+    const named = (repo) => fs.readFileSync(stampOf(repo), 'utf8').split('\n').filter((l) => /^(picked-skills|library-skills):/.test(l) && l.includes(NEW)).length;
+    const state = [];
     const { steps, outs } = seedRun(['install', 'update', 'update'], 'skill csharp\nrule markdown-docs\nhook none\n', {
         plugins: JSON.stringify([{ id: 'alfred-code@envoydev', version: '2.0.0', scope: 'project', enabled: true }]),
         args: [['--scope', 'project'], ['--scope', 'project', '--installed-only'], ['--scope', 'project', '--installed-only']],
         each: (repo) =>
         {
-            const here = fs.existsSync(path.join(skillAt(repo), 'SKILL.md'));
-            if (after === null) { fs.rmSync(skillAt(repo), { recursive: true, force: true }); after = 'dropped'; }
-            return here;
+            state.push({ copied: copied(repo), named: named(repo) });
+            if (state.length === 1)
+            {
+                // the older install: no folder, and no name in the stamp's picked-skills and library-skills lines
+                fs.rmSync(skillAt(repo), { recursive: true, force: true });
+                const file = stampOf(repo);
+                const text = fs.readFileSync(file, 'utf8').split('\n').map((l) =>
+                {
+                    if (!/^(picked-skills|library-skills):/.test(l)) return l;
+                    const at = l.indexOf(': ');
+                    return l.slice(0, at + 2) + l.slice(at + 2).split(',').filter((e) => e !== NEW && !e.startsWith(`${NEW}=`)).join(',');
+                }).join('\n');
+                fs.writeFileSync(file, text);
+                assert.strictEqual(named(repo), 0, 'the stamp no longer names the skill');
+            }
+            return null;
         },
     });
-    assert.deepStrictEqual(steps, [true, true, true], 'on disk after the install, after the update that follows the drop and after the re-run');
+    assert.deepStrictEqual(state[0], { copied: true, named: 2 }, `the install copies it and names it in both picked-skills and library-skills: ${JSON.stringify(state[0])}`);
+    assert.strictEqual(state[1].copied, true, 'the update copies the shipped SKILL.md back, byte for byte');
+    assert.strictEqual(state[1].named, 2, 'the update names it in the stamp again, in both lines');
+    assert.deepStrictEqual(state[2], state[1], 'a re-run changes nothing');
     assert.match(outs[1], new RegExp(`skill ${NEW}`), 'the update names it');
 });
 

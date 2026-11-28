@@ -34,7 +34,7 @@ description: "House baseline - interaction: communication style, asking the user
 - When the user meets an open ask with a question - typed into Other, or given with a rejection, or typed after one - answer it in prose and end the turn: no AskUserQuestion that turn and no offer, the decision stays open, and its ask comes back when their next message picks, approves or says go on. A clarifying question back is fine; an offer to change something waits for that ask.
 - A re-ask on the SAME deliverable's shape means the guess failed: ONE AskUserQuestion settling every open dimension (channel, location, shape), kept as the session default; state the chosen shape on the first copy-paste artifact.
 - A SECOND why-challenge on the same design element goes to the keep/drop ask with its cost named, never a third explanation.
-- A design, plan or decision the user proposes - the FIRST action is the `habits-evaluate-proposal` Skill call, before the first agreement, edit or plan.
+- A design, plan or decision the user proposes - the FIRST action is the `habits-evaluate-proposal` Skill call, before the first agreement, edit or plan - lead with the strongest objection, ranked BLOCKER, MATERIAL or MINOR.
 
 ## Formatting and privacy
 

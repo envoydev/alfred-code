@@ -1,6 +1,6 @@
 ---
 name: habits-evaluate-proposal
-description: "Use when the user proposes a design, plan or decision - 'I want to', 'what if we', 'let us use X'. Not for lookups, syntax, facts or casual talk."
+description: "Use when the user proposes a design, plan or decision - 'what if we', 'how about', 'I think we should', 'let's use X instead'. Not for plain add or fix asks."
 user-invocable: false
 ---
 
@@ -12,7 +12,6 @@ An idea the user proposes is a claim, not a task. The review runs before the fir
 
 - A design, plan or decision the user proposes: an architecture, a data shape, a library or tool choice, a rollout, a naming or process change, a 'what if we' or 'let us use X'.
 - The first action of the reply, before any agreement, edit or plan.
-- Not for lookups, syntax, facts and casual talk, which are exempt.
 
 ## The review
 

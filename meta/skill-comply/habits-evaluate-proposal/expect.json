@@ -25,7 +25,7 @@
     {
       "id": "skill-first",
       "from": "stack/rules/alfred-interaction.md",
-      "quote": "A design, plan or decision the user proposes - the FIRST action is the `habits-evaluate-proposal` Skill call, before the first agreement, edit or plan.",
+      "quote": "A design, plan or decision the user proposes - the FIRST action is the `habits-evaluate-proposal` Skill call, before the first agreement, edit or plan - lead with the strongest objection, ranked BLOCKER, MATERIAL or MINOR.",
       "graders": [
         {
           "type": "tool_order",

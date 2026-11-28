@@ -459,7 +459,17 @@ test('the proposal review lives in habits-evaluate-proposal', () =>
     ]) assert.ok(skill.includes(held), `the skill carries '${held.slice(0, 50)}'`);
     const interaction = squash(read('stack/rules/alfred-interaction.md'));
     assert.ok(!interaction.includes('## Evaluating proposals'), 'the section left the rule');
-    for (const moved of ['strongest objection', 'sunk cost', 'at most 3 pros']) assert.ok(!interaction.includes(moved), `the rule no longer carries '${moved}'`);
+    for (const moved of ['sunk cost', 'at most 3 pros', 'Push-back without new facts']) assert.ok(!interaction.includes(moved), `the rule no longer carries '${moved}'`);
+    // fix round 1: the pointer keeps the review's cue, so a session that makes no Skill call still leads with the objection
+    assert.ok(interaction.includes('the FIRST action is the `habits-evaluate-proposal` Skill call, before the first agreement, edit or plan - lead with the strongest objection, ranked BLOCKER, MATERIAL or MINOR'), 'the pointer carries the cue');
+    // fix round 1: 'I want to' fired on plain requests; the trigger is a proposal, with the plain add or fix ask excluded
+    const head = read('stack/skills/habits-evaluate-proposal/SKILL.md');
+    const trigger = /^description: "?(.+?)"?$/m.exec(head)[1];
+    assert.ok(!trigger.includes('I want to'), 'no plain-request trigger');
+    for (const cue of ["'what if we'", "'how about'", "'I think we should'", 'Not for plain add or fix asks']) assert.ok(trigger.includes(cue), `the description carries ${cue}`);
+    const body = head.slice(head.indexOf('## When to use'), head.indexOf('## The review'));
+    assert.ok(!/^- Not for/m.test(body), 'the exemption lives in the moved text, not a second bullet');
+    assert.match(read('docs/alfred-code.html'), /\["alfred-interaction", "\(none - always on\)", "[^"]*habits-evaluate-proposal/, 'the inventory row names the pointer');
     const rec = JSON.parse(read('meta/recommendations.json'));
     assert.ok(rec.always.skills.includes('habits-evaluate-proposal'), 'in the always set');
 });

@@ -279,6 +279,18 @@ test('proposal review: the Skill call first and a ranked objection lead pass; an
     assert.deepStrictEqual(failing(sc.grade(exp, proposalRun({ reply: 'Great idea, simpler than cents. Go ahead.' }))).sort(), ['no-sunk-cost-agreement', 'objection-first']);
 });
 
+test('proposal review, negative case: a plain add request that loads the review fails, one that does not passes', () =>
+{
+    const exp = expectOf('habits-evaluate-proposal-plain-ask');
+    const run = (loaded) => jsonl([user('I want to add a `removeLine(lines, index)` function to the cart, with a test.'), ...(loaded ? [tool('Skill', { skill: loaded })] : []),
+        tool('Edit', { file_path: '/work/project/src/cart.js', old_string: 'module.exports', new_string: 'x' }), say('Added removeLine and its test.')]);
+    assert.deepStrictEqual(failing(sc.grade(exp, run(null))), []);
+    assert.deepStrictEqual(failing(sc.grade(exp, run('habits-evaluate-proposal'))), ['no-review-for-a-plain-ask']);
+    assert.deepStrictEqual(failing(sc.grade(exp, run('alfred-code:habits-evaluate-proposal'))), ['no-review-for-a-plain-ask'], 'the core-scoped spelling');
+    // the hedged fixture grades the same steps as the base one
+    assert.deepStrictEqual(failing(sc.grade(expectOf('habits-evaluate-proposal-hedged'), proposalRun())), []);
+});
+
 // --- the root-cause loop ----------------------------------------------------------------------------
 // R72's owed A/B: a run that reaches a FAILURE and a fix before any stop, so 'one hypothesis per
 // change' and 'verification quoted before done' are graded on what the run did, not on a gate.
@@ -647,7 +659,7 @@ test('check: every shipped expectation is valid and its quotes are still in the 
     // answer-budget is no skill: the interaction rule's budget the answer hook injects (audit 2026-10-14 RU06).
     // The task-* fixtures beside task-solve are the 2026-11-03 usage audit's A/Bs (U28-U32), one edited step each.
     // The tier4-* fixtures are the 2026-10-30 audit's Tier 4 rule A/Bs (RU-05 to RU-20), each bound to its fixture.
-    const base = ['answer-budget', 'answer-budget-asked', 'background-wait', 'csharp', 'habits-code-comments', 'habits-commit-checkpoint', 'habits-evaluate-proposal', 'habits-execution-strategy', 'habits-root-cause', 'mode-output-scoring', 'task-design-measured-ask', 'task-solve', 'task-solve-asked-push', 'task-solve-auto-close', 'task-solve-findings-ask', 'task-verify-code-surface',
+    const base = ['answer-budget', 'answer-budget-asked', 'background-wait', 'csharp', 'habits-code-comments', 'habits-commit-checkpoint', 'habits-evaluate-proposal', 'habits-evaluate-proposal-hedged', 'habits-evaluate-proposal-plain-ask', 'habits-execution-strategy', 'habits-root-cause', 'mode-output-scoring', 'task-design-measured-ask', 'task-solve', 'task-solve-asked-push', 'task-solve-auto-close', 'task-solve-findings-ask', 'task-verify-code-surface',
         'tier4-compaction', 'tier4-db-test', 'tier4-docs-placement', 'tier4-house-voice', 'tier4-red-build', 'tier4-secret-handoff', 'tier4-secret-run'];
     const listed = sc.listSkills();
     for (const name of base) assert.ok(listed.includes(name), `${name} is still shipped`);
