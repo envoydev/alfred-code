@@ -182,6 +182,39 @@ test('scanOldNameReferences reads tracked text files under the size cap, skips b
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+function scanProject(files, options = {})
+{
+    const dir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'old-name-'));
+    try
+    {
+        execFileSync('git', ['init', '-q'], { cwd: dir });
+        for (const [rel, body] of files) { fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true }); fs.writeFileSync(path.join(dir, rel), body); }
+        execFileSync('git', ['add', '.'], { cwd: dir });
+        return scanOldNameReferences({ projectRoot: dir, root: ROOT, installed: INSTALLED, ...options });
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+}
+const NAMES_OLD_STORE = 'a .alfred/.sensitive-data';
+
+test('L1-27: a file with a NUL in its first 8 KB is binary and skipped; one with a NUL only past 8 KB is read as text', POSIX_ONLY, () =>
+{
+    const early = Buffer.concat([Buffer.from('\u0000'), Buffer.from(NAMES_OLD_STORE)]);
+    const late = Buffer.concat([Buffer.alloc(20000, 'x'), Buffer.from('\u0000'), Buffer.from(NAMES_OLD_STORE)]);
+    assert.deepStrictEqual(scanProject([['early.bin', early]]).files, []);
+    assert.deepStrictEqual(scanProject([['late.dat', late]]).files, ['late.dat']);
+});
+
+test('L1-27: a total byte budget holds the rename when the files read pass it, and says so as the file cap does', POSIX_ONLY, () =>
+{
+    const files = [['a.txt', `${NAMES_OLD_STORE}\n${'x'.repeat(100)}`], ['b.txt', 'y'.repeat(100)], ['c.txt', 'z'.repeat(100)]];
+    const roomy = scanProject(files, { maxBytes: 100000 });
+    assert.deepStrictEqual([roomy.files, roomy.capped], [['a.txt'], false]);
+    const tight = scanProject(files, { maxBytes: 250 });
+    assert.strictEqual(tight.capped, true, 'the third file passes the budget');
+    assert.deepStrictEqual(tight.files, ['a.txt'], 'what was read before the budget ran out is still reported');
+    assert.strictEqual(holdsRename(tight.files, tight.capped), true);
+});
+
 // ------------------------------------------------------------------ the update, end to end
 const SELECTION = 'rule alfred-docs-root\n';
 const UPDATE = ['--scope', 'project', '--installed-only'];

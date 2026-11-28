@@ -4,6 +4,10 @@
 
 const MAX_SCAN_FILES = 20000;
 const MAX_FILE_BYTES = 1024 * 1024;
+// The whole scan reads at most this many bytes of text; past it the scan stops and the rename waits, as at the file cap.
+const MAX_SCAN_BYTES = 256 * 1024 * 1024;
+// A file is binary when a NUL byte sits in its first bytes (git's own test), so only this much is read to tell.
+const NUL_PROBE_BYTES = 8192;
 
 const OLD_STORE_NAME = '.sensitive-data';
 const NEW_STORE_NAME = '.secrets';
@@ -37,6 +41,6 @@ const STACK_RULE_PREFIX = 'alfred-';
 const INSTALLER_DENY_ROW = /"Read\(\.sensitive-data\)"/g;
 
 module.exports = {
-    OLD_TEMPLATE_LINES, SCAN_COVERS, MAX_SCAN_FILES, MAX_FILE_BYTES, OLD_STORE_NAME, NEW_STORE_NAME, OLD_NAME_PATTERN, EXTRA_FILES, SETTINGS_DIR,
+    OLD_TEMPLATE_LINES, SCAN_COVERS, MAX_SCAN_FILES, MAX_FILE_BYTES, MAX_SCAN_BYTES, NUL_PROBE_BYTES, OLD_STORE_NAME, NEW_STORE_NAME, OLD_NAME_PATTERN, EXTRA_FILES, SETTINGS_DIR,
     SETTINGS_FILE_PATTERN, STACK_OWN_FILES, STACK_RULE_PREFIX, INSTALLER_DENY_ROW,
 };
