@@ -647,7 +647,9 @@ test('C12: a UI change is opened in the running app before done, or the close na
 });
 
 // Session audit 2 (C13, N15): a typed instruction met a standing project rule and the agent followed one without asking.
-test('C13: when a typed instruction meets a standing project rule, ask once which wins, then name the ruling back as a preference to save', () =>
+test('C13: when a typed instruction meets a standing project rule, ask once which wins, the typed side marked (Recommended), then name the ruling back as a preference to save', () =>
 {
-    assert.ok(injected('alfred-preferences').toLowerCase().includes('when a typed instruction meets a standing project rule, ask once which wins, then name the ruling back as a preference to save'));
+    const t = injected('alfred-preferences').toLowerCase();
+    // final review M1: the ask names a recommended side - the typed instruction's - unless the rule guards a hard stop
+    assert.ok(t.includes("when a typed instruction meets a standing project rule, ask once which wins, the typed instruction's side marked (recommended) unless the rule guards a hard stop, security, privacy, money or an act that cannot be undone, then name the ruling back as a preference to save"));
 });
