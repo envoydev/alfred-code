@@ -3,7 +3,8 @@
 // The agent-reminders hook's logic, kept pure: from each rule's text it takes the reminder line, and from the end of a
 // transcript the size of Claude's last reply. The hook reads the files and passes their text in.
 import {
-    BULLET_PATTERN, CLOSE_LINE_PATTERN, CODE_BLOCK_PATTERN, CONTINUATION_PATTERN, CUT_MARK, ENTRY_TYPE, HEADING_START,
+    BARE_FIELD_LINE_PATTERN, BULLET_PATTERN, CLOSE_LINE_PATTERN, CODE_BLOCK_PATTERN, CONTINUATION_PATTERN, CUT_MARK, ENTRY_TYPE,
+    FIELD_LINE_PATTERN, HEADING_START,
     INLINE_CODE_PATTERN, INLINE_CODE_STAND_IN, ITEM_END_STAND_IN, LIFT_PATTERN, MAX_SHOWN_LENGTH, MIN_SENTENCE_WORDS, NEWLINE,
     NOT_TYPED_OPENINGS, QUEUED_COMMAND, REMINDER_OPENING, REMINDER_SOURCES, REPLY_MAX_LEAD_SENTENCES, REPLY_MAX_PROSE_CHARS,
     SENTENCE_BREAK, STATUS_ITEM_END, TABLE_ROW_START, TEXT_PART, TURN_RUNNING_PARTS, TYPED_ORIGIN, WORD_GAP,
@@ -20,11 +21,26 @@ export function reminderOf(ruleText)
     return whole.length > MAX_SHOWN_LENGTH ? `${whole.slice(0, MAX_SHOWN_LENGTH)}${CUT_MARK}` : whole;
 }
 
+// The lines that are not field lines. A field line's wrapped lines - indented, up to the next blank line - go with it, and
+// so do the bullet lines right after a label that stands alone on its line. Any other line ends the field.
+function withoutFieldLines(text)
+{
+    let inField = false;
+    let bareField = false;
+    return text.split(NEWLINE).filter((line) =>
+    {
+        if (line.trim() === '') inField = bareField = false;
+        else if (FIELD_LINE_PATTERN.test(line)) { inField = true; bareField = BARE_FIELD_LINE_PATTERN.test(line); }
+        else if (!(inField && (CONTINUATION_PATTERN.test(line) || (bareField && BULLET_PATTERN.test(line))))) inField = bareField = false;
+        return !inField;
+    }).join(NEWLINE);
+}
+
 function proseOf(reply)
 {
     const withoutBlocks = reply.replace(CODE_BLOCK_PATTERN, '');
     const withoutTables = withoutBlocks.split(NEWLINE).filter((line) => !line.trimStart().startsWith(TABLE_ROW_START)).join(NEWLINE);
-    return withoutTables.replace(INLINE_CODE_PATTERN, INLINE_CODE_STAND_IN);
+    return withoutFieldLines(withoutTables).replace(INLINE_CODE_PATTERN, INLINE_CODE_STAND_IN);
 }
 
 // Counts the sentences outside the bullets; a bullet's wrapped lines - indented, up to the next blank line - are the bullet's.
@@ -109,7 +125,7 @@ export function replyCheckOf(transcriptText)
 {
     const { reply, request, turnRunning } = lastExchangeOf(transcriptText);
     if (request === null) return { requestFound: false, note: null };
-    if (reply === '' || turnRunning || CLOSE_LINE_PATTERN.test(reply) || LIFT_PATTERN.test(request)) return { requestFound: true, note: null };
+    if (reply === '' || turnRunning || CLOSE_LINE_PATTERN.test(reply.replace(CODE_BLOCK_PATTERN, '')) || LIFT_PATTERN.test(request)) return { requestFound: true, note: null };
     const prose = proseOf(reply);
     const proseChars = [...prose.trim()].length;
     const leadSentences = leadSentenceCount(prose);

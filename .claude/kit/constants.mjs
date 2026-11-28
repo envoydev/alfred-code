@@ -138,14 +138,25 @@ export const REPLY_MAX_PROSE_CHARS = 900;
 export const REPLY_MAX_LEAD_SENTENCES = 3;
 export const MIN_SENTENCE_WORDS = 3;
 export const LIFT_PATTERN = /\b(?:in detail|step by step|teach me)\b/i;
-export const CLOSE_LINE_PATTERN = /^\s*(?:[-*]\s*)?\*{0,2}Checks:/m;
+// The field lines a close requires (the communication rule, section 1): a line that opens with one of these labels is
+// outside the prose count, in any case, after an optional list marker or table bar, with optional bold or underscore marks
+// around the label or the colon. A Checks line anywhere outside a code block lifts the whole reply.
+export const FIELD_LABELS = Object.freeze(['Result', 'Progress', 'Leftovers', 'Deferred by you', 'Checks', 'Cleanup']);
+export const CLOSE_LABEL = 'Checks';
+const LABEL_HEAD = String.raw`^[ \t]*(?:[-*+][ \t]+|\d+[.)][ \t]+|\|[ \t]*)?(?:\*\*|__)?`;
+const LABEL_TAIL = String.raw`(?:\*\*|__)?[ \t]*:(?:\*\*|__)?[ \t]*`;
+const labelPattern = (labels, flags, end = '') => new RegExp(`${LABEL_HEAD}(?:${labels.join('|')})${LABEL_TAIL}${end}`, flags);
+export const FIELD_LINE_PATTERN = labelPattern(FIELD_LABELS, 'i');
+// A label alone on its line: the bullet lines right after it are the field's too.
+export const BARE_FIELD_LINE_PATTERN = labelPattern(FIELD_LABELS, 'i', '$');
+export const CLOSE_LINE_PATTERN = labelPattern([CLOSE_LABEL], 'im');
 export const CODE_BLOCK_PATTERN = /```[\s\S]*?```/g;
 export const INLINE_CODE_PATTERN = /`[^`]*`/g;
 export const INLINE_CODE_STAND_IN = 'X';
 export const TABLE_ROW_START = '|';
 export const HEADING_START = '#';
 export const BULLET_PATTERN = /^\s*(?:[-*]|\d+[.)])\s+/;
-export const SENTENCE_BREAK = /(?<=[.!?:])\s+/;
+export const SENTENCE_BREAK = /(?<=[.!?])\s+/;
 export const WORD_GAP = /\s+/;
 // A turn nobody typed - a task notification, another session's message, a compaction summary - opens with one of these
 // where its transcript entry records no origin.
