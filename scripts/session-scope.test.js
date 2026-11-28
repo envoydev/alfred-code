@@ -22,7 +22,8 @@ const DOCS = '.alfred/docs';
 const SESSIONS = '.alfred/state/sessions';
 const forty = Array.from({ length: 40 }, (_, i) => `line ${i}`).join('\n');
 // a session where a review ran, kept outside every project tree: a commit receipt needs one since 2026-10-22
-const REVIEWED = reviewedTranscript(fs.mkdtempSync(path.join(os.tmpdir(), 'session-scope-reviewed-')));
+// the user typed 'commit it': a trivial commit needs that word (N01, 2026-11-27)
+const REVIEWED = reviewedTranscript(fs.mkdtempSync(path.join(os.tmpdir(), 'session-scope-reviewed-')), [JSON.stringify({ type: 'user', timestamp: '2026-11-27T09:00:00Z', message: { role: 'user', content: 'commit it' } })]);
 
 function project() {
     const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'session-scope-')));

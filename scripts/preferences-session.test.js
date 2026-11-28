@@ -166,7 +166,7 @@ test('each actor is held on its own: a seat\'s first edit waits even after the m
     finally { p.rm(); }
 });
 
-test('with no personal doc a compaction clears the record and says nothing; another session start keeps it and says nothing', () =>
+test('with no personal doc a compaction keeps the record and adds a note, a clear drops it, and a resume says nothing', () =>
 {
     const p = project();
     try
@@ -178,9 +178,12 @@ test('with no personal doc a compaction clears the record and says nothing; anot
         assert.ok(!denied(p.hook(edit('src/app.ts', s))), 'a resume keeps what was read');
         const compact = p.hook({ hook_event_name: 'SessionStart', session_id: s, source: 'compact' });
         assert.strictEqual(compact.status, 0, compact.stderr);
-        assert.strictEqual(compact.stdout, '');
-        assert.ok(!p.exists(`.alfred/state/sessions/preferences-${s}-main.json`), 'the record is gone');
-        assert.ok(denied(p.hook(edit('src/app.ts', s))), 'the summary dropped the docs, so the next edit waits again');
+        assert.match(out(compact).additionalContext, /^A compaction dropped the text of the preference docs this session read: PERSONAL-CODE-PREFERENCES\.md, ARCHITECTURE-PREFERENCES\.md, PROJECT-CODE-PREFERENCES\.md\. Their read marks stay/, 'the note names what was handed over');
+        assert.ok(p.exists(`.alfred/state/sessions/preferences-${s}-main.json`), 'the record stays (A4)');
+        assert.ok(!denied(p.hook(edit('src/app.ts', s))), 'the read hold fires once per session: the next edit goes through');
+        p.hook({ hook_event_name: 'SessionStart', session_id: s, source: 'clear' });
+        assert.ok(!p.exists(`.alfred/state/sessions/preferences-${s}-main.json`), 'a /clear drops the record');
+        assert.ok(denied(p.hook(edit('src/app.ts', s))), 'and the next edit waits again');
     }
     finally { p.rm(); }
 });
@@ -530,7 +533,7 @@ test('the personal doc is pushed at every session start - startup, resume, clear
     {
         const s = sid();
         p.hook(edit('src/app.ts', s));
-        for (const source of ['startup', 'resume', 'clear', 'compact'])
+        for (const source of ['startup', 'resume', 'compact', 'clear'])
         {
             const r = p.hook(start(s, source));
             assert.strictEqual(r.status, 0, r.stderr);
@@ -540,8 +543,9 @@ test('the personal doc is pushed at every session start - startup, resume, clear
             assert.match(text, /every session start and after each compaction/, source);
             assert.doesNotMatch(text, /<!--/, `${source}: the id lines are left out`);
             assert.doesNotMatch(text, /static helper class|feature\/<ticket>/, `${source}: the code and git docs wait for their holds`);
+            if (source === 'compact') assert.ok(p.exists(`.alfred/state/sessions/preferences-${s}-main.json`), 'the compact start keeps the read record (A4)');
         }
-        assert.ok(!p.exists(`.alfred/state/sessions/preferences-${s}-main.json`), 'the compact start still deletes the read record');
+        assert.ok(!p.exists(`.alfred/state/sessions/preferences-${s}-main.json`), 'the clear start drops the read record; the compact start before it kept it (A4)');
     }
     finally { p.rm(); }
 });
@@ -837,7 +841,7 @@ test('PF-11 / G14: the push strips block and inline comments, keeps fenced text,
     }
 });
 
-test('PF-12 / G3: clear and compact clear the main record; a seat\'s own compaction clears only that seat and pushes nothing', () =>
+test('PF-12 / G3 (A4): a compaction keeps the main record and a seat\'s own, a clear drops only the actor\'s own, and the seat\'s start adds a note', () =>
 {
     const p = project({ docs: { 'PERSONAL-PREFERENCES.md': PERSONAL_PREFS, 'PERSONAL-CODE-PREFERENCES.md': PERSONAL } });
     try
@@ -848,13 +852,39 @@ test('PF-12 / G3: clear and compact clear the main record; a seat\'s own compact
         p.hook(start2(s, 'resume'));
         assert.ok(!denied(p.hook(edit('src/app.ts', s))), 'resume keeps the record');
         const seatStart = p.hook(start2(s, 'compact', { agent_id: 'agent-1', agent_type: 'alfred-code:web-angular-implementer' }));
-        assert.strictEqual(seatStart.stdout, '', 'the personal doc is the main session\'s');
-        assert.ok(!p.exists(record(s, 'agent-1')), 'the seat\'s record goes');
+        assert.ok(!/lead with the verdict/.test(seatStart.stdout), 'the personal doc is the main session\'s');
+        assert.match(seatStart.stdout, /A compaction dropped the text of the preference docs this session read: PERSONAL-CODE-PREFERENCES\.md\./, 'the note names what the seat read');
+        assert.ok(p.exists(record(s, '1')), 'the seat\'s record stays (A4); the hook drops the agent- prefix from its file name');
         assert.ok(p.exists(record(s, 'main')), 'the main record stays');
         assert.ok(!denied(p.hook(edit('src/app.ts', s))), 'so main is not handed the docs again');
-        assert.ok(denied(p.hook(edit('src/app.ts', s, { agent_id: 'agent-1' }))), 'the seat is');
+        assert.ok(!denied(p.hook(edit('src/app.ts', s, { agent_id: 'agent-1' }))), 'nor the seat');
+        p.hook(start2(s, 'clear', { agent_id: 'agent-1', agent_type: 'alfred-code:web-angular-implementer' }));
+        assert.ok(!p.exists(record(s, '1')), 'a seat\'s clear start drops its record');
+        assert.ok(denied(p.hook(edit('src/app.ts', s, { agent_id: 'agent-1' }))), 'the seat is held again');
+        assert.ok(!denied(p.hook(edit('src/app.ts', s))), 'main\'s record is the main session\'s');
         p.hook(start2(s, 'clear'));
         assert.ok(denied(p.hook(edit('src/app.ts', s))), '/clear dropped the docs: held again');
+    }
+    finally { p.rm(); }
+});
+
+// A4 (session audit 2026-11-27): the git and code docs are handed over once per session. A compact start keeps their marks,
+// names the docs read, and still pushes the personal doc; a /clear starts the hold again.
+test('A4: after a compact start a git write and a code edit draw no second hold, the note names both docs and the personal push stays', () =>
+{
+    const p = project({ docs: { 'PERSONAL-PREFERENCES.md': PERSONAL_PREFS, 'PERSONAL-CODE-PREFERENCES.md': PERSONAL, 'GIT-PREFERENCES.md': GIT } });
+    try
+    {
+        const s = sid();
+        assert.ok(denied(p.hook(bash('git commit -m x', s))), 'the first git write is held with the git doc');
+        assert.ok(denied(p.hook(edit('src/app.ts', s))), 'the first code edit is held with the code doc');
+        const compact = ctxOf(p.hook(start2(s, 'compact')));
+        assert.match(compact, /lead with the verdict, at most two bullets/, 'the personal push stays');
+        assert.match(compact, /A compaction dropped the text of the preference docs this session read: PERSONAL-CODE-PREFERENCES\.md, GIT-PREFERENCES\.md\./);
+        assert.ok(!denied(p.hook(bash('git commit -m x', s))), 'no second git hold');
+        assert.ok(!denied(p.hook(edit('src/app.ts', s))), 'no second code hold');
+        p.hook(start2(s, 'clear'));
+        assert.ok(denied(p.hook(bash('git commit -m x', s))), 'a clear start holds the git write again');
     }
     finally { p.rm(); }
 });
@@ -979,7 +1009,10 @@ test('G5b: the output-scoring seat is handed the code docs at its start, like a 
         const r = p.hook({ hook_event_name: 'SubagentStart', session_id: sid(), agent_id: 'agent-9', agent_type: 'alfred-code:output-scoring' });
         assert.match(String(out(r).additionalContext || ''), /a handler validates/);
         assert.match(String(out(r).additionalContext || ''), /put behaviour on the type/);
-        assert.doesNotMatch(String(out(p.hook({ hook_event_name: 'SubagentStart', session_id: sid(), agent_id: 'agent-8', agent_type: 'other:output-scoring' })).additionalContext || ''), /a handler validates/);
+        // C10: a seat of another plugin has no definition here, so it is handed the docs as any seat that may write - but it is no judge: its Reads are never held.
+        const foreign = sid();
+        assert.match(String(out(p.hook({ hook_event_name: 'SubagentStart', session_id: foreign, agent_id: 'agent-8', agent_type: 'other:output-scoring' })).additionalContext || ''), /a handler validates/, 'it gets the push');
+        assert.ok(!heldRead(p.hook(pre('Read', { file_path: path.join(p.root, 'src/app.ts') }, foreign, { agent_id: '8', agent_type: 'other:output-scoring' }))));
     }
     finally { p.rm(); }
 });
@@ -1000,11 +1033,14 @@ test('G5: a solution designer and a verifier are handed the code docs at their s
         const v = String(out(p.hook(sub('alfred-code:aspnet-verifier'))).additionalContext || '');
         assert.match(v, /put behaviour on the type/, 'a verifier is handed them too');
         assert.match(v, /a handler validates/);
+        p.write('.claude/agents/web-angular-verifier.md', '---\nname: web-angular-verifier\ntools: Read, Grep\n---\nbody\n'); // the project's own read-only agent of that name
         assert.strictEqual(p.hook(sub('web-angular-verifier')).stdout, '', 'bare, with no stamp recording the copy: no seat of the stack\'s');
         p.write('.claude/alfred-code.stamp', 'seats-route: copy\nlibrary-agents: web-angular-verifier=0a1b\n');
         assert.match(String(out(p.hook(sub('web-angular-verifier'))).additionalContext || ''), /a handler validates/, 'bare too, where the stamp records the copy');
-        for (const type of ['general-purpose', 'alfred-code:web-angular-implementer', 'Explore', 'agent-sdk-dev:agent-sdk-verifier-py', 'other:code-verifier', 'other:aspnet-solution-designer'])
-            assert.strictEqual(p.hook(sub(type)).stdout, '', `${type}: only the stack's own seats, bare or alfred-code:`);
+        assert.strictEqual(p.hook(sub('Explore')).stdout, '', 'a read-only built-in gets nothing');
+        // C10: any other seat that may write - a built-in, a stack implementer, a seat of another plugin - is handed the docs at its start.
+        for (const type of ['general-purpose', 'alfred-code:web-angular-implementer', 'agent-sdk-dev:agent-sdk-verifier-py', 'other:code-verifier', 'other:aspnet-solution-designer'])
+            assert.match(String(out(p.hook(sub(type))).additionalContext || ''), /put behaviour on the type/, `${type}: a seat that may write is handed them`);
         assert.strictEqual(p.hook(sub('alfred-code:aspnet-solution-designer'), { ALFRED_CODE_HOOKS_OFF: 'preferences-session' }).stdout, '');
     }
     finally { p.rm(); }
@@ -1028,13 +1064,15 @@ test('the finding seats - the code-quality analyzer, the security auditor, the i
             assert.ok(heldRead(r), `${type}: its first Read brings the next part`);
             assert.match(heldText(r), /Follow them in every decision and finding/);
         }
-        for (const type of ['alfred-code:code-style-analyzer', 'alfred-code:test-coverage-analyzer', 'alfred-code:issue-diagnoser-ci', 'alfred-code:evidence-gatherer', 'other:code-quality-analyzer-lite', 'someplugin:security-auditor', 'other:integration-reviewer', 'other:code-quality-analyzer'])
+        for (const type of ['alfred-code:code-style-analyzer', 'alfred-code:test-coverage-analyzer', 'alfred-code:issue-diagnoser-ci', 'alfred-code:evidence-gatherer'])
             assert.strictEqual(small.hook(sub(type)).stdout, '', type);
-        // Another plugin's seat under one of these names is not the stack's: no push, and its Reads are never held.
+        // Another plugin's seat under one of these names is not the stack's judge (C10: it has no definition here, so it is handed the docs as a seat that may write): its Reads are never held.
+        for (const type of ['other:code-quality-analyzer-lite', 'someplugin:security-auditor', 'other:integration-reviewer', 'other:code-quality-analyzer'])
+            assert.match(String(out(small.hook(sub(type))).additionalContext || ''), /a handler validates/, type);
         for (const type of ['someplugin:security-auditor', 'other:aspnet-verifier'])
         {
             const s = sid();
-            assert.strictEqual(big.hook(sub(type, s)).stdout, '', type);
+            big.hook(sub(type, s));
             assert.ok(!heldRead(big.hook(pre('Read', { file_path: path.join(big.root, 'src/app.ts') }, s, { agent_id: 'f1', agent_type: type }))), `${type}: its Read passes`);
         }
     }
@@ -1188,6 +1226,7 @@ test('a bare seat name is the stack\'s own only where the install stamp records 
         const sub = (type, s) => p.hook({ hook_event_name: 'SubagentStart', session_id: s, agent_id: 'b1', agent_type: type });
         const read = (type, s) => p.hook(pre('Read', { file_path: path.join(p.root, 'src/app.ts') }, s, { agent_id: 'b1', agent_type: type }));
         const pushedTo = (type) => { const s = sid(); const r = sub(type, s); return { push: r.stdout !== '', held: heldRead(read(type, s)) }; };
+        for (const own of ['security-auditor', 'aspnet-verifier', 'wpf-verifier']) p.write(`.claude/agents/${own}.md`, `---\nname: ${own}\ntools: Read, Grep\n---\nbody\n`); // the project's own read-only agents
         assert.deepStrictEqual(pushedTo('security-auditor'), { push: false, held: false }, 'no stamp: a project\'s own agent');
         assert.deepStrictEqual(pushedTo('alfred-code:security-auditor'), { push: true, held: true }, 'the plugin spelling needs no stamp');
         p.write('.claude/alfred-code.stamp', 'seats-route: plugin\nlibrary-agents: \n');
@@ -1362,7 +1401,8 @@ test('architecture-analyzer is handed the architecture entries alone in an archi
         assert.deepStrictEqual(seen.sort((a, b) => a - b), Array.from({ length: 14 }, (_, i) => i + 1), 'every architecture entry once');
         assert.ok(!texts.some((t) => /put behaviour on the type/.test(t)), 'the code doc never');
         const start = (session, extra = who) => big.hook({ hook_event_name: 'SubagentStart', session_id: session, ...extra });
-        assert.strictEqual(start(qualityRun(big), { agent_id: 'x', agent_type: 'other:architecture-analyzer' }).stdout, '', 'another plugin\'s analyzer gets nothing');
+        assert.match(String(out(start(qualityRun(big), { agent_id: 'x', agent_type: 'other:architecture-analyzer' })).additionalContext || ''), /put behaviour on the type/, 'another plugin\'s analyzer is no architecture seat (C10: it is handed the code docs as a seat that may write)');
+        big.write('.claude/agents/architecture-analyzer.md', '---\nname: architecture-analyzer\ntools: Read, Grep\n---\nbody\n'); // the project's own read-only agent of that name
         assert.strictEqual(start(qualityRun(big), { agent_id: 'x', agent_type: 'architecture-analyzer' }).stdout, '', 'bare with no stamp: nothing');
         // Outside a quality run - none, the map capture typed or called, a scoping pass - nothing, and no read is held.
         const quiet = (s, label) => {
@@ -1456,7 +1496,8 @@ test('a run ends at the user\'s next typed turn: the analyzer and a reviewing ma
         fs.appendFileSync(T, human('<bash-input>git status</bash-input>'));
         fs.appendFileSync(T, human('<bash-stdout>clean</bash-stdout><bash-stderr></bash-stderr>'));
         fs.appendFileSync(T, human('Another Claude session sent a message:\n<agent-message>report</agent-message>'));
-        assert.ok(analyzer(s), 'an interrupt, a ! shell command and a hand-back frame keep the run');
+        fs.appendFileSync(T, human('Here is a note offered by a side agent:\nthe build is red'));
+        assert.ok(analyzer(s), 'an interrupt, a ! shell command, a hand-back frame and a side agent\'s note keep the run');
         // A reply that only says go on is no new turn (the user's answer 'Keep go-on replies').
         for (const word of ['continue', '  Go on. ', 'proceed!', 'carry on', 'resume', 'keep going', 'yes', 'OK', 'okay']) fs.appendFileSync(T, human(word));
         fs.appendFileSync(T, human([{ type: 'text', text: 'Continue' }]));
@@ -2496,7 +2537,7 @@ test('member: a call under the child reads the run marks from the start\'s recor
     finally { p.rm(); }
 });
 
-test('member: a clear start and a compact start drop the member\'s record, a resume keeps it', () =>
+test('member: a clear start drops the member\'s record, a compact start only its push mark, a resume keeps it', () =>
 {
     const p = joined();
     try
@@ -2511,13 +2552,18 @@ test('member: a clear start and a compact start drop the member\'s record, a res
             for (const f of [state, twin]) { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, '{}'); }
             return [state, twin];
         };
-        for (const source of ['clear', 'compact'])
-        {
-            const s = sid();
-            const files = put(s);
-            p.hook(start(s, source));
-            assert.deepStrictEqual(files.filter((f) => fs.existsSync(f)), [], source);
-        }
+        const c = sid();
+        const cleared = put(c);
+        p.hook(start(c, 'clear'));
+        assert.deepStrictEqual(cleared.filter((f) => fs.existsSync(f)), [], 'a clear start drops the record');
+        // A4: a compact start keeps the member's read marks and drops only the push mark, so the entry pieces ride again
+        const m = sid();
+        const marked = put(m);
+        for (const f of marked) fs.writeFileSync(f, JSON.stringify({ entered: true, 'PERSONAL-CODE': true }));
+        p.hook(start(m, 'compact'));
+        for (const f of marked) assert.deepStrictEqual(JSON.parse(fs.readFileSync(f, 'utf8')), { 'PERSONAL-CODE': true }, 'the compact start keeps the read marks only');
+        p.hook(start(m, 'compact'));
+        for (const f of marked) assert.deepStrictEqual(JSON.parse(fs.readFileSync(f, 'utf8')), { 'PERSONAL-CODE': true }, 'a second compact start changes nothing');
         const s = sid();
         const kept = put(s);
         p.hook(start(s, 'resume'));
@@ -2525,9 +2571,9 @@ test('member: a clear start and a compact start drop the member\'s record, a res
         fs.rmSync(path.join(p.root, PREFS), { recursive: true, force: true });
         const t = sid();
         const gone = put(t);
-        p.hook(start(t, 'compact'));
-        assert.deepStrictEqual(gone.filter((f) => fs.existsSync(f)), []);
-        for (const f of kept) fs.rmSync(f, { force: true });
+        p.hook(start(t, 'clear'));
+        assert.deepStrictEqual(gone.filter((f) => fs.existsSync(f)), [], 'with no docs left a clear start still drops it');
+        for (const f of [...kept, ...marked]) fs.rmSync(f, { force: true });
     }
     finally { p.rm(); }
 });

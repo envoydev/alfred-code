@@ -154,7 +154,7 @@ function ledgerRow(row) {
     }) + '\n');
   } catch { /* never throws */ }
 }
-const UNATTENDED_SKIP = 'skip: nobody is at the terminal - logged, not offered';
+const UNATTENDED_SKIP = 'skip: auto-run is on, or this is a print-mode run - no person is asked, logged, not offered';
 
 const EVENT = payload.hook_event_name || '';
 const IS_SKILL_CALL = payload.tool_name === 'Skill';
@@ -370,7 +370,7 @@ const COMPACT_NOTE = `This session compacts instead of offering a fresh session 
 
 // The hold itself. Released - never denied again - once an ask was answered after the compaction, the turn wrote the
 // single-short-step line, a fresh session would not pay back with the cache warm (the engine's verdict - audit
-// 2026-10-10 C26, 758ce661: 120k carry over a 90k floor, the unconditional ask cost two turns), nobody is at the terminal
+// 2026-10-10 C26, 758ce661: 120k carry over a 90k floor, the unconditional ask cost two turns), no person to ask
 // (a live AUTO waiver included), or it has denied twice; a hold past 12h is stale. With no post-compaction reading yet
 // (ctx 0) the call passes and the hold stays armed, no denial spent, for the first changing call that has one. A seat's call is the parent's work in
 // flight, never held. One `compact-hold` row (`idle-hold` on the idle route) records how it ended.
@@ -793,8 +793,20 @@ function writeAutoStamp({ root, sid, skill: name, words, current }) {
 // tells the model to say. A mode stays on for the checkout, new sessions included, until its off.
 const AUTO_ON = '[mode] auto-run is ON until /alfred-code:mode:auto-run off, new sessions included: each ask takes its (Recommended) option.'
   + ' auto-compact is ON with it';
+// The one plain word typed after a mode command, as typed: 'om' in `auto-run om`, in the tagged form's args too. A line
+// with a second token, a digit or a flag after the command has none, and keeps the TYPE_ALONE line.
+const MODE_TYPO_RE = /^[A-Za-z]{1,20}$/;
+function modeTypoWord(prompt) {
+  const tagged = /<command-args>([\s\S]*?)(?:<\/command-args>|$)/.exec(prompt);
+  const rest = tagged ? tagged[1] : prompt.trim().replace(/^\S+/, '');
+  const [word, ...more] = rest.match(/\S+/g) || [];
+  return word && !more.length && MODE_TYPO_RE.test(word) ? word : '';
+}
 function modeCommand(pre, flags, root, stamp, markerFile) {
-  if (flags.extra) return '[mode] type the command alone on its line, then on or off';
+  if (flags.extra) {
+    const word = modeTypoWord(String(payload.prompt || ''));
+    return word ? `[mode] '${word}' is not on or off - type \`${flags.commands[0]} on\` or \`off\`` : '[mode] type the command alone on its line, then on or off';
+  }
   if (flags.mode !== 'auto-run' && flags.mode !== 'auto-compact') return '';   // scoring: communication-reminder.js saves it and says the line
   const ms = require('./mode-settings.js');
   const [input, held, envIs] = [{ ...payload, cwd: root }, ms.autoRunHeld(root), (k) => String(pre.envOf(process.env, k) ?? '').trim()];

@@ -202,7 +202,7 @@ Outside the project:
 
 | | Count | What it is |
 | --- | --- | --- |
-| **Skills** | 88 | house conventions and workflows |
+| **Skills** | 89 | house conventions and workflows |
 | **Agents** | 45 | designers, implementers, verifiers, reviewers |
 | **Rules** | 18 | always-on basics and per-file conventions |
 | **Hooks** | 19 | the guards, plus the docs, preferences, history and rules hooks |

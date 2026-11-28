@@ -91,7 +91,7 @@ Total time: <sum across all groups>.
 
   ```ask
   The notes give a total but the log needs per-day times - how should I split it?
-  - 'I will give the split (Recommended)' - the log never invents per-day or per-task time
+  - 'Wait for your split (Recommended)' - the log never invents per-day or per-task time
   - 'One line per day, time not specified' - keeps the days, leaves the hours to you
   ```
 

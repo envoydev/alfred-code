@@ -466,16 +466,80 @@ test('auto-mode asks: an ask inside a typed plugin walk goes to the user; anothe
         assert.strictEqual(r.status, 0, r.stderr);
         assert.strictEqual(answered(r), null, `/alfred-code:${walk}: the ask waits for the user`);
     }
-    assert.ok(rows(p, 'w1').some((x) => x.kind === 'auto-walk-asks' && /alfred-code:update/.test(x.reason)), 'the wait is ledgered');
+    assert.ok(rows(p, 'w1').some((x) => x.kind === 'auto-walk-asks' && /update walk/.test(x.reason)), 'the wait is ledgered');
     assert.ok(!rows(p, 'w1').some((x) => x.kind === 'auto-answer'), 'nothing was answered');
     const midWalk = transcript([walkCommand('update'), walkRow([{ type: 'text', text: 'keep going' }]), walkRow('<bash-input>ls</bash-input>')]);
     assert.strictEqual(answered(ask(p, 'w1', one, { transcript_path: midWalk })), null, 'a reply typed mid-walk keeps the walk');
     const after = transcript([walkCommand('update'), walkRow('<command-message>task-solve</command-message>\n<command-name>/task-solve</command-name>')]);
     assert.deepStrictEqual(answered(ask(p, 'w1', one, { transcript_path: after })), { 'Apply the update?': 'Apply it (Recommended)' }, 'another command ends the walk');
-    const other = transcript([walkRow('<command-message>other:update</command-message>\n<command-name>/other:update</command-name>')]);
-    assert.ok(answered(ask(p, 'w1', one, { transcript_path: other })), 'another plugin\'s update is no walk of ours');
     const status = transcript([walkRow('<command-message>alfred-code:status</command-message>\n<command-name>/alfred-code:status</command-name>')]);
     assert.ok(answered(ask(p, 'w1', one, { transcript_path: status })), 'the read-only status command is no walk');
+});
+
+// B3 (R4, session b9e1a400): the walk commands of every plugin are the user's, not only alfred-code's. A namespaced skill typed as a
+// command, and a mode switch, are no walk.
+const pluginCommand = (plugin, name, args = '') => walkRow(`<command-message>${plugin}:${name}</command-message>\n<command-name>/${plugin}:${name}</command-name>${args ? `\n<command-args>${args}</command-args>` : ''}`);
+test('auto-mode asks: the walk of another plugin (alfred-tools update, install) is the user\'s, a namespaced skill and a mode switch are not', () =>
+{
+    const p = project();
+    autoStamp(p, 'w2');
+    const one = [q('Apply the update?', ['Apply it (Recommended)', 'Not now'])];
+    for (const [plugin, name] of [['alfred-tools', 'update'], ['alfred-tools', 'install'], ['alfred-mods', 'setup'], ['acme-kit', 'init'], ['acme-kit', 'configure'], ['acme-kit', 'validate']])
+    {
+        const r = ask(p, 'w2', one, { transcript_path: transcript([pluginCommand(plugin, name)]) });
+        assert.strictEqual(r.status, 0, r.stderr);
+        assert.strictEqual(answered(r), null, `/${plugin}:${name}: the ask waits for the user`);
+    }
+    assert.ok(rows(p, 'w2').some((x) => x.kind === 'auto-walk-asks'), 'the wait is ledgered');
+    const typed = transcript([walkRow('/alfred-tools:update')]);
+    assert.strictEqual(answered(ask(p, 'w2', one, { transcript_path: typed })), null, 'the typed spelling waits too');
+    assert.ok(answered(ask(p, 'w2', one, { transcript_path: transcript([pluginCommand('superpowers', 'brainstorming')]) })), 'a namespaced skill typed as a command is no walk');
+    assert.ok(answered(ask(p, 'w2', one, { transcript_path: transcript([pluginCommand('alfred-code', 'mode:auto-run', 'on')]) })), 'a mode switch is no walk');
+    assert.ok(answered(ask(p, 'w2', one, { transcript_path: transcript([pluginCommand('acme-kit', 'updates')]) })), 'a longer name is another command');
+    const ended = transcript([pluginCommand('alfred-tools', 'update'), walkRow('<command-message>task-solve</command-message>\n<command-name>/task-solve</command-name>')]);
+    assert.ok(answered(ask(p, 'w2', one, { transcript_path: ended })), 'another typed command ends the walk');
+});
+
+test('pluginWalkOf: another plugin\'s walk is read, and a compaction summary naming it keeps it open', () =>
+{
+    const { pluginWalkOf } = require('../stack/hooks/hook-prelude.js');
+    const summary = (t) => ({ type: 'user', isCompactSummary: true, message: { role: 'user', content: t } });
+    assert.strictEqual(pluginWalkOf([pluginCommand('alfred-tools', 'update')]), 'update', 'a typed alfred-tools command');
+    assert.strictEqual(pluginWalkOf([walkRow('/acme-kit:setup acme-app')]), 'setup', 'the typed spelling');
+    assert.strictEqual(pluginWalkOf([pluginCommand('superpowers', 'brainstorming')]), '', 'a namespaced skill');
+    assert.strictEqual(pluginWalkOf([pluginCommand('alfred-code', 'mode:auto-run', 'on')]), null, 'a mode switch decides nothing');
+    assert.strictEqual(pluginWalkOf([pluginCommand('alfred-tools', 'update'), summary('The user ran /alfred-tools:update; two fixes are left.')]), 'update', 'a summary naming the walk');
+    assert.strictEqual(pluginWalkOf([pluginCommand('alfred-tools', 'update'), summary('The user fixed a bug in /Users/x/acme-app/src:install.')]), '', 'a path is no command');
+});
+
+// B3 (R4 b9e1a400 rows 211-222): Claude Code's auto-mode classifier refused a call - a tool_result with is_error true and 'denied by the
+// Claude Code auto mode classifier' in its text, the row carrying toolDenialKind 'automode-blocked' - and the ask that followed was
+// auto-answered 'Apply (Recommended)'. An ask after such a denial in the same turn waits; an ask answered since it does not.
+const classifierDenial = (id = 'tool-denied') => ({ type: 'user', entrypoint: 'cli', timestamp: new Date().toISOString(), toolDenialKind: 'automode-blocked',
+    message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, is_error: true, content: 'Permission for this action was denied by the Claude Code auto mode classifier. Reason: [Destructive or Unwanted Actions]. You should only try to work around this restriction in reasonable ways.' }] } });
+const bashCall = (id) => ({ type: 'assistant', entrypoint: 'cli', message: { role: 'assistant', content: [{ type: 'tool_use', id, name: 'Bash', input: { command: 'node apply.mjs plan.json' } }] } });
+const askAnswered = (id) => ({ type: 'user', entrypoint: 'cli', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: 'Your questions have been answered: "Next?"="Go (Recommended)". You can now continue with these answers in mind.' }] } });
+test('auto-mode asks: an ask after a classifier denial in the same turn waits for the user', () =>
+{
+    const p = project();
+    autoStamp(p, 'c1');
+    const one = [q('Apply this plan?', ['Apply (Recommended)', 'Change something', 'Cancel'])];
+    const denied = transcript([bashCall('tool-denied'), classifierDenial()]);
+    const r = ask(p, 'c1', one, { transcript_path: denied });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.strictEqual(answered(r), null, 'the ask after the denial waits');
+    assert.ok(rows(p, 'c1').some((x) => x.kind === 'auto-ask-waits' && /classifier/.test(x.reason)), 'the wait names the denial');
+    const plainError = transcript([bashCall('e1'), { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'e1', is_error: true, content: 'Exit code 1' }] } }]);
+    assert.ok(answered(ask(p, 'c1', one, { transcript_path: plainError })), 'an ordinary failed call does not hold the ask');
+    const quotedInError = transcript([bashCall('t1'), { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', is_error: true,
+        content: 'not ok 1 - the ask after a denial waits\n  AssertionError: expected text matching /denied by the Claude Code auto mode classifier/' }] } }]);
+    assert.ok(answered(ask(p, 'c1', one, { transcript_path: quotedInError })), 'a failing test whose output quotes the denial phrase holds nothing');
+    const quoted = transcript([bashCall('q1'), { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'q1', content: 'denied by the Claude Code auto mode classifier' }] } }]);
+    assert.ok(answered(ask(p, 'c1', one, { transcript_path: quoted })), 'text that is no error result holds nothing');
+    const settled = transcript([bashCall('tool-denied'), classifierDenial(), askAnswered('a-prev')]);
+    assert.ok(answered(ask(p, 'c1', one, { transcript_path: settled })), 'an ask answered after the denial settles it');
+    const newTurn = transcript([bashCall('tool-denied'), classifierDenial(), walkRow([{ type: 'text', text: 'carry on' }])]);
+    assert.ok(answered(ask(p, 'c1', one, { transcript_path: newTurn })), 'a new typed turn ends the denial\'s turn');
 });
 
 test('auto-mode asks: every question marking one Recommended option is answered with it; anything else waits for the user', () =>
@@ -539,6 +603,9 @@ test('auto-mode asks: a holding pick, a negated act and a photo rotation are ans
         ['4 commits on develop are not pushed. Push them?', 'Hold - push later (Recommended)'],
         ['8a5cb01 is pushed but not on the live desk. Publish it?', 'Hold the publish (Recommended)'],
         ['Next for tab cap 1.1.0 (not pushed)?', 'Hold - push and publish later (Recommended)'],
+        // B14 (2026-11-27): a hold whose act sits inside a deferral - when, once, after, until - does nothing outward either
+        ['Next?', 'Hold, push after CI passes (Recommended)'], ['Next?', 'Hold the push until CI is green (Recommended)'],
+        ['Publish 7 commits to the live desk?', 'Hold - publish when rooms 1-3 are empty (Recommended)'],
         ['Commit 3 local commits on develop (no push)?', 'Commit now (Recommended)'],
         ['Commit 6 files on develop?', 'Commit now (Recommended)', 'Stage the 6 paths and commit them; nothing is pushed'],
         ['A token leaked last week. Rotate the photo thumbnails?', 'Skip it (Recommended)'],
@@ -560,8 +627,6 @@ test('auto-mode asks: a holding pick, a negated act and a photo rotation are ans
         ['Next?', 'Do not push, merge into main instead (Recommended)'], ['Next?', "Don't merge, push the branch (Recommended)"],
         ['Next?', 'Skip the push, publish to npm (Recommended)'], ['Next?', 'Skip the push and publish to npm instead (Recommended)'],
         ['Next?', 'Skip the merge, upload the build to S3 (Recommended)'], ['Next?', 'Wait - push when green (Recommended)'],
-        ['Next?', 'Hold, push after CI passes (Recommended)'], ['Next?', 'Hold the push until CI is green (Recommended)'],
-        ['Publish 7 commits to the live desk?', 'Hold - publish when rooms 1-3 are empty (Recommended)'],
         ['The 4 commits on develop are not pushed yet. Do it now?', 'Yes, do it now (Recommended)'],
         ['Nothing is deployed yet to staging. Proceed?', 'Proceed (Recommended)'], ['The fix branch is not merged yet. Finish it?', 'Finish it (Recommended)'],
         ['Next?', 'Rotate the creds (Recommended)'], ['Rotate the SSH keypair?', 'Yes (Recommended)'],
@@ -725,28 +790,206 @@ test('auto-mode asks: the pay-for-seats idiom and the fresh-session cost line ar
 });
 
 // audit 2026-10-14 SKF-04 (the user's ruling, option A): the upgrade's hard stop is a rail. Put as the attended run puts
-// it, the hook answers its marked 'Re-plan' and a stage that stays red re-plans unattended; so under auto-mode the skill
-// puts it with no mark and the question saying why, and the hook leaves it for the user without denying it.
-test('auto-mode asks: the upgrade hard stop waits when put unmarked with its reason, as task-version-upgrade says', () =>
+// it, the hook answers its marked 'Re-plan' and a stage that stays red re-plans unattended. B8 (session audit 2026-11-27):
+// under auto-run the skill puts the same options with the safe one marked and the question opening 'waits for you: <why>',
+// and the hook never answers it - a marked pick shows, so the user is asked with a default.
+test('auto-mode asks: the upgrade hard stop waits when its question opens waits for you, as task-version-upgrade says', () =>
 {
     const p = project();
     autoStamp(p, 'u1');
-    const labels = ['Re-plan from this stage', "Roll back to the last stage's rollback point", 'Stop here'];
-    const marked = q('Stage 3 stays red after its resolver pass. How do we go on?', [`${labels[0]} (Recommended)`, ...labels.slice(1)]);
-    assert.deepStrictEqual(answered(ask(p, 'u1', [marked])), { [marked.question]: 'Re-plan from this stage (Recommended)' },
-        'the attended shape is answered unattended - the reason auto-mode drops the mark');
+    const labels = ['Re-plan from this stage (Recommended)', "Roll back to the last stage's rollback point", 'Stop here'];
+    const plain = q('Stage 3 stays red after its resolver pass. How do we go on?', labels);
+    assert.deepStrictEqual(answered(ask(p, 'u1', [plain])), { [plain.question]: 'Re-plan from this stage (Recommended)' },
+        'the attended shape is answered unattended - so the wait needs its prefix');
     const skillText = fs.readFileSync(path.join(__dirname, '..', 'stack', 'skills', 'task-version-upgrade', 'SKILL.md'), 'utf8').replace(/\s+/g, ' ');
-    const opener = (/the question opening '([^']+)'/.exec(skillText) || [])[1];
-    assert.ok(opener, 'the skill names the opener its auto-mode hard stop carries');
-    const waits = q(`${opener}. Stage 3 stays red after its resolver pass. How do we go on?`, labels);
+    assert.match(skillText, /the question opening 'waits for you: <reason>' - auto-run never answers it\./, 'the skill names the form');
+    const waits = q('waits for you: a hard stop. Stage 3 stays red after its resolver pass. How do we go on?', labels);
     const r = ask(p, 'u1', [waits]);
-    assert.strictEqual(answered(r), null, 'the unmarked hard stop is not answered');
+    assert.strictEqual(answered(r), null, 'a marked ask that opens waits for you is not answered');
     assert.strictEqual(r.status, 0, `the mark check lets it through: ${r.stderr}`);
     assert.doesNotMatch(r.stderr, /Blocked/);
     assert.ok(rows(p, 'u1').some((x) => x.kind === 'auto-ask-waits'), 'the wait is logged');
-    const bare = ask(p, 'u1', [q('Stage 3 stays red after its resolver pass. How do we go on?', labels)]);
+    const bare = ask(p, 'u1', [q('Stage 3 stays red after its resolver pass. How do we go on?', labels.map((l) => l.replace(' (Recommended)', '')))]);
     assert.strictEqual(bare.status, 'ask', 'unmarked with no reason is handed back by the mark check');
     assert.match(bare.stderr, /without exactly one option marked '\(Recommended\)'/);
+});
+
+test('auto-mode asks: a waits for you ask with one marked pick waits under auto-run, whatever else the ask says', () =>
+{
+    const p = project();
+    autoStamp(p, 'wf1');
+    const labels = ['Upgrade (Recommended)', 'Stay on the current version'];
+    const waits = q('waits for you: a hard stop. Upgrade the framework to the next major?', labels);
+    assert.strictEqual(answered(ask(p, 'wf1', [waits])), null, 'a hard stop waits');
+    for (const reason of ['a rule every later session follows', 'other people\'s data', 'money', 'an act that cannot be undone'])
+        assert.strictEqual(answered(ask(p, 'wf1', [q(`waits for you: ${reason}. Go on?`, ['Hold (Recommended)', 'Go'])])), null, reason);
+    assert.strictEqual(answered(ask(p, 'wf1', [q('  Waits for you: a hard stop. Go on?', ['Hold (Recommended)', 'Go'])])), null, 'case and leading blanks');
+    assert.strictEqual(answered(ask(p, 'wf1', [waits, q('Which name?', ['alpha (Recommended)', 'beta'])])), null, 'one waiting question holds the whole ask');
+    // S12: the browser-history ask in the new form waits and shows a pick
+    const history = ask(p, 'wf1', [q('waits for you: other people\'s data. Read the browser history for the right tab?', ['Skip it (Recommended)', 'Read it'])]);
+    assert.strictEqual(answered(history), null);
+    assert.strictEqual(history.status, 0, history.stderr);
+    // a reason is part of the form: the bare prefix and a mid-question mention are no wait mark
+    assert.deepStrictEqual(answered(ask(p, 'wf1', [q('Plan ready. This waits for you: build it?', ['Build (Recommended)', 'Stop'])])), { 'Plan ready. This waits for you: build it?': 'Build (Recommended)' }, 'only an opener counts');
+    assert.deepStrictEqual(answered(ask(p, 'wf1', [q('waits for you:', ['Build (Recommended)', 'Stop'])])), { 'waits for you:': 'Build (Recommended)' }, 'no reason, no wait');
+});
+
+test('auto-mode asks: an ordinary ask is still answered under auto-run after the wait form', () =>
+{
+    const p = project();
+    autoStamp(p, 'wf2');
+    const one = q('Plan ready. Build it?', ['Approve and build (Recommended)', 'Changes needed']);
+    assert.deepStrictEqual(answered(ask(p, 'wf2', [one])), { 'Plan ready. Build it?': 'Approve and build (Recommended)' });
+});
+
+// B14 (session audit 2026-11-27, S01): the outward test reads the PICKED label and its description. The question counts too only
+// when the label names no act of its own ('Yes', 'Go ahead'). A hold label is a hold when no outward act is left outside its
+// deferral. The picks below are the spec's rows.
+test('auto-mode asks: an ordinary pick is answered under a question that names a publish (B14, S01)', () =>
+{
+    const p = project();
+    autoStamp(p, 'b14a');
+    const question = 'a tab cap publish leaves the rooms on the old package. How do we go on?';
+    for (const label of ['Add it to the plan (Recommended)', 'Commit now (Recommended)', 'Run the tests (Recommended)'])
+        assert.deepStrictEqual(answered(ask(p, 'b14a', [q(question, [label, 'Not now'])])), { [question]: label }, label);
+});
+
+test('auto-mode asks: an outward pick, or a bare confirm of an outward question, still waits (B14)', () =>
+{
+    const p = project();
+    autoStamp(p, 'b14b');
+    for (const [question, label] of [['Ready. Next?', 'Push now (Recommended)'], ['Push the branch?', 'Yes (Recommended)'],
+        ['Push the branch?', 'Continue (Recommended)'], ['Push the branch?', 'Go ahead (Recommended)'], ['Push the branch?', 'Yes, go ahead (Recommended)'],
+        ['Publish the package?', 'Proceed (Recommended)'], ['Merge the PR?', 'Do it (Recommended)'], ['Deploy to staging?', 'Sure (Recommended)'],
+        ['Email the client?', 'Send it (Recommended)'],
+        ['Ready. Next?', 'Hold, then push (Recommended)'], ['Ready. Next?', 'Skip the tests and publish (Recommended)']])
+        assert.strictEqual(answered(ask(p, 'b14b', [q(question, [label, 'Not now'])])), null, `waits: ${question} ${label}`);
+    const described = q('Ready. Next?', ['Add it (Recommended)', 'Not now']);
+    described.options[0].description = 'pushes to origin';
+    assert.strictEqual(answered(ask(p, 'b14b', [described])), null, 'the description is read');
+});
+
+test('auto-mode asks: a hold label is answered when its act sits inside a deferral, whatever the question names (B14, S01)', () =>
+{
+    const p = project();
+    autoStamp(p, 'b14c');
+    const question = 'a tab cap publish leaves the rooms on the old package. Publish it now?';
+    for (const label of ['Hold - publish when rooms are empty (Recommended)', 'Keep holding, ask when empty (Recommended)', 'Hold both for now (Recommended)',
+        'Hold the push until CI is green (Recommended)', 'Hold, push after CI passes (Recommended)', 'Hold - push later (Recommended)'])
+        assert.deepStrictEqual(answered(ask(p, 'b14c', [q(question, [label, 'Publish now'])])), { [question]: label }, label);
+    // a hold that goes on to an act outside its deferral still waits
+    for (const label of ['Hold - push later, then open the PR (Recommended)', 'Hold, then push (Recommended)', 'Hold - push when green, then merge (Recommended)',
+        'Skip the push, publish to npm (Recommended)', 'Hold, publish to npm (Recommended)',
+        // review round 2: with no separator the act and its deferral share the hold word's clause - the act is still the pick's own
+        'Skip the tests and publish after CI passes (Recommended)', 'Skip the review and push when green (Recommended)', 'Do not wait, merge once green (Recommended)'])
+        assert.strictEqual(answered(ask(p, 'b14c', [q(question, [label, 'Publish now'])])), null, `waits: ${label}`);
+});
+
+// B10 (T12): a grade under its pass level, in a question naming a plan, spec or design, is never auto-answered - the `plan-approval`
+// rule says a draft under the pass score waits - with no pass named, the scoring level (default 80) is the pass (L2-21a). Another output's grade (the scoring skill's continue ask, R19) is answered as before.
+test('auto-mode asks: a plan, spec or design graded under its pass level waits; a grade at or over it is answered (B10, T12)', () =>
+{
+    const p = project();
+    autoStamp(p, 'b10');
+    for (const question of ['The inline-plan scored 60/100 (level 90). Next?', 'The plan scored 75/100 after round 3, pass 90. Next?',
+        'The spec scored 89/100, pass level 90. Next?', 'The design draft scored 60/100 (level 90). Next?',
+        'The plan scored 60/100. Next?'])
+        assert.strictEqual(answered(ask(p, 'b10', [q(question, ['Accept it at 60 (Recommended)', 'Revise'])])), null, `waits: ${question}`);
+    for (const question of ['The plan scored 92/100 (level 90). Next?', 'The plan scored 90/100, pass 90. Next?', 'The plan scored 85/100. Next?', 'Pass 90 tests this run. Next?',
+        'The designer-plan scored 60/100 (level 90). Next?', 'The report scored 60/100 (level 90). Next?'])
+        assert.deepStrictEqual(answered(ask(p, 'b10', [q(question, ['Build it (Recommended)', 'Revise'])])), { [question]: 'Build it (Recommended)' }, question);
+});
+
+test('auto-mode asks: the T12 inline-plan ask with Accept it at 60 still waits under auto-run (B10)', () =>
+{
+    const p = project();
+    autoStamp(p, 'b10t12');
+    const question = 'The inline-plan scored 60/100 (level 90) after 2 rounds. How should it go on?';
+    const r = ask(p, 'b10t12', [q(question, ['Accept it at 60 (Recommended)', 'Revise once more', 'Keep it withheld'])]);
+    assert.strictEqual(answered(r), null);
+    assert.ok(rows(p, 'b10t12').some((x) => x.kind === 'auto-ask-waits' && /grade under its pass level/.test(x.reason)), 'the wait names why');
+});
+
+// B14 Risks row: an ask that waits names why in its ledger row, so a 'waits for you:' overuse can be counted.
+test('auto-mode asks: the wait row names why, and a waits for you ask carries its reason (B14)', () =>
+{
+    const p = project();
+    autoStamp(p, 'why1');
+    ask(p, 'why1', [q('waits for you: other people\'s data. Read the browser history?', ['Skip it (Recommended)', 'Read it'])]);
+    ask(p, 'why1', [q('Ready. Next?', ['Push now (Recommended)', 'Hold'])]);
+    ask(p, 'why1', [q('The plan scored 60/100 (level 90). Next?', ['Accept (Recommended)', 'Revise'])]);
+    ask(p, 'why1', [q('Which name?', ['alpha', 'beta'])]);
+    const waits = rows(p, 'why1').filter((x) => x.kind === 'auto-ask-waits');
+    assert.strictEqual(waits.length, 4);
+    assert.match(waits[0].reason, /the ask waits for the user - waits for you: other people's data\. Read the browser history\?$/);
+    assert.match(waits[1].reason, /outward/);
+    assert.match(waits[2].reason, /grade under its pass level/);
+    assert.match(waits[3].reason, /no single Recommended option/);
+});
+
+// A2b (session audit 2026-11-27, S03 / S05 / T17): an ask about where the user is, or whose marked pick is a step only the
+// user can do, is no ask. The deny runs before the auto-answer, so a run under auto-run never answers it for the user.
+test('auto-mode asks: an ask about the user\'s whereabouts is denied, never auto-answered (A2b, S03)', () =>
+{
+    const p = project();
+    autoStamp(p, 'us1');
+    const where = q('Where are you?', ['Adding it - keep waiting (Recommended)', 'Go on without you']);
+    const r = ask(p, 'us1', [where]);
+    assert.strictEqual(answered(r), null, 'the auto-answer does not run');
+    assert.strictEqual(r.status, 'ask', `denied: ${r.stderr}`);
+    assert.match(r.stderr, /name the step in the reply and end the turn, or go on with other work/);
+    assert.ok(rows(p, 'us1').some((x) => x.detail && x.detail.branch === 'user-step'), 'the block row names its branch');
+    for (const text of ['Are you back?', 'Should I wait for you?', 'Stay paused until you say go?', 'Should I stay paused until you say go?', 'Should we stay paused?', 'Stay paused?', 'Where are you right now?', 'Are you back yet?', 'Hi - are you there? Pick the next stage.'])
+        assert.strictEqual(ask(p, 'us1', [q(text, ['Keep going (Recommended)', 'Stop'])]).status, 'ask', text);
+    // the wait form does not excuse it
+    assert.strictEqual(ask(p, 'us1', [q('waits for you: other people\'s data. Where are you?', ['Hold (Recommended)', 'Go'])]).status, 'ask', 'wait form');
+    // attended, the same ask is denied too
+    const attended = project();
+    assert.strictEqual(ask(attended, 'us2', [where]).status, 'ask', 'no auto-run stamp');
+});
+
+test('auto-mode asks: an ask whose marked pick is a step only the user can do is denied (A2b, S05, T17)', () =>
+{
+    const p = project();
+    autoStamp(p, 'us3');
+    for (const label of ['I type /task-solve (Recommended)', 'I run the migration (Recommended)', 'I do it by hand (Recommended)', 'I will push (Recommended)',
+        "I'll push after the tests (Recommended)", 'I’ll push after the tests (Recommended)', 'You run the tests (Recommended)', 'You type the key (Recommended)']) {
+        const r = ask(p, 'us3', [q('How do we go on?', [label, 'Something else'])]);
+        assert.strictEqual(r.status, 'ask', label);
+        assert.strictEqual(answered(r), null, label);
+    }
+    assert.match(ask(p, 'us3', [q('How do we go on?', ['I type /task-solve (Recommended)', 'Other'])]).stderr, /name the step in the reply and end the turn, or go on with other work/);
+});
+
+test('auto-mode asks: a pick in the model\'s voice, or a step word in an unmarked label, passes the user-step check (A2b)', () =>
+{
+    const p = project();
+    autoStamp(p, 'us4');
+    const pass = (label, question = 'How do we go on?') => assert.deepStrictEqual(answered(ask(p, 'us4', [q(question, [label, 'Something else'])])), { [question]: label }, label);
+    pass('Commit now (Recommended)');
+    // an outward pick passes this check and then waits for the user, as before
+    const outward = ask(p, 'us4', [q('How do we go on?', ['Push after the tests (Recommended)', 'Hold'])]);
+    assert.strictEqual(outward.status, 0, outward.stderr);
+    assert.strictEqual(answered(outward), null, 'a push pick still waits');
+    // opens with a verb, so it passes this check; its push then waits for the user, as an outward pick does
+    const verbFirst = ask(p, 'us4', [q('How do we go on?', ["Run the tests, then I'll push (Recommended)", 'Hold'])]);
+    assert.strictEqual(verbFirst.status, 0, verbFirst.stderr);
+    pass('Add it to the plan (Recommended)');
+    pass('Run the tests (Recommended)');
+    // only the marked label is judged: a user-step label that is not the pick is a plain option
+    pass('Run the tests (Recommended)', 'Next step?');
+    assert.deepStrictEqual(answered(ask(p, 'us4', [q('How do we go on?', ['Run the tests (Recommended)', 'I type it myself'])])), { 'How do we go on?': 'Run the tests (Recommended)' }, 'an unmarked user-step option');
+    // a word that only starts like one: 'I' and 'You' as a first word of other labels
+    pass('Youtube embed first (Recommended)');
+    // the phrases are tied to the user: a question that only shares the words, or a 'You' label with no user step, passes
+    pass('Run it locally (Recommended)', 'Where are you running the tests - local or CI?');
+    pass('Yes (Recommended)', 'Should the watcher stay paused during the migration?');
+    pass('Keep them (Recommended)', 'Should we keep paused jobs in the queue?');
+    pass('You can pick either (Recommended)');
+    pass('You get the short form (Recommended)');
+    pass('Index the files (Recommended)');
+    // a pick on a multi-select question carries no single mark to judge
+    assert.strictEqual(ask(p, 'us4', [q('Which files?', ['I run a.js', 'b.js'], true)]).status, 0, 'multi-select');
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -807,6 +1050,32 @@ test('auto-mode Stop: a run waiting on its own background work passes, an idle r
     assert.match(idle.stderr, /auto-run is on and its run is not closed/);
     assert.strictEqual(stop('w1', { background_tasks: [{ id: 's', type: 'shell', status: 'running', command: 'npm run dev' }] }).status, 2, 'a dev server never wakes the run');
     assert.strictEqual(stop('w1', { background_tasks: [{ id: 'd', type: 'subagent', status: 'completed' }] }).status, 2, 'a settled seat wakes nothing');
+});
+
+// Session audit 2026-11-27 B11 (S02): a background `python3 tools/lanes.py run ... > log` was no live work, so the run waiting
+// on it was sent back; past its age limit (its timeout, else 60 min) the hold is unchanged.
+test('auto-mode Stop: a run waiting on a background script passes until its 60 min limit (B11)', () =>
+{
+    const p = project();
+    const wait = 'Waiting on the lanes run this session started in the background.';
+    const launch = (id, minutesAgo, input = {}) => [
+        { type: 'assistant', timestamp: new Date(Date.now() - minutesAgo * 60000).toISOString(),
+            message: { id: `m-${id}`, role: 'assistant', content: [{ type: 'tool_use', id, name: 'Bash', input: { command: 'python3 tools/lanes.py run tab-cap --lanes 1 > lanes.log', run_in_background: true, ...input } }] } },
+        { type: 'user', timestamp: new Date(Date.now() - minutesAgo * 60000 + 1000).toISOString(),
+            message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: `Command running in background with ID: ${id}.` }] }, toolUseResult: { backgroundTaskId: id } },
+    ];
+    const stop = (sid, rowsOut) => run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: sid, cwd: p.root, transcript_path: transcript(rowsOut),
+        last_assistant_message: wait }, { CLAUDE_PROJECT_DIR: p.root });
+    autoStamp(p, 'b11');
+    openRun(p, 'b11');
+    const live = stop('b11', launch('toolu_b11a', 5));
+    assert.strictEqual(live.status, 0, `an unknown script out for 5 min wakes the run itself: ${live.stderr}`);
+    assert.ok(rows(p, 'b11').some((r) => r.kind === 'auto-wait'), 'one auto-wait row');
+    assert.strictEqual(stop('b11', launch('toolu_b11b', 61)).status, 2, 'out for 61 min with no timeout: sent back');
+    // the call's timeout bounds a foreground call, not a background shell (wave T16): 15 min with a 10 min timeout is still inside 60
+    assert.strictEqual(stop('b11', launch('toolu_b11c', 15, { timeout: 600000 })).status, 0, 'out past its own 10 min timeout, inside 60: the run still waits');
+    assert.strictEqual(stop('b11', launch('toolu_b11e', 61, { timeout: 7200000 })).status, 2, 'a long timeout does not stretch the 60 min limit');
+    assert.strictEqual(stop('b11', launch('toolu_b11d', 5, { command: 'npm run dev' })).status, 2, 'a dev server never wakes the run');
 });
 
 test('auto-mode Stop: the auto-fields hold skips a progress note over running work, and still holds the idle done close (C02)', () =>
@@ -978,6 +1247,111 @@ test('auto-mode Stop: a run close with Done: and Left for you: ends the run - th
     assert.ok(fs.existsSync(marker(p, 'rc6')), `a Progress: 2 of 5 stop keeps the run open: ${mid.status}`);
     stop('rc6', 'Stage 3 of 5 runs next; the close will read:\n```text\nDone: <the result>\nLeft for you: <the acts>\n```');
     assert.ok(fs.existsSync(marker(p, 'rc6')), 'a fenced close template keeps the run open');
+});
+
+// A2d (session audit 2026-11-27, S03 'Stay paused'): the user typed 'stop everything until I ask' and the run held every
+// Stop and answered every ask after it. A typed prompt aimed at the run itself ends it, as a run close does: the marker goes,
+// and no ask is answered until a newer stamp (a typed /task-solve). The saved switch and the stamp are not touched.
+const typedAt = (text, msFromNow = 2000) => ({ type: 'user', entrypoint: 'cli', timestamp: new Date(Date.now() + msFromNow).toISOString(), message: { role: 'user', content: text } });
+const STOPS_THE_RUN = ['stop', 'Pause.', 'wait', 'could you stop everything until I ask run again?', 'pause the run', 'please stop until I ask', 'wait until I ask', 'stop auto run',
+    'stop now', 'stop please', 'Stop, please', 'ok stop', 'stop it', 'if the build fails, stop everything and tell me'];
+const NO_STOP = ['stop the dev server', 'add a pause button', 'wait for the build to finish, then continue', "don't stop everything, keep going", 'why did the run stop?', 'the stop button does not work',
+    'do not wait until I say go', 'hold off on the commit until I say', 'stop the run-time check'];
+test("auto-mode Stop: a typed 'stop everything until I ask' ends the run - no hold, the marker goes, the stamp stays (A2d)", () =>
+{
+    const p = project();
+    const stopAfter = (sid, text, rowsAfter = []) => run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: sid, cwd: p.root,
+        transcript_path: transcript([typedAt(text), ...rowsAfter]), last_assistant_message: 'Stage 2 of 4 is done; stage 3 starts next.', background_tasks: [] }, { CLAUDE_PROJECT_DIR: p.root });
+    STOPS_THE_RUN.forEach((text, i) =>
+    {
+        const sid = `st${i}`;
+        autoStamp(p, sid);
+        openRun(p, sid);
+        const r = stopAfter(sid, text);
+        assert.strictEqual(r.status, 0, `'${text}' ends the run: ${r.stderr}`);
+        assert.ok(!fs.existsSync(marker(p, sid)), `'${text}': the marker is ended`);
+        assert.ok(fs.existsSync(p.gate), 'the stamp stands: auto-run stays on');
+        assert.strictEqual(rows(p, sid).filter((x) => x.kind === 'auto-run-stopped').length, 1, `'${text}': one auto-run-stopped row`);
+    });
+    NO_STOP.forEach((text, i) =>
+    {
+        const sid = `ns${i}`;
+        autoStamp(p, sid);
+        openRun(p, sid);
+        assert.strictEqual(stopAfter(sid, text).status, 2, `'${text}' is no stop: the run is held as before`);
+        assert.ok(fs.existsSync(marker(p, sid)), `'${text}': the marker stands`);
+    });
+    // a typed /task-solve after the stop is the newest prompt: the new run is held again
+    autoStamp(p, 'st-again');
+    openRun(p, 'st-again');
+    const restart = stopAfter('st-again', 'stop everything', [typedAt('<command-name>/task-solve</command-name>', 3000)]);
+    assert.strictEqual(restart.status, 2, 'a later typed /task-solve starts the run again');
+    assert.ok(fs.existsSync(marker(p, 'st-again')), 'and its marker stands');
+});
+
+test("auto-mode asks: no ask is answered after a typed 'stop everything until I ask', until a newer stamp (A2d)", () =>
+{
+    const p = project();
+    const one = [q('Run the tests next?', ['Run the tests (Recommended)', 'Skip them'])];
+    const askAfter = (sid, rowsAfter) => ask(p, sid, one, { transcript_path: transcript(rowsAfter) });
+    autoStamp(p, 'sa1');
+    assert.ok(answered(askAfter('sa1', [])), 'control: an ordinary ask is answered');
+    for (const text of STOPS_THE_RUN)
+    {
+        assert.strictEqual(answered(askAfter('sa1', [typedAt(text)])), null, `'${text}': the ask waits`);
+    }
+    assert.ok(rows(p, 'sa1').some((x) => x.kind === 'auto-ask-stopped'), 'the wait is logged as a stopped run');
+    for (const text of NO_STOP) assert.ok(answered(askAfter('sa1', [typedAt(text)])), `'${text}': the ask is still answered`);
+    // a stop typed BEFORE the stamp belongs to an earlier run
+    assert.ok(answered(askAfter('sa1', [typedAt('stop everything until I ask', -90000)])), 'a stop older than the stamp holds nothing');
+    // a stop, then a newer stamp (a typed /task-solve rewrites it): the asks are answered again
+    const stopped = transcript([typedAt('stop everything until I ask')]);
+    assert.strictEqual(answered(ask(p, 'sa1', one, { transcript_path: stopped })), null, 'stopped');
+    const later = new Date(Date.now() + 10000);
+    fs.utimesSync(p.gate, later, later);
+    assert.ok(answered(ask(p, 'sa1', one, { transcript_path: stopped })), 'a newer stamp starts the auto-answer again');
+    // a stop row with no timestamp counts as current, a torn one holds nothing
+    const bare = { type: 'user', entrypoint: 'cli', message: { role: 'user', content: 'pause the run' } };
+    autoStamp(p, 'sa2');
+    assert.strictEqual(answered(askAfter('sa2', [bare])), null, 'a stop row with no time reads as current');
+});
+
+// A2d fix round 1: the standing switch's stamp is synthetic (no file, a time of now), so a typed stop never looked newer than it;
+// and the auto-fields hold read the stamp alone, so it held a close the user had stopped.
+test("auto-mode asks: under the standing auto-run a typed stop holds the answers, and a real stamp written later resumes them (A2d)", () =>
+{
+    const p = project();
+    fs.mkdirSync(path.join(p.root, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(p.root, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_AUTO_RUN: '1' } }));
+    const one = [q('Run the tests next?', ['Run the tests (Recommended)', 'Skip them'])];
+    const askAfter = (rowsAfter) => ask(p, 'sd1', one, { transcript_path: transcript(rowsAfter) });
+    assert.ok(answered(askAfter([])), 'control: the standing mode answers an ordinary ask');
+    assert.ok(answered(askAfter([typedAt('stop the dev server')])), "'stop the dev server' is no stop");
+    // typed 5 s ago: older than the synthetic stamp's 'now', as every real prompt is
+    assert.strictEqual(answered(askAfter([typedAt('stop everything until I ask', -5000)])), null, 'a typed stop holds the answers');
+    assert.ok(!fs.existsSync(p.gate), 'no stamp file: the switch is not touched');
+    // /alfred-code:mode:auto-run on typed after the stop writes a real stamp, which is newer than the stop
+    autoStamp(p, 'sd1');
+    const later = new Date(Date.now() + 10000);
+    fs.utimesSync(p.gate, later, later);
+    assert.ok(answered(askAfter([typedAt('stop everything until I ask', -5000)])), 'a real stamp newer than the stop resumes the answers');
+});
+
+test('auto-mode Stop: a close the user stopped owes no Result / Progress / Leftovers fields (A2d)', () =>
+{
+    const p = project();
+    const solveRow = { type: 'user', entrypoint: 'cli', message: { role: 'user', content: '<command-name>/task-solve</command-name>' } };
+    const stopAfter = (sid, rowsAfter) => run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: sid, cwd: p.root, transcript_path: transcript([solveRow, ...rowsAfter]),
+        last_assistant_message: 'Done: the logout fix is built and verified - met\nLeft for you: push 1 commit', background_tasks: [] }, { CLAUDE_PROJECT_DIR: p.root });
+    autoStamp(p, 'sf1');
+    openRun(p, 'sf1');
+    const held = stopAfter('sf1', []);
+    assert.match(held.stderr, /THREE named fields/, 'control: the close owes its fields');
+    autoStamp(p, 'sf2');
+    openRun(p, 'sf2');
+    const stopped = stopAfter('sf2', [typedAt('stop everything until I ask')]);
+    assert.doesNotMatch(stopped.stderr, /THREE named fields/, 'a typed stop since the stamp skips the fields hold');
+    assert.strictEqual(stopped.status, 0, stopped.stderr);
 });
 
 // review 2026-11-27, finding 2: the close's own Stop still reaches the rotation ask before the run ends.
@@ -1792,9 +2166,23 @@ test('mode command: anything but on or off changes nothing', () =>
 {
     const p = project();
     const t = transcript();
-    for (const line of [`${AUTO_CMD} yes`, `${AUTO_CMD} on now`, `${AUTO_CMD} on off`, `${COMPACT_CMD} 1`, '/alfred-code:mode:scoring /task-solve x', `${AUTO_CMD} on\nfix the login`])
+    for (const line of [`${AUTO_CMD} on now`, `${AUTO_CMD} on off`, `${COMPACT_CMD} 1`, '/alfred-code:mode:scoring /task-solve x', `${AUTO_CMD} on\nfix the login`])
         assert.strictEqual(modeLine(p, 'x1', line, t), TYPE_ALONE, line);
     assert.ok(!fs.existsSync(p.gate) && rawMode(p) === null && !rows(p, 'x1').length);
+});
+
+// session audit 2026-11-27, S06: '/alfred-code:mode:auto-run om' got 'type the command alone on its line', which says
+// nothing of the typo. One mistyped word is named, with the two words the command takes.
+test('mode command: a mistyped word is named and the command is told its on and off', () =>
+{
+    const p = project();
+    const t = transcript();
+    assert.strictEqual(modeLine(p, 'x2', `${AUTO_CMD} om`, t), `[mode] 'om' is not on or off - type \`${AUTO_CMD} on\` or \`off\``);
+    assert.strictEqual(modeLine(p, 'x2', `${COMPACT_CMD} yes`, t), `[mode] 'yes' is not on or off - type \`${COMPACT_CMD} on\` or \`off\``, 'each mode names its own command');
+    assert.strictEqual(modeLine(p, 'x2', `<command-name>${AUTO_CMD}</command-name>\n<command-args>Of</command-args>`, t), `[mode] 'Of' is not on or off - type \`${AUTO_CMD} on\` or \`off\``, 'the tagged form too');
+    for (const line of [`${COMPACT_CMD} 1`, `${AUTO_CMD} on now`, `${AUTO_CMD} --mode-auto-run-on`])
+        assert.strictEqual(modeLine(p, 'x2', line, t), TYPE_ALONE, `${line}: not one plain word, so the old line`);
+    assert.ok(!fs.existsSync(p.gate) && rawMode(p) === null && !rows(p, 'x2').length, 'nothing switched');
 });
 
 test('mode command: a seat\'s prompt and a harness prompt are never read', () =>

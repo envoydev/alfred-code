@@ -499,8 +499,9 @@ test('SKF-16: the coverage loop vendors the anti-gaming sweep, records its basel
 // SKF-04 (the user's ruling, option A): the upgrade carried a legacy `--auto` that 'skips the gate' beside auto-mode, which
 // answers every marked ask - so a stage that stayed red re-planned unattended with no cap. One mode now (auto-run since the
 // stack-modes spec of 2026-10-27): auto-run answers
-// the gate, and the hard-stop ask goes out unmarked under it, so the hook leaves it for the user (lint 61 holds templates
-// only, and this ask is prose; scripts/auto-mode.test.js replays both shapes through the hook).
+// the gate, and the hard-stop ask goes out under it with its question opening 'waits for you: <reason>' and its safe option
+// marked, so the hook leaves it for the user (lint 61 holds templates only, and this ask is prose; scripts/auto-mode.test.js
+// replays both shapes through the hook).
 test('SKF-04: the upgrade has one auto mode, and its hard stop waits for the user under it', () => {
     const t = flat(skill('task-version-upgrade'));
     assert.strictEqual((t.match(/--auto\b(?!-)/g) || []).length, 1, 'the only --auto left is the line saying it starts nothing');
@@ -509,14 +510,14 @@ test('SKF-04: the upgrade has one auto mode, and its hard stop waits for the use
     assert.match(t, /\*\*Under auto-run the gate is answered, not skipped - and only when the user turned auto-run on, the hook's contract in context\.\*\*/);
     assert.match(t, /the old `--auto`, 'auto mode' or `auto-mode` wording starts nothing, and the gate stands/);
     assert.match(t, /Hard stops, auto-run included:/);
-    assert.match(t, /Under auto-run put the same three options with NO `\(Recommended\)` mark, the question opening 'no option is recommended: a hard stop waits for you under auto-run' - the hook answers only a marked ask, so this one waits\./);
+    assert.match(t, /Under auto-run put the same options with the safe one marked `\(Recommended\)`, the question opening 'waits for you: <reason>' - auto-run never answers it\./);
     // the attended ask keeps its mark, and the modes paragraph is untouched
     assert.match(t, /- 'Re-plan from this stage \(Recommended\)' - .* - 'Roll back to the last stage's rollback point' - .* - 'Stop here' - /);
     assert.match(t, /\*\*Modes\.\*\* Auto-run, auto-compact and output scoring are modes the user turns on and off with the mode commands/);
 });
 
 // ---- mode commands (2026-11-12): the flows name the two mode commands, and a `--mode-*` token switches nothing ----
-const MODES_PARAGRAPH = "**Modes.** Auto-run, auto-compact and output scoring are modes the user turns on and off with the mode commands (`/alfred-code:mode:auto-run on`, `/alfred-code:mode:scoring on`); each stays on, new sessions included, until its off command, and a hook line on each prompt says which are on. Under the hook's auto-run contract, follow it. With no hook line (hooks off, a host that runs none), a mode is on only when the user said so in this conversation and holds for this conversation: under auto-run each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off; under scoring this run's output is graded before it is handed over. A `--mode-*` token after the command is no part of the request and switches nothing: drop it and say the mode commands replaced it.";
+const MODES_PARAGRAPH = "**Modes.** Auto-run, auto-compact and output scoring are modes the user turns on and off with the mode commands (`/alfred-code:mode:auto-run on`, `/alfred-code:mode:scoring on`); each stays on, new sessions included, until its off command, and a hook line on each prompt says which are on. Under the hook's auto-run contract, follow it. With no hook line (hooks off, a host that runs none), a mode is on only when the user said so in this conversation and holds for this conversation: under auto-run each stop takes its `(Recommended)` option, listed in the close, one whose question opens 'waits for you:' waits, nothing goes outward, no fresh-session hand-off; under scoring this run's output is graded before it is handed over. A `--mode-*` token after the command is no part of the request and switches nothing: drop it and say the mode commands replaced it.";
 test('every flow paragraph names the mode commands and no flag', () => {
     const files = copiesOf(shared()['auto-mode-contract']);
     assert.strictEqual(files.length, 14, 'the owner and its 13 sites (the five capture parts read their router\'s paragraph, audit 2026-10-30 SKC-06)');
@@ -540,4 +541,43 @@ test('mode-auto-run: a question takes route 3, answered with nothing changed; th
     assert.ok(t.includes("A question ('why does X fail?', 'can we add Z?') is no code change: it takes route 3."), 'route 1 sends a question to route 3');
     assert.ok(t.includes('a question: answer it, change nothing and name a fix in one line at most'), 'route 3 answers a question and changes nothing');
     assert.ok(read('stack/rules/alfred-interaction.md').includes('a status or how-to answer naming such a change offers to make it'), 'the rule offers a how-to step');
+});
+
+test("issue-diagnoser: an unmarked ask is denied and a 'waits for you:' ask keeps its mark, no ask 'gets its first option taken'", () => {
+    const t = flat(skill('issue-diagnoser'));
+    assert.match(t, /the stop hook denies an unmarked ask, and an ask that opens 'waits for you: <why>' keeps its mark and waits\./);
+    assert.doesNotMatch(t, /an unmarked ask gets its first option taken/);
+});
+
+// N04 (session audit 2026-11-27): a line beside the push pair says which template to use.
+test('N04: task-solve and the commit checkpoint name when the asked push template applies', () => {
+    assert.ok(flat(skill('task-solve')).includes("Where they only gave a go-ahead to your own push proposal, ask:"), 'task-solve: the line that picks the template');
+    // final review I3: typed words for this push skip the ask in task-solve too, as in the checkpoint - under auto-run the asked template waits
+    assert.ok(flat(skill('task-solve')).includes('Typed words for this push are the `authorized:` line - no ask.'), 'task-solve: typed words for this push skip the ask');
+    const cp = flat(skill('habits-commit-checkpoint'));
+    assert.ok(cp.includes("Where the user's typed words in this exchange (the latest prompt and the proposal it answers) only gave a go-ahead to your own publish proposal, ask:"), 'the checkpoint: the line that picks the template');
+    // the skip rule (words for THIS publish skip the ask) and the Hold mark must not contradict the asked template
+    assert.ok(cp.includes('Words the user already typed for THIS publish skip the ask'), 'the skip rule stays');
+    assert.ok(cp.includes('Holding takes the mark for a publish nobody asked for'), 'Hold is marked only for a publish nobody asked for');
+});
+
+// N04 fix round 1: task-solve's asked template carries a reason per option, like every other template; the doc-drift line lives with its surface list.
+test('N04: the asked push template in task-solve has a reason on each option, and the doc-drift line sits in step-mechanics', () => {
+    const solve = skill('task-solve');
+    const m = /^[ \t]*```ask\n[ \t]*(You asked for this push[^\n]*)\n([^\n]*)\n([^\n]*)\n/m.exec(solve);
+    assert.ok(m, 'the asked template');
+    assert.match(m[2], /^\s*- 'Push now \(Recommended\)' - the checkpoint's publish half takes this answer as its confirmation$/);
+    assert.match(m[3], /^\s*- 'Hold - push later' - nothing leaves this machine$/);
+    assert.ok(!solve.includes('Doc-drift awareness'), 'the line left the body');
+    assert.ok(flat(solve).includes('then the purge count and the doc-drift close line (`references/step-mechanics.md`)'), "step 6 still cues the doc-drift close line");
+    assert.ok(/^   - /.test(m[2]) && /^   - /.test(m[3]), 'the option lines share one indent');
+    assert.ok(read('stack/skills/task-solve/references/step-mechanics.md').includes('**Doc-drift awareness** - one line at most in the close report, never auto-run'), 'and sits in step-mechanics');
+    assert.strictEqual(shared()['flow-doc-drift-awareness'].owner.file, 'stack/skills/task-solve/references/step-mechanics.md');
+});
+
+// C14 (session audit 2026-11-27, second pass): a commit body drifted from the indent and bullet marks of the user's own commits.
+test("C14: the commit checkpoint's message step compares the body shape with the last 5 commits and keeps the no-trace rule", () => {
+    const cp = flat(skill('habits-commit-checkpoint'));
+    assert.ok(cp.includes("compare the new message's body shape (indent, bullet marks, trailer lines) with the last 5 commits and follow it."), 'the shape sentence');
+    assert.ok(cp.includes("A trailer line is the user's own kind, such as `Refs:`; an agent co-author line or any trace of the agent is never added."), 'the sentence never overrides the commits rule');
 });

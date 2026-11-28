@@ -50,9 +50,10 @@ test('three lead sentences get no note, four get one', () => {
     );
 });
 
-test('a sentence of fewer than three words does not count, a colon ends a sentence', () => {
+test('a sentence of fewer than three words does not count, a colon does not end a sentence', () => {
     assert.strictEqual(check('Done. Fixed. Green. Merged. Shipped.').note, null);
-    assert.match(check('Result is here: it works. Cause is known: bad path. Fix is small. Test is added.').note, /lead sentences: 4/);
+    assert.strictEqual(check('Result is here: it works fine now. Cause is known: a bad path.').note, null);
+    assert.match(check('Result is here: it works fine now. Cause is known: a bad path. Fix is small now. Test is added too.').note, /lead sentences: 4/);
 });
 
 test('bullets and their indented continuation lines are not lead sentences', () => {
@@ -213,4 +214,86 @@ test('noteFor: a 512 KB cut inside a multi-byte character of the request line sk
         assert.ok(start > 0 && start < head.length, 'the 512 KB tail starts inside the request line');
         assert.match(noteFor(file), /^Last reply: 1200 characters of prose/);
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+const FIELD_LABELS = ['Result:', 'Progress:', 'Leftovers:', 'Deferred by you:', 'Checks:', 'Cleanup:'];
+// Fixtures of fake text in the shape and length of two audited replies (562 and 459 characters with their field lines).
+const AUDITED_PROGRESS = [
+    'The widget parser now reads both date formats and the sample suite is green again.',
+    'Progress: parser change landed in the module, sample suite rerun twice, no new warnings seen.',
+    'Result: the widget export keeps its old order, and the new column is the last one in each row.',
+    'Leftovers: the old fixture file is still in the tree, since another test reads it.',
+    'Deferred by you: the rename of the export helper, which you held back until the next release.',
+    'Cleanup: removed the scratch folder this run made, left the cache and the lock folders in place for the next run.',
+].join('\n');
+const AUDITED_SHORT = [
+    'The retry loop now stops after three tries and logs each failure once.',
+    'Result: the loop ends on the third failure, so a dead host no longer stalls the run.',
+    'Progress: unit tests added for the limit, the log line and the reset after a success.',
+    'Leftovers: the old retry flag is still read by one script, which a later change will move over to the new limit.',
+    'Cleanup: removed the scratch folder this run created, and stopped the test server it started in the run.',
+].join('\n');
+
+test('the audited replies with their field lines get no note', () => {
+    assert.strictEqual(AUDITED_PROGRESS.length, 562);
+    assert.strictEqual(AUDITED_SHORT.length, 459);
+    assert.strictEqual(check(AUDITED_PROGRESS).note, null);
+    assert.strictEqual(check(AUDITED_SHORT).note, null);
+});
+
+test('the field lines Result:, Progress:, Leftovers:, Deferred by you:, Checks:, Cleanup: are not counted', () => {
+    const lead = 'The build is green. The tests pass now. Lint is clean too.';
+    const field = (label) => `${label} ${'a'.repeat(300)}. And one more sentence is here.`;
+    for (const label of FIELD_LABELS) {
+        const text = `${lead}\n${field(label)}\n${field(label)}\n${field(label)}`;
+        assert.strictEqual(check(text).note, null, label);
+    }
+    for (const marker of ['- ', '* ', '  ', '**']) {
+        assert.strictEqual(check(`${lead}\n${marker}Result: ${'a'.repeat(1000)}. Two more here.`).note, null, marker);
+    }
+    assert.strictEqual(check(`${lead}\nResult: ${'a'.repeat(500)}\n  a wrapped line of ${'b'.repeat(500)}`).note, null);
+});
+
+test('a label inside a line is no field line, so that prose still counts', () => {
+    assert.match(check(`The Result: ${'a'.repeat(1000)}`).note, /^Last reply: 1\d{3} characters/);
+    assert.match(check(`See Cleanup: ${'a'.repeat(1000)}`).note, /^Last reply/);
+    assert.match(check(`Results: ${'a'.repeat(1000)}`).note, /^Last reply/);
+});
+
+test('a 950-character reply of plain prose and a 4-sentence lead still get the note, field lines beside them or not', () => {
+    const plain = `${'word '.repeat(189)}end.`;
+    assert.ok(plain.length >= 940 && plain.length <= 960, String(plain.length));
+    assert.match(check(plain).note, /^Last reply: 9\d\d characters/);
+    assert.match(check(`${plain}\nResult: it works fine now.`).note, /^Last reply: 9\d\d characters/);
+    const four = 'The build is green. The tests pass now. Lint is clean too. The docs are fresh.';
+    assert.match(check(four).note, /lead sentences: 4/);
+    assert.match(check(`${four}\nProgress: done with all of it.`).note, /lead sentences: 4/);
+});
+
+test('bold, numbered, plus-marked, underscored and lowercase field lines are not counted', () => {
+    const lead = 'The build is green. The tests pass now. Lint is clean too.';
+    const forms = ['**Result**: ', '1. Result: ', '2) Progress: ', '+ Cleanup: ', '__Result:__ ', 'result: ', '**Deferred by you:** ', '- **Leftovers**: ', 'CLEANUP: '];
+    for (const form of forms) {
+        assert.strictEqual(check(`${lead}\n${form}${'a'.repeat(1000)}`).note, null, form);
+    }
+    assert.match(check(`${lead}\nResults: ${'a'.repeat(1000)}`).note, /^Last reply/);
+});
+
+test('bullets right after a bare field label belong to the field, indented or not, up to a blank or non-bullet line', () => {
+    const lead = 'The build is green. The tests pass now.';
+    const items = Array.from({ length: 4 }, (_, i) => `- item ${i} ${'a'.repeat(300)}`).join('\n');
+    const indented = items.replace(/^/gm, '  ');
+    for (const label of ['Leftovers:', '**Leftovers:**', '- Leftovers:', 'Deferred by you:']) {
+        assert.strictEqual(check(`${lead}\n${label}\n${items}`).note, null, label);
+        assert.strictEqual(check(`${lead}\n${label}\n${indented}`).note, null, label);
+    }
+    assert.match(check(`${lead}\nLeftovers:\n${items}\n\n- ${'b'.repeat(900)}`).note, /^Last reply/);
+    assert.match(check(`${lead}\nLeftovers:\n- one\nA plain line follows.\n- ${'b'.repeat(900)}`).note, /^Last reply/);
+    assert.match(check(`${lead}\nNotes:\n${items}`).note, /^Last reply/);
+});
+
+test('a Checks line inside a code block does not exempt the reply', () => {
+    const long = 'a'.repeat(1200);
+    assert.match(check(`${long}\n\`\`\`\nChecks: lint passed\n\`\`\``).note, /^Last reply/);
+    assert.strictEqual(check(`${long}\nChecks: lint passed\n\`\`\`\ncode\n\`\`\``).note, null);
 });

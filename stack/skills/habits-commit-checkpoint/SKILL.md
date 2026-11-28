@@ -53,7 +53,10 @@ On any non-trivial diff, before committing or presenting, in order:
    each commit of a split - 'each commit builds' needs a run per commit.
 
 6. **Receipt.** Write the receipt below with `receipt.js`, then commit, read `git log -1 --stat` back
-   into the close, then clear it.
+   into the close, then clear it. Before you write the message, run `git log -5` and compare the new
+   message's body shape (indent, bullet marks, trailer lines) with the last 5 commits and follow it.
+   A trailer line is the user's own kind, such as `Refs:`; an agent co-author line or any trace of the
+   agent is never added.
 
 **Scope - the session's own change.** What was untracked before this change began is not part of
 it: the docs hook lists it at session start, once per HEAD (`<data root>/state/sessions/untracked-at-start-<HEAD
@@ -176,12 +179,20 @@ receipt minted before the merge still reads the pre-merge tip, a different tree 
    option is the receipt's `answered: <the chosen label>` line. Words the user already typed for THIS
    publish skip the ask - they are the `authorized:` line. A red the receipt's `live-probe:` records
    on a check CI also runs is named in the question - 'CI runs <check>, red here' - and 'Hold - fix
-   the red first' replaces the plain Hold. Holding takes the mark, since a publish leaves the machine:
+   the red first' replaces the plain Hold. Holding takes the mark for a publish nobody asked for, since a publish leaves the machine:
 
    ```ask
    Publish <the commit set> to <remote>/<branch>? It leaves this machine for CI and everyone on the branch.
    - 'Hold - push later (Recommended)' - nothing leaves the machine and no receipt is written
    - 'Publish' - push or merge exactly the set named above
+   ```
+
+   Where the user's typed words in this exchange (the latest prompt and the proposal it answers) only gave a go-ahead to your own publish proposal, ask:
+
+   ```ask
+   You asked for this push: <the commit set> goes to <remote>/<branch>. It leaves this machine for CI and everyone on the branch.
+   - 'Publish (Recommended)' - push or merge exactly the set named above
+   - 'Hold - push later' - nothing leaves the machine and no receipt is written
    ```
 
 2. Write the receipt as its own call.

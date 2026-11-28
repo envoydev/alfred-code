@@ -214,6 +214,14 @@ function editNote(project, sessionId, actor, file, env = process.env)
     catch { return ''; }
 }
 
+// B16: a file under the data root (`.alfred/`) other than the docs root is the plugin's own state, no project file: the docs root holds
+// the user's own docs, so its rules attach. A copy without layout.js attaches as before.
+function isPluginState(project, file)
+{
+    try { return require(path.join(__dirname, 'layout.js')).underStateOnly(project, file); }
+    catch { return false; }
+}
+
 // A PreToolUse call on a file tool (file-guards folds rules-session.js onto the file tools): the touch is recorded for the summary
 // line, and an edit tool hears the key lines of the path rules that match its file, once per session, actor and file. Prints the
 // hook answer itself; a payload with no file prints nothing.
@@ -225,6 +233,7 @@ function onFileTool(input, env = process.env)
     const file = path.resolve(input.cwd || process.cwd(), given);
     noteTouch(start, input.session_id, file, env);
     if (!EDIT_TOOLS.includes(String(input.tool_name || ''))) return;
+    if (isPluginState(start, file)) return;   // B16: the plugin's own state is no project file, so no path rule attaches
     const text = editNote(start, input.session_id, String(input.agent_id || 'main'), file, env);
     if (text) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: text } }));
 }

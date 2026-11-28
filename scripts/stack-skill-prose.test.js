@@ -323,7 +323,8 @@ test('M128: the rule-forced convention layers and the S16 hubs are model-only, a
     const FORCED = ['angular-conventions', 'angular-styling', 'csharp', 'database-conventions', 'dotnet-winforms', 'dotnet-wpf', 'javascript', 'typescript'];
     const HUBS = ['angular-material', 'ionic'];
     // The audit of 2026-10-30 (SKC-24, the user's ruling): the habits a rule forces or a seat preloads leave the / menu too.
-    const HABITS = ['habits-code-comments', 'habits-done-gate', 'habits-root-cause', 'habits-test-first'];
+    // The session audit of 2026-11-27 (C8): the proposal review, which the interaction rule loads as its first action.
+    const HABITS = ['habits-code-comments', 'habits-done-gate', 'habits-evaluate-proposal', 'habits-root-cause', 'habits-test-first'];
     assert.doesNotMatch(skill('markdown-style'), /^user-invocable:/m, 'markdown-style keeps its / entry');
     assert.deepStrictEqual(flagged, [...FORCED, ...HUBS, ...HABITS].sort());
     for (const name of [...HUBS, ...HABITS]) assert.doesNotMatch(skill(name), /^disable-model-invocation:/m, `${name} stays model-invocable`);

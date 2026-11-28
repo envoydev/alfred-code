@@ -712,7 +712,7 @@ test('swap 1: a diff of a dotenv is masked by the store rule - every value, a li
 
 test('I2: the stream redactor masks credential values, URL passwords and PEM bodies line by line', () => {
   const pem = ['-----BEGIN RSA PRIVATE KEY-----', 'MIIEowIBAAKCAQEA0000', 'abcdabcdabcd', '-----END RSA PRIVATE KEY-----'];
-  const input = ['diff --git a/app.env b/app.env', '--- a/app.env', '+++ b/app.env', '-API_TOKEN=old', `+API_TOKEN=${FAKE_TOKEN}`, ' DB_HOST=localhost',
+  const input = ['diff --git a/app.env b/app.env', '--- a/app.env', '+++ b/app.env', '-API_TOKEN=old1x', `+API_TOKEN=${FAKE_TOKEN}`, ' DB_HOST=localhost',
     '+  "ClientSecret": "' + FAKE_TOKEN + '",', '+DATABASE_URL=postgres://app:' + FAKE_TOKEN + '@db:5432/app',
     ...pem.map((l) => `+${l}`), '+const x = 1;'].join('\n') + '\n';
   const r = shaped(input);
@@ -723,7 +723,7 @@ test('I2: the stream redactor masks credential values, URL passwords and PEM bod
   assert.match(r.stdout, /^\+ {2}"ClientSecret": "<set \(40 chars\)>",$/m);
   assert.match(r.stdout, /^\+DATABASE_URL=postgres:\/\/app:<set \(40 chars\)>@db:5432\/app$/m);
   assert.match(r.stdout, /^\+-----BEGIN RSA PRIVATE KEY-----$/m, 'the PEM markers stay');
-  assert.match(r.stdout, /^-API_TOKEN=<set \(3 chars\)>$/m, 'a removed value is a credential too');
+  assert.match(r.stdout, /^-API_TOKEN=<set \(5 chars\)>$/m, 'a removed value is a credential too');
   for (const keep of ['diff --git a/app.env b/app.env', '+++ b/app.env', ' DB_HOST=localhost', '+const x = 1;'])
     assert.ok(r.stdout.split('\n').includes(keep), `${keep} stays as written`);
   assert.match(r.stderr, /credential guard/, 'a masked stream says so on stderr');
@@ -1190,6 +1190,122 @@ test('masker: whole tokens only, nothing under 6 characters, and the key file\'s
     assert.ok(got.includes(`token ${SET(TOKEN)};`), 'the key file\'s token is masked as a whole token');
     assert.ok(got.includes(`x${TOKEN}y`), 'and only as one');
   } finally { fs.rmSync(path.join(fx.project, '.mcps-secrets'), { force: true }); }
+});
+
+// A3 (session audit 2026-11-27, the user's pick 'Mask secret-shaped values only', its key words widened to short secrets): the
+// output masker hides a STORE value only when its key names a credential (a word of the key split on _ - . and case changes) or
+// the value looks like one. A plain value (an org slug, a layout) prints as it is; the session-start note names those keys.
+const A3_STORE = [
+  'ORG_SLUG=acme-app', 'DB_PASS=hunter2', 'SMTP_PWD=x9', 'ADMIN_CODE=4821', 'DB_LOGIN=hunter2', `API_TOKEN=${GH}`,
+  'NOTE=Vq3Lm9ZtR2xKp8WsNb4HcJd6FgAz1UeYo5TiXk7C', 'KEYBOARD_LAYOUT=us', 'MONKEY=banana-split', 'dbSession=s3ss-4821', 'PORT=3000', '',
+].join('\n');
+const A3_NOTE = 'Vq3Lm9ZtR2xKp8WsNb4HcJd6FgAz1UeYo5TiXk7C';
+function withA3Store(body, store = A3_STORE) {
+  const fx = maskFixture();
+  const file = path.join(fx.project, '.alfred', '.secrets');
+  const before = fs.readFileSync(file, 'utf8');
+  fs.writeFileSync(file, store);
+  try { return body(fx); } finally { fs.writeFileSync(file, before); }
+}
+test('A3: the output masker hides credential-named and credential-shaped store values, and shows a plain one', () => {
+  withA3Store(() => {
+    const printed = `org acme-app; pass hunter2; smtp x9; code 4821; token ${GH}; note ${A3_NOTE}; layout us; monkey banana-split; sess s3ss-4821; port 3000\n`;
+    const r = masked('node print-it.js', { response: said(printed) });
+    const got = answer(r).updatedToolOutput.stdout;
+    assert.strictEqual(got, `org acme-app; pass ${SET('hunter2')}; smtp ${SET('x9')}; code ${SET('4821')}; token ${SET(GH)}; note ${SET(A3_NOTE)}; layout us; monkey banana-split; sess ${SET('s3ss-4821')}; port 3000\n`);
+  });
+});
+test('A3: a word of the key is matched as a word - KEY is no part of MONKEY, DB_LOGIN and dbLogin are one login', () => {
+  withA3Store(() => {
+    const out = (text) => { const r = masked('node print-it.js', { response: said(text) }); return r.out ? answer(r).updatedToolOutput.stdout : text; };
+    assert.strictEqual(out('a banana-split b\n'), 'a banana-split b\n', 'MONKEY holds no key word');
+    assert.strictEqual(out('a hunter2 b\n'), `a ${SET('hunter2')} b\n`, 'DB_PASS and DB_LOGIN');
+  }, 'MONKEY=banana-split\nDB_LOGIN=hunter2\nuserDbLogin=frodo-77\n');
+  withA3Store(() => {
+    const r = masked('node print-it.js', { response: said('who frodo-77\n') });
+    assert.strictEqual(answer(r).updatedToolOutput.stdout, `who ${SET('frodo-77')}\n`, 'a camelCase key splits at the case change');
+  }, 'userDbLogin=frodo-77\n');
+});
+test('A3: the session-start note lists the store keys whose values show, by name, and never a value', () => {
+  withA3Store((fx) => {
+    const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'SessionStart', source: 'startup', cwd: fx.project, session_id: 'a3-note' }), encoding: 'utf8',
+      env: { ...process.env, CLAUDE_PROJECT_DIR: fx.project, HOME: fx.home, USERPROFILE: fx.home } });
+    const note = JSON.parse(r.stdout).hookSpecificOutput.additionalContext;
+    const shown = note.match(/Shown in output[^:]*: ([^.]*?) - /);
+    assert.ok(shown, note);
+    assert.deepStrictEqual(shown[1].split(', ').sort(), ['KEYBOARD_LAYOUT', 'MONKEY', 'ORG_SLUG', 'PORT']);
+    for (const value of ['acme-app', 'hunter2', 'banana-split', A3_NOTE, GH]) assert.ok(!note.includes(value), 'no value in the note');
+  });
+});
+test('A3: a credential-keyed store value of 1 character shows (PIN=7); 2 or more are masked (OTP=123, SMTP_PWD=x9)', () => {
+  withA3Store(() => {
+    const r = masked('node print-it.js', { response: said('took 7 s, 123 rows, x9 ms, code 4821\n') });
+    assert.strictEqual(answer(r).updatedToolOutput.stdout, `took 7 s, ${SET('123')} rows, ${SET('x9')} ms, code ${SET('4821')}\n`);
+  }, 'PIN=7\nOTP=123\nSMTP_PWD=x9\nADMIN_CODE=4821\n');
+});
+test('A3 round 3: a capitalised value holding a digit, or 16 characters or more, is no type name', () => {
+  const out = (text) => { const r = masked('node print-it.js', { response: said(text) }); return r.out ? answer(r).updatedToolOutput.stdout : text; };
+  const hidden = [['export DB_PASSWORD=', 'Summer2024x;'], ['password: ', 'Summer2024x,'], ['export API_TOKEN=', 'Xy9fakefakefake;']];
+  for (const [head, value] of hidden) assert.strictEqual(out(`${head}${value}\n`), `${head}${SET(value)}\n`, head);
+  for (const line of ['originKey: string,', 'foo: Promise<Bar>,', '  secretKey: SecretStore;']) assert.strictEqual(out(`${line}\n`), `${line}\n`, line);
+});
+test('A3 round 3: a joined or plural key name still names a credential (SECRETKEY, DBPASS, ADMINPWD, PASSPHRASE, TOKENS)', () => {
+  const store = ['SECRETKEY=sk-4821', 'MASTERKEY=mk-4821', 'ACCESSKEY=ak-7731', 'DBPASS=zz9', 'ADMINPWD=q7', 'PASSPHRASE=ph-1234', 'SSH_PASSPHRASE=sp-1234',
+    'SECRETS=sc-1234', 'TOKENS=tk-1234', 'PASSWORDS=pw-1234', 'MONKEY=banana-split', 'KEYBOARD_LAYOUT=us-intl', ''].join('\n');
+  const values = ['sk-4821', 'mk-4821', 'ak-7731', 'zz9', 'q7', 'ph-1234', 'sp-1234', 'sc-1234', 'tk-1234', 'pw-1234'];
+  withA3Store(() => {
+    const r = masked('node print-it.js', { response: said(`${values.join(' ')} banana-split us-intl\n`) });
+    assert.strictEqual(answer(r).updatedToolOutput.stdout, `${values.map((v) => SET(v)).join(' ')} banana-split us-intl\n`);
+  }, store);
+});
+test('A3 round 3: a value under 4 characters is masked only under a strong key word (KEY_PREFIX=app shows, SMTP_PWD=x9 is masked)', () => {
+  const store = 'KEY_PREFIX=app\nCODE_DIR=src\nSESSION_TIMEOUT=30\nSMTP_PWD=x9\nOTP=123\nADMIN_CODE=4821\n';
+  withA3Store((fx) => {
+    const r = masked('node print-it.js', { response: said('app src 30 x9 123 4821\n') });
+    assert.strictEqual(answer(r).updatedToolOutput.stdout, `app src 30 ${SET('x9')} ${SET('123')} ${SET('4821')}\n`);
+    const started = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'SessionStart', source: 'startup', cwd: fx.project, session_id: 'a3-short' }), encoding: 'utf8',
+      env: { ...process.env, CLAUDE_PROJECT_DIR: fx.project, HOME: fx.home, USERPROFILE: fx.home } });
+    const shown = JSON.parse(started.stdout).hookSpecificOutput.additionalContext.match(/Shown in output[^:]*: ([^.]*?) - /);
+    assert.deepStrictEqual(shown[1].split(', ').sort(), ['CODE_DIR', 'KEY_PREFIX', 'SESSION_TIMEOUT']);
+  }, store);
+});
+test('A3 round 3: a short password inside a store connection string with spaces is still masked', () => {
+  withA3Store(() => {
+    const r = masked('node print-it.js', { response: said('login ab12x ok\n') });
+    assert.strictEqual(answer(r).updatedToolOutput.stdout, `login ${SET('ab12x')} ok\n`);
+  }, 'CONN=Server=db host;User Id=app;Password=ab12x;Trust=yes\n');
+});
+test('A3 round 4: a type name with two capital humps and no long digit run stays a type (Uint8Array, S3Client, OAuth2Client, Sha256Hash)', () => {
+  const out = (text) => { const r = masked('node print-it.js', { response: said(text) }); return r.out ? answer(r).updatedToolOutput.stdout : text; };
+  for (const line of ['token: Uint8Array,', 'secret: S3Client;', 'apiKey: OAuth2Client,', 'token: Sha256Hash;', 'secret: Buffer<Uint8Array>)']) assert.strictEqual(out(`${line}\n`), `${line}\n`, line);
+  for (const [head, value] of [['password: ', 'Summer2024x,'], ['export API_TOKEN=', 'Xy9fakefakefake;']]) assert.strictEqual(out(`${head}${value}\n`), `${head}${SET(value)}\n`, head);
+});
+test('A3 round 4: HOTKEY, PUBKEY and MONKEYS are ordinary words, no credential key', () => {
+  withA3Store(() => {
+    const r = masked('node print-it.js', { response: said('keys ctrl-k1 pk-12345 banana-split\n') });
+    assert.strictEqual(r.out, '', 'nothing masked');
+  }, 'HOTKEY=ctrl-k1\nPUBKEY=pk-12345\nMONKEYS=banana-split\n');
+});
+test('A3: a long word counts at the end of a key (GITHUBTOKEN), a short one only as a part of it (MYPIN)', () => {
+  withA3Store(() => {
+    const r = masked('node print-it.js', { response: said('tok ab12; pin 7731\n') });
+    assert.strictEqual(answer(r).updatedToolOutput.stdout, `tok ${SET('ab12')}; pin 7731\n`);
+  }, 'GITHUBTOKEN=ab12\nMYPIN=7731\n');
+});
+test('A3: a walk through the store masks a credential-named line and shows a plain one', () => {
+  withA3Store(() => {
+    const lines = ['.alfred/.secrets:1:ORG_SLUG=acme-plain', '.alfred/.secrets:2:DB_PASS=zz-notinstore-9', ''].join('\n');
+    const r = masked('grep -rn . .alfred/.secrets', { response: said(lines) });
+    assert.strictEqual(answer(r).updatedToolOutput.stdout, `.alfred/.secrets:1:ORG_SLUG=acme-plain\n.alfred/.secrets:2:DB_PASS=${SET('zz-notinstore-9')}\n`);
+  }, 'OTHER=1\n');
+});
+test('A3: a type word and a value of 1-3 characters are no credential in a printed line', () => {
+  const out = (text) => { const r = masked('node print-it.js', { response: said(text) }); return r.out ? answer(r).updatedToolOutput.stdout : text; };
+  for (const line of ['originKey: string,', '  secretKey: SecretStore;', 'authToken: number', '"apiKey": "undefined"', '"token": "<set (1 chars)>"', '{"password": "abc"}', 'DB_PASS=ab']) {
+    assert.strictEqual(out(`${line}\n`), `${line}\n`, line);
+  }
+  assert.strictEqual(out('{"password": "abcd"}\n'), `{"password": "${SET('abcd')}"}\n`, 'four characters are still masked');
+  assert.strictEqual(out('DB_PASS=hunter2\n'), `DB_PASS=${SET('hunter2')}\n`, 'a credential-named pair still masks');
 });
 
 test('swap 1 canary: cat, node -e, python3 -c, git diff and grep -rn of a planted file come back masked in the measured shape', () => {
@@ -1970,4 +2086,32 @@ test('SG1-F1: a heredoc-written script that passes the environment to a child ru
   // what the script printed comes back as printed: no credential in it, so the masker answers nothing
   const after = masked(node, { response: said('flag=1 1\n') });
   assert.deepStrictEqual([after.status, after.out], [0, ''], 'the masker leaves the output alone');
+});
+
+// Fix wave 2026-11-28 (L1-10, L1-11): a store value may hide a credential in a `${VAR:-default}` default, or in a
+// whitespace-separated pair; the masker has to name the part a command prints.
+const printedAfterMask = (text) => { const r = masked('node print-it.js', { response: said(text) }); return r.out === '' ? text : answer(r).updatedToolOutput.stdout; };
+test('L1-10: the default inside ${VAR:-x} of a store value is the value - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-acmeSecret9} prints masked', () => {
+  withA3Store(() => {
+    assert.strictEqual(printedAfterMask('login acmeSecret9 ok\n'), `login ${SET('acmeSecret9')} ok\n`);
+  }, 'POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-acmeSecret9}\n');
+});
+test('L1-10: a ${VAR} with no default, a blank default and a variable default stay unmasked', () => {
+  withA3Store(() => {
+    const text = 'a ${DB_PASSWORD} b ${DB_PASSWORD:-} c ${DB_PASSWORD:-$OTHER} d\n';
+    assert.strictEqual(printedAfterMask(text), text);
+  }, 'DB_PASSWORD=${DB_PASSWORD}\nDB_PASSWORD=${DB_PASSWORD:-}\nDB_PASSWORD=${DB_PASSWORD:-$OTHER}\n');
+});
+test('L1-11: a store connection string with whitespace-separated pairs masks its password part (PG_DSN=host=db user=app password=ab12xyz99)', () => {
+  withA3Store(() => {
+    assert.strictEqual(printedAfterMask('login ab12xyz99 ok\n'), `login ${SET('ab12xyz99')} ok\n`);
+  }, 'PG_DSN=host=db user=app password=ab12xyz99\n');
+});
+test('L1-11: a whitespace pair under a key that names no credential is masked too (DB_URL), and a placeholder after it is not', () => {
+  withA3Store(() => {
+    assert.strictEqual(printedAfterMask('login ab12xyz99 ok\n'), `login ${SET('ab12xyz99')} ok\n`);
+  }, 'DB_URL=host=db user=app password=ab12xyz99\n');
+  withA3Store(() => {
+    assert.strictEqual(printedAfterMask('see ${DB_PW}\n'), 'see ${DB_PW}\n');
+  }, 'DB_URL=host=db user=app password=${DB_PW}\n');
 });

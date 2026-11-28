@@ -1251,7 +1251,8 @@ function lintReferenceContents(skillsDir, skillDirs, fsLike = fs)
 // AGENTS.md create-mode write ask (audit 2026-10-14 SKC14) and task-build-from-scratch's commit ask (SKF-11) followed.
 const ASK_FLOW_TEMPLATES = {
     // +1 task-solve: the step-5 findings stop (usage audit 2026-11-03 U28: improvised, it marked 'Close now' over an in-area MATERIAL).
-    'task-solve': 11, 'task-solve-cross': 5, 'issue-diagnoser': 5, 'habits-adjust-agents-md': 3,
+    // +1 task-solve: the asked-push twin (session audit 2026-11-27 N04: a push the user asked for marked Hold and waited 34 minutes).
+    'task-solve': 12, 'task-solve-cross': 5, 'issue-diagnoser': 5, 'habits-adjust-agents-md': 3,
     // +1 task-implement (PF1): the foreign-start ask - a `start` that prints `!!`, another session started the task.
     'loop-architecture-quality': 10, 'loop-code-quality': 10, 'loop-test-coverage-quality': 8, 'task-implement': 11, 'task-build-from-scratch': 5,
     // capture-quality's chain (2026-10-29): one template per part state, the mode question and the description match's part pick.

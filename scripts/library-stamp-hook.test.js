@@ -210,3 +210,74 @@ test('the installer files the hook loads standalone are copied whole: every eage
     assert.ok(fs.existsSync(path.join(REPO, 'stack', 'hooks', 'json-file.js')));
     assert.strictEqual(require('./install/json-file.js'), require('../stack/hooks/json-file.js'), 'the installer path is the hooks module, re-exported');
 });
+
+// A1 (R10): node on one nvm version folder is lost with that version, and every hook then fails. The line shows once,
+// on a startup. The child's execPath is set by a preload, so the real node is never touched.
+const PRELOAD_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'libstamp-preload-'));
+test.after(() => fs.rmSync(PRELOAD_DIR, { recursive: true, force: true }));
+const PRELOAD = path.join(PRELOAD_DIR, 'exec-path.js');
+fs.writeFileSync(PRELOAD, "Object.defineProperty(process, 'execPath', { value: process.env.FAKE_EXEC_PATH });\n");
+const NVM_NODE = '/Users/x/.nvm/versions/node/v24.11.0/bin/node';
+const nvmSkip = process.platform === 'win32' ? 'a POSIX path rule' : false;
+
+function runNvm(f, { source = 'startup', home, execPath = NVM_NODE, pathEnv = '/Users/x/.nvm/versions/node/v24.11.0/bin:/usr/bin', plugin = true, hook = HOOK } = {})
+{
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: f.config, HOME: home, USERPROFILE: home, FAKE_EXEC_PATH: execPath, PATH: pathEnv };
+    if (plugin) env.CLAUDE_PLUGIN_ROOT = f.plugin; else delete env.CLAUDE_PLUGIN_ROOT;
+    delete env.CLAUDE_PROJECT_DIR;
+    const payload = { cwd: f.project, hook_event_name: 'SessionStart' };
+    if (source) payload.source = source;
+    const r = spawnSync(process.execPath, ['--require', PRELOAD, hook], { input: JSON.stringify(payload), env, encoding: 'utf8' });
+    assert.equal(r.status, 0, `the hook exited ${r.status}: ${r.stderr}`);
+    return r.stdout;
+}
+
+test('a startup on node from one nvm version folder warns once, to the user and the model (A1)', { skip: nvmSkip }, () =>
+{
+    const out = JSON.parse(runNvm(fx({}), { home: '/Users/x' }));
+    assert.match(out.systemMessage, /one nvm version folder/);
+    assert.match(out.systemMessage, /NVM_SYMLINK_CURRENT=true/);
+    assert.equal(out.hookSpecificOutput.hookEventName, 'SessionStart');
+    assert.equal(out.hookSpecificOutput.additionalContext, out.systemMessage);
+});
+
+test('a resume, a compact and a clear carry no nvm line (A1)', { skip: nvmSkip }, () =>
+{
+    for (const source of ['resume', 'compact', 'clear', '']) assert.equal(runNvm(fx({}), { home: '/Users/x', source }), '', `source ${source || '(none)'}`);
+});
+
+test('the nvm line shows with no plugin root and no stamp, and joins a stale-stamp line (A1)', { skip: nvmSkip }, () =>
+{
+    assert.match(JSON.parse(runNvm(fx({ noStamp: true }), { home: '/Users/x', plugin: false })).systemMessage, /one nvm version folder/);
+    const both = JSON.parse(runNvm(fx({ stampVersion: '1.3.0', stackVersion: '1.4.0' }), { home: '/Users/x' })).systemMessage;
+    assert.match(both, /one nvm version folder/);
+    assert.match(both, /library copies are from 1\.3\.0, the stack is 1\.4\.0/);
+});
+
+test('a node outside the nvm versions folder carries no nvm line (A1)', { skip: nvmSkip }, () =>
+{
+    assert.equal(runNvm(fx({}), { home: '/Users/x', execPath: '/opt/homebrew/bin/node' }), '');
+});
+
+test('a current link with a node on PATH carries no nvm line, a dangling one does (A1)', { skip: nvmSkip }, () =>
+{
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'libstamp-home-'));
+    roots.push(home);
+    const execPath = path.join(home, '.nvm', 'versions', 'node', 'v24.11.0', 'bin', 'node');
+    const currentBin = path.join(home, '.nvm', 'current', 'bin');
+    const pathEnv = `${currentBin}:/usr/bin`;
+    fs.mkdirSync(currentBin, { recursive: true });
+    fs.symlinkSync(path.join(home, 'gone', 'node'), path.join(currentBin, 'node'));
+    assert.match(JSON.parse(runNvm(fx({}), { home, execPath, pathEnv })).systemMessage, /one nvm version folder/, 'dangling');
+    fs.rmSync(path.join(currentBin, 'node'));
+    fs.writeFileSync(path.join(currentBin, 'node'), '');
+    assert.equal(runNvm(fx({}), { home, execPath, pathEnv }), '', 'present');
+});
+
+test('a hook copy with no node-path module beside it fails open: no line, no throw (A1)', { skip: nvmSkip }, () =>
+{
+    const copy = path.join(PRELOAD_DIR, 'older-layout', 'setup-plugin', 'hooks', 'library-stamp.js');
+    fs.mkdirSync(path.dirname(copy), { recursive: true });
+    fs.copyFileSync(HOOK, copy);
+    assert.equal(runNvm(fx({}), { home: '/Users/x', hook: copy }), '');
+});

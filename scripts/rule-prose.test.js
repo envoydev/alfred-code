@@ -505,7 +505,7 @@ test('RU09: the navigation rule leaves the docs route to the session-start block
 test('SKC02: the git rule and the checkpoint mark the same option on an owed commit ask, pinned in the registry', () =>
 {
     const git = squash(read(GIT_SEED));
-    assert.ok(git.includes("when it names anything still owed, 'Show the diff first' takes the mark, and every push or publish ask marks holding."), git);
+    assert.ok(git.includes("when it names anything still owed, 'Show the diff first' takes the mark, and every push or publish ask marks holding unless the user's typed words in this exchange asked for that push or publish, a go-ahead to it included."), git);
     assert.ok(!git.includes('holding takes the mark'), 'the old owed-case mark');
     const cp = squash(read('stack/skills/habits-commit-checkpoint/SKILL.md'));
     assert.ok(cp.includes("when the question names anything still owed, 'Show the diff first' takes the mark instead"), 'the checkpoint home');
@@ -608,4 +608,50 @@ test('alfred-interaction: every budget and confidence sentence keeps the house l
     }
     assert.ok(opensOnVerb('Cut an over-budget draft in this order.') && opensOnVerb('Never trim a field.'), 'an imperative is found');
     assert.ok(!opensOnVerb('Code, tables and command output do not count.') && !opensOnVerb('Only the user\'s own message lifts it.'), 'a description is not an instruction');
+});
+
+// Session audit 2026-11-27 (A2c, T01): the auto-run picks follow the user's stated rules, and a read past the workspace needs a yes.
+test('A2c: the Recommended option follows the user, a wait is marked and kept, and an unchecked claim is low confidence', () => {
+    const text = injected('alfred-interaction');
+    for (const clause of [
+        "Check a Recommended option against every rule the user stated this conversation and any unactioned request: an option against one is never marked, and a contradiction marks the safe option.",
+        "A push or a publish the user's prompt asked for is the Recommended option, not a hold.",
+        'While a wait runs, recommend the next work, never idling.',
+        "An ask that must wait opens 'waits for you: <why>' and keeps its mark - only for a hard stop, a standing rule, privacy or another person's data or access (a client's or a customer's contact fields, a role that sees another user's records), money, deleting data on the user's machine that the user did not name and this run did not make (simulators, app data), or an act that cannot be undone.",
+        "A claim that no tool could check this session is labelled '(low confidence - <why>)'.",
+    ]) assert.ok(text.includes(squash(clause)), clause.slice(0, 60));
+});
+
+test('T01: a read or a write past the workspace needs the yes first', () => {
+    assert.ok(injected('alfred-security').includes("A read or a write past the workspace - another project's files or its database included - needs the user's yes first."));
+});
+
+// Session audit 2 (C9, N07, N08): the two cases that wait are named outright, since an auto-run pick showed a client's
+// contact fields and another auto-run deleted simulators the user had not named.
+test('C9: the waits-for-you kinds name another person\'s data or access and an unnamed delete', () =>
+{
+    const text = injected('alfred-interaction');
+    const from = text.indexOf("An ask that must wait opens 'waits for you: <why>'");
+    assert.ok(from >= 0, 'the wait bullet is found');
+    const line = text.slice(from, text.indexOf(' - The markers hooks read', from));
+    assert.ok(line.includes("privacy or another person's data or access (a client's or a customer's contact fields, a role that sees another user's records)"), 'N07: another person\'s data or access, with no lone privacy');
+    assert.ok(line.includes("deleting data on the user's machine that the user did not name and this run did not make (simulators, app data)"), 'N08: an unnamed delete, never the run\'s own files');
+    // final review M2: regenerable data (a cache) is no critical moment
+    assert.ok(!/caches/.test(line), 'M2: caches are not named as an unnamed delete');
+    assert.ok(!/privacy, another person/.test(line), 'privacy does not stand alone');
+    assert.ok(line.includes('or an act that cannot be undone.'), 'the old closing kind stays');
+});
+
+// Session audit 2 (C12, N09): a UI change was called done without being opened in the running app.
+test('C12: a UI change is opened in the running app before done, or the close names it as unseen', () =>
+{
+    assert.ok(injected('alfred-quality-gates').toLowerCase().includes('a ui change is opened in the running app (the browser or simulator tools) before done, or the close names it as unseen'));
+});
+
+// Session audit 2 (C13, N15): a typed instruction met a standing project rule and the agent followed one without asking.
+test('C13: when a typed instruction meets a standing project rule, ask once which wins, the typed side marked (Recommended), then name the ruling back as a preference to save', () =>
+{
+    const t = injected('alfred-preferences').toLowerCase();
+    // final review M1: the ask names a recommended side - the typed instruction's - unless the rule guards a hard stop
+    assert.ok(t.includes("when a typed instruction meets a standing project rule, ask once which wins, the typed instruction's side marked (recommended) unless the rule guards a hard stop, security, privacy, money or an act that cannot be undone, then name the ruling back as a preference to save"));
 });

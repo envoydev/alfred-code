@@ -22,6 +22,9 @@ process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));
 
 let seq = 0;
 const logEnv = () => ({ ...process.env, ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'log-')) });
+// The remote-state note needs a git work tree (session audit B5): the asks that expect it run in one.
+const GIT_PROJECT = fs.mkdtempSync(path.join(TMP, 'git-root-'));
+spawnSync('git', ['init', '-q'], { cwd: GIT_PROJECT });
 // In-process (hook-inprocess.js); the ask runs below stay spawned, so the process boundary stays tested here too.
 const { runHook } = require('./hook-inprocess');
 const run = (payload) => runHook(path.basename(HOOK), { session_id: `s${++seq}`, ...payload }, { env: logEnv() });
@@ -198,7 +201,7 @@ test('C15: the ask branch counts typed turns on the live branch, and push as git
   const q = [{ question: 'Run it?', options: [{ label: 'Run (Recommended)', description: 'x' }, { label: 'Hold', description: 'y' }] }];
   const ask = (rows, questions) => {
     const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: `a${++seq}`, hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion',
-      transcript_path: transcript(rows), tool_input: { questions } }), encoding: 'utf8', env: logEnv() });
+      transcript_path: transcript(rows), tool_input: { questions } }), encoding: 'utf8', env: { ...logEnv(), CLAUDE_PROJECT_DIR: GIT_PROJECT } });
     return r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext || '' : '';
   };
   // ca65b406: the client double-submitted a slash command as two siblings of one parent
@@ -291,14 +294,15 @@ test('SD10: an answer to a request for information from a read-only turn is no d
   }
   assert.strictEqual(over(survey('Show me the order'), answer + "\n\nI'll start on ticket 4 next.").status, 2, 'the model\'s own next move');
   assert.strictEqual(over(survey('Show me the order'), answer + '\n\nPush when you approve.').status, 2, 'an approval hand-back');
-  assert.strictEqual(over(survey('what is left?'), 'Ticket 3 is committed. The next step is the ticket 4 branch.').status, 2, 'a pending step, not a reported state');
+  assert.strictEqual(over(survey('what is left?'), 'Ticket 3 is committed. The next step is the ticket 4 branch.').status, 0, 'a typed question is exempt whatever the reply names (B12)');
+  assert.strictEqual(over(survey('Show me what is left'), 'Ticket 3 is committed. The next step is the ticket 4 branch.').status, 2, 'a pending step, not a reported state: a show-request is no typed question');
 });
 
 // 2ca8e8ee: 'wait until the earlier ticket is merged' rested on a day-old read and one `git status --short`.
 test('SD10: a merge, PR or remote ask is backed only by a remote-aware read', () => {
   const ask = (rows, question) => {
     const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: `a${++seq}`, hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion',
-      transcript_path: transcript(rows), tool_input: { questions: [{ question, options: [{ label: 'Wait (Recommended)', description: 'x' }, { label: 'Go now', description: 'y' }] }] } }), encoding: 'utf8', env: logEnv() });
+      transcript_path: transcript(rows), tool_input: { questions: [{ question, options: [{ label: 'Wait (Recommended)', description: 'x' }, { label: 'Go now', description: 'y' }] }] } }), encoding: 'utf8', env: { ...logEnv(), CLAUDE_PROJECT_DIR: GIT_PROJECT } });
     return r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext || '' : '';
   };
   const ran = (command) => { const id = `r${seq}`; return [typed('go'), call(id, 'Bash', { command }), result(id, 'ok')]; };
@@ -318,7 +322,7 @@ test('a pipeline watch and a forge read count on every transport', () => {
     assert.strictEqual(over([typed('go')], ci, { background_tasks: [{ id: 'b9', type: 'shell', status: 'running', command }] }).status, 0, command);
   const ask = (rows, question) => {
     const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: `a${++seq}`, hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion',
-      transcript_path: transcript(rows), tool_input: { questions: [{ question, options: [{ label: 'Wait (Recommended)', description: 'x' }, { label: 'Go now', description: 'y' }] }] } }), encoding: 'utf8', env: logEnv() });
+      transcript_path: transcript(rows), tool_input: { questions: [{ question, options: [{ label: 'Wait (Recommended)', description: 'x' }, { label: 'Go now', description: 'y' }] }] } }), encoding: 'utf8', env: { ...logEnv(), CLAUDE_PROJECT_DIR: GIT_PROJECT } });
     return r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext || '' : '';
   };
   const used = (name, input) => { const id = `r${seq}`; return [typed('go'), call(id, name, input), result(id, 'ok')]; };
@@ -388,7 +392,8 @@ test('hooks review: a read-only answer to a question that names nothing pending 
   assert.strictEqual(over(asked('I enabled it, what is next?', edited()), row4).status, 0, 'a typed question is answered even after an edit (the ruling of 2026-10-20, C03)');
   assert.strictEqual(over(asked('I enabled it, show me what is next', edited()), row4).status, 2, 'a show-request whose turn changed a file is judged');
   assert.strictEqual(over(asked('reconnect it for me'), row4).status, 2, 'an instruction is no question');
-  assert.strictEqual(over(asked('what is left?'), 'Committed. The push is pending your approval.').status, 2, 'a pending item keeps the hand-back veto');
+  assert.strictEqual(over(asked('what is left?'), 'Committed. The push is pending your approval.').status, 0, 'a typed question is exempt whatever the reply names (B12)');
+  assert.strictEqual(over(asked('Show me what is left'), 'Committed. The push is pending your approval.').status, 2, 'a pending item keeps the hand-back veto for a show-request');
   for (const text of ['All done and committed. Up to you if we push today.', 'Committed on develop. Your call on the push.'])
     assert.strictEqual(over(asked('what is the status?'), text).status, 2, `a decision handed over in prose still blocks: ${text}`);
 });
@@ -444,8 +449,10 @@ test('C03: an answer to a typed question is no done-close stall, read-only or no
   assert.strictEqual(over([typed('Could you close them?'), ...sed], answer).status, 2, 'its capitalised form too');
   assert.strictEqual(over([typed('cards look stale.\nis that the only task left?'), ...sed], answer).status, 0, 'the question on the last line counts');
   assert.strictEqual(over([typed('is that the only task left? then fix it'), ...sed], answer).status, 2, 'a question followed by an instruction is not');
-  assert.strictEqual(over([prompt, ...sed], answer + "\n\nI'll mark the parity card next.").status, 2, 'the model\'s own next move still vetoes');
-  assert.strictEqual(over([prompt, ...sed], 'Two cards marked done. The next step is the parity card.').status, 2, 'a pending step still vetoes');
+  assert.strictEqual(over([prompt, ...sed], answer + "\n\nI'll mark the parity card next.").status, 0, 'a typed question is exempt, the model\'s own next move too (B12)');
+  assert.strictEqual(over([typed('show me the unfinished cards'), ...sed], answer + "\n\nI'll mark the parity card next.").status, 2, 'the model\'s own next move still vetoes a show-request');
+  assert.strictEqual(over([prompt, ...sed], 'Two cards marked done. The next step is the parity card.').status, 0, 'a typed question is exempt, a pending step too (B12)');
+  assert.strictEqual(over([typed('show me the unfinished cards'), ...sed], 'Two cards marked done. The next step is the parity card.').status, 2, 'a pending step still vetoes a show-request');
 });
 
 test("C03: the done-close escape says a step the model can do itself is done, not asked", () => {
@@ -1038,7 +1045,7 @@ test('U10: a status question over live work, and a close after the user picked i
   assert.match(ledger, /"exempt":"status-question"/, 'its probe row names the release');
   for (const prompt of ['How long until the gate finishes?', 'Any ETA?', 'Is it still running?', 'status?'])
     assert.strictEqual(over(rows(prompt), close, live).status, 0, prompt);
-  assert.strictEqual(over(rows('How much time is left?'), close).status, 2, 'no live work in the registry: still held');
+  assert.strictEqual(over(rows('How much time is left?'), close).status, 0, 'no live work in the registry: a typed question is exempt on its own (B12)');
   assert.strictEqual(over(rows('go on with the build'), close, live).status, 2, 'no status question: still held');
   const Q = "I can't read TKT-101 - the tracker server isn't loaded. How do I get the ticket text?";
   const picked = [typed('/task-solve check whether TKT-101 is fixed'),
@@ -1053,7 +1060,7 @@ test('U10: a status question over live work, and a close after the user picked i
 test('fn-8: gh repo view and gh api user are remote reads', () => {
   const ask = (rows, question) => {
     const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: `a${++seq}`, hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion',
-      transcript_path: transcript(rows), tool_input: { questions: [{ question, options: [{ label: 'Wait (Recommended)', description: 'x' }, { label: 'Go now', description: 'y' }] }] } }), encoding: 'utf8', env: logEnv() });
+      transcript_path: transcript(rows), tool_input: { questions: [{ question, options: [{ label: 'Wait (Recommended)', description: 'x' }, { label: 'Go now', description: 'y' }] }] } }), encoding: 'utf8', env: { ...logEnv(), CLAUDE_PROJECT_DIR: GIT_PROJECT } });
     return r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext || '' : '';
   };
   const ran = (command) => { const id = `r${seq}`; return [typed('go'), call(id, 'Bash', { command }), result(id, 'ok')]; };
@@ -1177,3 +1184,35 @@ test('fn-8: gh repo view and gh api user are remote reads', () => {
     assert.match(r.stderr, /AskUserQuestion/);
   });
 }
+
+// Session audit 2026-11-27 B12 (S04): a done reply to a TYPED QUESTION was held as a done close with a pending step, and the
+// user asked the question again. A typed question opens with a wh-word, or ends with '?' and opens with is/are/do/does/did/
+// have/has. 'can you ...', 'could you ...', 'would you ...', 'will you ...', 'please ...' and 'do it' are requests.
+test("B12: a done reply to a typed question is no done-close hold, a request still is", () => {
+  const reply = 'The refactor is done. Pushing it is the next step, whenever you are ready.';
+  for (const prompt of ['What opened topics we have?', 'what you have done do far?', 'Why did the build fail?', 'How is the cache wired', 'Is the build green?', 'Have you pushed it?', 'Does the lint pass?'])
+    assert.strictEqual(over([typed(prompt)], reply).status, 0, `a typed question: ${prompt}`);
+  for (const prompt of ['could you fix the build?', 'Can you fix the build?', 'would you push it?', 'Will you run the tests?', 'please fix the build', 'fix it', 'do it', 'Do it?', 'is the build green', 'Fix why the build fails'])
+    assert.strictEqual(over([typed(prompt)], reply).status, 2, `a request is no question: ${prompt}`);
+  assert.strictEqual(over([typed('go on')], reply).status, 2, 'no typed question: still held');
+});
+
+// B13 (S05): numbered steps for the user that end on 'Then tell me' are instructions, and the close held as a prose ask.
+test("B13: steps for the user that end on 'then tell me' are instructions, not a prose ask", () => {
+  const steps = 'To enable the connector for acme-app you need an admin:\n\n1. Open the admin console.\n2. Add the key under Integrations.\n3. Save the page.\n\n';
+  for (const closing of ['Then tell me.', 'Then let me know when it is done.', 'Let me know when it is done.', 'Tell me when it is done.', 'Let me know when you are done.'])
+    assert.strictEqual(close(steps + closing).status, 0, `instructions: ${closing}`);
+  assert.strictEqual(close(steps + 'Should I commit or hold?').status, 2, 'a decision in prose still holds');
+  assert.strictEqual(close(steps + 'Tell me if you want me to go on.').status, 2, 'an offer still holds');
+  assert.strictEqual(close(steps + 'Say go and I run it. Then tell me.').status, 2, 'an ask before the closing line still holds');
+  assert.strictEqual(close('Check the output above, then tell me. From there I drive task 4.').status, 2, 'no steps and not the last line: a bare hand-back still holds');
+  for (const text of ['Two routes:\n\n- Push now\n- Hold\n\nThen tell me which one you want.', '1. Open it.\n\nThen tell me if I should push.', '1. a\n\nTell me when you want me to push it.',
+    '1. a\n\nThen let me know whether to push.', '1. a\n\nLet me know when you want it pushed.'])
+    assert.strictEqual(close(text).status, 2, `a decision put to the user after steps still holds: ${text.split('\n').pop()}`);
+  assert.strictEqual(close(steps + 'Then let me know when it is done.').status, 0, 'the done-shaped tail');
+  assert.strictEqual(close(steps + 'Then tell me when you are all set.').status, 0, 'the done-shaped tail, set');
+  for (const closing of ['Let me know when it is deployed.', 'Let me know when it works.', 'Then let me know when it is live.', 'Tell me once it is in.', 'Let me know after the page loads.'])
+    assert.strictEqual(close(steps + closing).status, 0, `an ordinary instruction close: ${closing}`);
+  for (const closing of ['Tell me when you want me to push it.', 'Then tell me which one you want.', 'Then tell me if I should push.', 'Let me know when you would like it pushed.', 'Let me know when to push.'])
+    assert.strictEqual(close(steps + closing).status, 2, `an ask-shaped close still holds: ${closing}`);
+});

@@ -41,7 +41,8 @@ test('row 2 + S9: the budget spares a baseline close line, and step by step lift
 // Row 3: three pros and three cons per candidate in prose blew the budget; a table is exempt.
 test('row 3: candidates compare in a table', () =>
 {
-    const rule = injected('alfred-interaction');
+    // 2026-11-28 (session audit 2, C8): the proposal review moved from the interaction rule to its own skill
+    const rule = fs.readFileSync(path.join(__dirname, '..', 'stack', 'skills', 'habits-evaluate-proposal', 'SKILL.md'), 'utf8');
     assert.match(rule, /Choosing between candidates: a table of at most 3 pros and 3 cons each, then recommend one with the reason\./);
 });
 
@@ -100,4 +101,10 @@ test('row 4: the answer-budget entry names the rule as owner and the analyzer as
     assert.strictEqual(entry.owner.file, 'stack/rules/alfred-interaction.md');
     assert.deepStrictEqual(entry.sites.map((s) => s.file).sort(), ['scripts/analyze-usage.js', 'stack/hooks/communication-reminder.js']);
     assert.match(entry._note, /The rule is canonical/);
+});
+
+// Session audit 2, L1-28: commit 84696dd5 cut this line while it trimmed the rule; no later rule or skill carries it.
+test("L1-28: the interaction rule leads with the recommendation, never with 'it depends'", () =>
+{
+    assert.match(injected('alfred-interaction'), /Recommendation first, then why - never open with 'it depends'\./);
 });

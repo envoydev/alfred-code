@@ -28,8 +28,7 @@ run-time load.
 2. Only when `<docs-path>/work/plans/<feature>/` exists: `node .claude/hooks/plan-status.js resume --plan <that folder>`.
    A new request has no folder yet - skip it, never guess an id.
 
-A cycle mid-flight resumes at its cursor - never restart a step whose stamp says it
-already passed. A resume paste that lands in a chat still holding the earlier cycle's conversation (no
+A cycle mid-flight resumes at its cursor - never restart a passed step. A resume paste that lands in a chat still holding the earlier cycle's conversation (no
 `/clear` between) is answered with one line - `/clear first, then paste it again` - and nothing else.
 A NEW cycle after a finished one in this session offers the fresh-session hand-off
 in its first ask, after the in-session option. A cycle mid-build reads `Resume: step 4 BUILD - mode session - next task 2`.
@@ -48,8 +47,7 @@ Progress:  <N> of <M> steps
 Leftovers: <what this run started and did not finish | none>
 ```
 
-`none` is an answer, an omitted line is not; bold labels count, a status table in
-place of the names does not.
+`none` is an answer, an omitted line is not; bold labels count, a status table does not.
 
 **Every ask marks exactly one option `(Recommended)`, listed first** - the move this stop's rule
 recommends, the reason in its description. An ask with no mark is malformed: rebuild it before
@@ -73,7 +71,7 @@ options - every ask until it is taken or the cycle closes. Below all three (a ne
 carries it and no resume block prints unless the user asks; hours and gaps are the hook's clock, never your guess.
 The stop-contract hook injects the two measured numbers (this session's carry per message, a fresh one's cold floor): quote THIS stop's, or say they are unmeasured.
 Mark the fresh option only when a hook's fresh-session text in this session says a fresh session pays back, and then it goes first, the in-session option after it unmarked; on Claude Code the stop-contract hook drops it where one does not, and when that leaves one option it refuses the ask - then take the option it names.
-Check the trigger before each ask, never from memory. And HONOR the answer: when the user picks it, the turn ENDS with this
+HONOR the answer: when the user picks it, the turn ENDS with this
 block, after the answer - no new work in this chat. The fence holds the command alone: `cursor` put the step
 in the resume note.
 
@@ -129,8 +127,7 @@ The stamps are step 2's and 3's (`gate`, `approve --mode <session|agents>`), and
 
 ## The steps
 
-Each step that names a skill INVOKES it via the Skill tool - again on every new cycle in the same
-chat, even when an earlier cycle loaded it. Except a capture a step-6 close-out
+Each step that names a skill INVOKES it via the Skill tool - again on every new cycle, even when an earlier cycle loaded it. Except a capture a step-6 close-out
 line names: a POINTER for the user to type, never a call.
 
 1. **DESIGN** - run `task-design`, with `habits-clarify` loaded first, once the `Size:` and `Spec:` lines
@@ -151,8 +148,7 @@ line names: a POINTER for the user to type, never a call.
    A declined audit goes through `gate` as `Gated: skipped by user - <their words>`, the rest `NOT RUN` -
    never a faked pass. *Stop* - except on a pass with no open item, where step 3's approval
    ask is this stop too ('Not yet' is the route-back).
-3. **APPROVE** - Read `references/step-mechanics.md` now - this ask's mode-fit rule and the
-   mechanics of steps 4-6 are its content, not homework; this stop's `Result:` line carries `mechanics: read` as the receipt. Then load
+3. **APPROVE** - Read `references/step-mechanics.md` now - it holds this ask's mode-fit rule and steps 4-6; this stop's `Result:` line carries `mechanics: read` as the receipt. Then load
    `habits-execution-strategy` (the Skill tool); its `Execution:` line is the
    mode-fit reason. Then present the gated plan and put the gate through ONE question whose
    options each NAME the mode:
@@ -218,7 +214,7 @@ line names: a POINTER for the user to type, never a call.
 
 6. **CLOSE** - the done gate
    (load `habits-done-gate` - each acceptance criterion, and each Verify or Done-when bullet of a
-   card the ask cited, demonstrated by a run this session, quoted). Record the close: `complete`, `suite:` the final gate's command and quoted result (`--with-open` if a task stays open). The evidence table and `Deviations:` are read from `show --full` - its `## Tasks` and `## Deviations` sections. Purge the notes - `node .claude/hooks/handoff.js purge <feature>` - then the purge count (`references/step-mechanics.md`).
+   card the ask cited, demonstrated by a run this session, quoted). Record the close: `complete`, `suite:` the final gate's command and quoted result (`--with-open` if a task stays open). The evidence table and `Deviations:` are read from `show --full` - its `## Tasks` and `## Deviations` sections. Purge the notes - `node .claude/hooks/handoff.js purge <feature>` - then the purge count and the doc-drift close line (`references/step-mechanics.md`).
    The close stop's `Result:` line carries the receipts - `Completed <date>, notes purged: <names|none>` -
    plus `Deviations: <each Decisions entry that departs from the Asked: words, one apiece | none>`,
    under AUTO the user's first sight of them.
@@ -250,13 +246,19 @@ line names: a POINTER for the user to type, never a call.
    - 'Push now' - the checkpoint's publish half takes this answer as its confirmation
    ```
 
+   Typed words for this push are the `authorized:` line - no ask. Where they only gave a go-ahead to your own push proposal, ask:
+
+   ```ask
+   You asked for this push: <sha> to <remote>.
+   - 'Push now (Recommended)' - the checkpoint's publish half takes this answer as its confirmation
+   - 'Hold - push later' - nothing leaves this machine
+   ```
+
    New scope arriving in-chat after `Completed:` is a NEW cycle in a NEW plan folder (a completed plan takes no further write
    - it is a record, never appended to) - re-enter step 1, or state in one `ungated: <why>` line that the
    work runs outside the cycle; never build it on a casual 'yes, add it'. A change a sibling repo must
    follow is handed off as a FILE in THIS repo - a task card under `<docs-path>/work/cross-project-tasks/`
    - and printed as a paste-ready block, by the step mechanics' hand-off rules.
-   **Doc-drift awareness** - one line at most in the close report, never auto-run, by the surface
-   list in `references/step-mechanics.md`.
 
 ## Do not
 

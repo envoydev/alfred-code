@@ -811,6 +811,18 @@ test('changed-here: the release delta narrowed to what this install carries, on 
     assert.match(c, /^changed-here: skills=1 agents=1 rules=1 hooks=2$/m, 'the copy route counts copies on disk only');
 });
 
+// session audit 2026-11-27, R14: a compare cut at the 300-file cap lists only part of the release, so a count read from
+// it - 'skills=0' - claims the install carries nothing when the rest of the list was never seen.
+test('changed-here: a truncated compare says it was not counted and never reports 0', () => {
+    const files = [];
+    for (let i = 0; i < 300; i++) files.push({ status: 'modified', filename: `stack/skills/other-${i}/references/f.md` });
+    const { snap, install, fixtureFile } = scaffold({ fixture: { files }, stamp: 'sha: aaa111\nversion: 0.2.60\nseats-route: plugin\nhooks-route: plugin\n', settings: { env: {} } });
+    const { out } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]);
+    assert.match(out, /^TRUNCATED/m, 'the fixture is past the compare cap');
+    assert.match(out, /^changed-here: not counted \(the compare stops at 300 files\)$/m, out);
+    assert.doesNotMatch(out, /changed-here: skills=/, 'no count from a partial list');
+});
+
 // audit 2026-10-11, session b3f8193f: the compare API caps at 300 files (`TRUNCATED`), and the 8 renames past the cap
 // never reached the ask - it named 26 renamed skill copies, and the installer pruned 34. Every old name of the
 // snapshot's `renamed` map whose copy is on disk is a rename row, listed by the compare or not.

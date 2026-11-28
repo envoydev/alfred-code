@@ -15,7 +15,9 @@ const GUARD = path.join(__dirname, '..', 'stack', 'hooks', 'guard-ungated-commit
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'commit-receipt-'));
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
 // the session ran a review: the guard refuses a VERIFIED receipt with none since 2026-10-22
-const REVIEWED = reviewedTranscript(TMP);
+// and the user typed each quote the receipts below carry: an authorized: quote counts only as the user's own words (C3)
+const typed = (text) => JSON.stringify({ type: 'user', timestamp: '2026-11-27T10:00:00Z', message: { role: 'user', content: text } });
+const REVIEWED = reviewedTranscript(TMP, ['commit it', 'commit the "parser" fix', 'push it'].map(typed));
 
 const forty = () => Array.from({ length: 40 }, (_, i) => `line ${i}`).join('\n');
 function repo({ remote = false } = {}) {

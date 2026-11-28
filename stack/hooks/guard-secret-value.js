@@ -50,6 +50,33 @@ const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || `${dataRoot()}/docs
 // judge alike. The hook ships without meta/, hence the copy.
 const SECRET_KEY_SOURCE = '(TOKEN|SECRET|KEY|PASSWORD|PASSWD|DSN|CREDENTIAL|AUTH)$';
 const SECRET_KEY_RE = new RegExp(SECRET_KEY_SOURCE, 'i');
+// The output masker's own key test (A3, 2026-11-27; the user's pick 'Mask secret-shaped values only', widened to short
+// secrets such as ADMIN_CODE=4821): a STORE value is masked when a word of its key is one of these, or its value looks
+// like a credential. A word is a part of the key split on `_` `-` `.` and case changes; a word of END_WORD_MIN letters or
+// more also counts at the key's end (GITHUBTOKEN), a shorter one never does (KEY is no part of MONKEY). Read by the
+// masker only: SECRET_KEY_SOURCE above stays the input guard's, and lint holds it equal to meta/environment.json.
+const OUTPUT_CREDENTIAL_WORDS = Object.freeze(['TOKEN', 'SECRET', 'KEY', 'APIKEY', 'PASSWORD', 'PASSWD', 'PASS', 'PWD', 'PIN', 'OTP', 'CODE', 'LOGIN', 'DSN',
+  'CREDENTIAL', 'CREDENTIALS', 'CRED', 'AUTH', 'CERT', 'PRIVATE', 'SIGNING', 'SALT', 'HASH', 'COOKIE', 'SESSION', 'PASSPHRASE']);
+// A value of 2 or 3 characters is masked only under one of these (a weak word such as CODE or KEY would mask every `src`
+// or `30` in the output); under any listed word a value of WEAK_VALUE_MIN characters or more is masked.
+const STRONG_CREDENTIAL_WORDS = Object.freeze(['PASSWORD', 'PASSWD', 'PASS', 'PWD', 'PIN', 'OTP', 'SECRET', 'TOKEN', 'PASSPHRASE']);
+const WEAK_VALUE_MIN = 4;
+// A short word also ends a joined key (MASTERKEY, DBPASS, ADMINPWD) - except an ordinary word that happens to end in one.
+const JOINED_END_WORDS = Object.freeze(['KEY', 'PASS', 'PWD']);
+const NOT_CREDENTIAL_WORDS = Object.freeze(['MONKEY', 'TURKEY', 'DONKEY', 'HOCKEY', 'JOCKEY', 'WHISKEY', 'HOTKEY', 'PUBKEY', 'MONKEYS', 'BYPASS', 'COMPASS', 'TRESPASS', 'SURPASS', 'UNDERPASS', 'OVERPASS']);
+const KEY_WORD_SPLIT = /[_.-]+|(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/;
+const END_WORD_MIN = 5;
+// A value the line-shape redactor never takes for a credential: a type word (`originKey: string,`) or a value of 1-3
+// characters, which no output line gives away. A capitalised identifier counts when a `,` `;` `)` or `>` follows it.
+const TYPE_WORDS = Object.freeze(['string', 'number', 'boolean', 'unknown', 'any', 'never', 'void', 'null', 'undefined', 'object', 'true', 'false']);
+const TYPE_NAME_END = /^[A-Z][A-Za-z0-9_<>]*[,;)>]$/;
+const TYPE_NAME_MAX = 16;
+// A name with this many capital humps and no digit run past 3 (Uint8Array, S3Client, OAuth2Client) is a type too.
+const TYPE_NAME_HUMPS = 2;
+const LONG_DIGIT_RUN = /\d{4}/;
+const SHORT_VALUE_MAX = 3;
+// A store value of one character is never masked, whatever its key (`PIN=7` would hide every standalone 7); two or more are.
+const STORE_VALUE_MIN = 2;
 // The value shapes the stack's credentials take - copied from guard-stop-contract.js; keep identical.
 const SECRET_SHAPE = /\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|glpat-[0-9A-Za-z_-]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})/;
 // A credential file is small - a settings.json is under 10 KB - so the cap costs this gate nothing
@@ -70,8 +97,13 @@ const WALK_LAST = /^(?:\.venv|venv|\.tox|\.nox|__pycache__|vendor|target|dist|bu
 // A variable REFERENCE is no value either (2.1.6): `$NPM_TOKEN` in a CI file (an upper-case name - `$ecret` is a
 // password), `%API_KEY%` in a Windows config, a workflow's `${{secrets.X}}`, a Helm or Jinja `{{.Values.x}}`, an
 // Octopus `#{X}`, an Azure DevOps or MSBuild `$(X)` and a maven-filtered `@x@`.
+// A `${VAR:-default}` (also `-`, `:=`, `=`) is read as its default (L1-10): the default is what prints when VAR is unset, so a live
+// default makes the whole value live and a blank or reference default leaves it a placeholder.
+const DEFAULT_EXPANSION = /^\$\{[A-Za-z_]\w*:?[-=]([^}]*)\}$/;
+const defaultOf = (v) => { const m = typeof v === 'string' ? DEFAULT_EXPANSION.exec(v.trim()) : null; return m ? m[1] : null; };
 const isPlaceholder = (v) => typeof v === 'string'
-  && /^(?:\$\{[^}]*\}|\$\{\{[^}]*\}\}|\{\{[^}]*\}\}|#\{[^}]*\}|\$\([\w.-]+\)|@[\w.-]+@|\$[A-Z_][A-Z0-9_]*|%[A-Za-z_]\w*%)$/.test(v.trim());
+  && /^(?:\$\{[^}]*\}|\$\{\{[^}]*\}\}|\{\{[^}]*\}\}|#\{[^}]*\}|\$\([\w.-]+\)|@[\w.-]+@|\$[A-Z_][A-Z0-9_]*|%[A-Za-z_]\w*%)$/.test(v.trim())
+  && !isLive(defaultOf(v));
 const isLive = (v) => typeof v === 'string' && v.trim() !== '' && !isPlaceholder(v);
 
 // CONTENT tells that a credential-shaped KEY is not holding a credential - the false positives the
@@ -130,23 +162,51 @@ const isSampleValue = (key, v) => {
     || (s.length <= 64 && NAME_VALUE.test(s) && !SECRET_SHAPE.test(s));
 };
 const holdsCredential = (key, v) => isLive(v) && !isSampleValue(key, v);
+// A3: does the key name a credential (OUTPUT_CREDENTIAL_WORDS)? Pure: the key alone decides.
+// Each word of OUTPUT_CREDENTIAL_WORDS the key names: as a part (a trailing S is allowed: TOKENS), a 5-letter word or more at
+// a part's start or end (SECRETKEY, GITHUBTOKEN), or KEY / PASS / PWD at the end of a joined part (DBPASS).
+const credentialWords = (key) => {
+  const parts = String(key).split(KEY_WORD_SPLIT).filter(Boolean).map((part) => part.toUpperCase());
+  return OUTPUT_CREDENTIAL_WORDS.filter((word) => parts.some((part) => {
+    if (part === word || part === `${word}S`) return true;
+    if (word.length >= END_WORD_MIN) return part.startsWith(word) || part.endsWith(word) || part.endsWith(`${word}S`);
+    return JOINED_END_WORDS.includes(word) && !NOT_CREDENTIAL_WORDS.includes(part) && (part.endsWith(word) || part.endsWith(`${word}S`));
+  }));
+};
+const credentialKey = (key) => credentialWords(key).length > 0;
+const strongCredentialKey = (key) => credentialWords(key).some((word) => STRONG_CREDENTIAL_WORDS.includes(word));
+// A3: a type word or a capitalised type name, as `string,` or `ApiKey;` - never a credential value.
+const typeWord = (value) => {
+  const text = String(value).trim();
+  // a capitalised name counts with no digit and under TYPE_NAME_MAX characters, or with TYPE_NAME_HUMPS capitals and no
+  // long digit run: `Summer2024x;` (one hump, a 4-digit run) and `Xy9fakefakefake;` (one hump) are passwords
+  const humps = (text.match(/[A-Z]/g) || []).length;
+  const named = TYPE_NAME_END.test(text) && ((!/\d/.test(text) && text.length < TYPE_NAME_MAX) || (humps >= TYPE_NAME_HUMPS && !LONG_DIGIT_RUN.test(text)));
+  return TYPE_WORDS.includes(text.replace(/[,;)>]+$/, '')) || named;
+};
+// A3: is this live store value hidden in output - its key names a credential (and the value is 2 characters or more), or the value has a credential shape.
+const keyHidesValue = (key, value) => (value.length >= WEAK_VALUE_MIN && credentialKey(key)) || (value.length >= STORE_VALUE_MIN && strongCredentialKey(key));
+const storeValueMasked = (key, value) => isLive(value) && (keyHidesValue(key, value) || credentialLike(value) || PEM_PRIVATE.test(value));
 // A credential INSIDE a larger value: a connection string's `Password=` / `Pwd=` (`;` pairs, or Redis's `,`
 // pairs) and a URL's userinfo (`postgres://user:<pw>@host`). The key names the CONNECTION (`Postgres`,
 // `DATABASE_URL`), so the key test never saw it. Measured: a Staging Postgres and Redis password printed raw
 // in the redacted view whose header promised no value enters the chat. The value is judged like any other -
 // a `${VAR}` placeholder or a template word is not live - and only the password part is masked.
 const EMBEDDED_PAIR = /((?:^|[;,])\s*(?:password|pwd)\s*=\s*)([^;,]*)/gi;
+// L1-11: a pair after a blank (`host=db user=app password=x`, libpq's DSN) ends at the next blank; the `;` and `,` pairs above keep their own reading.
+const EMBEDDED_SPACE_PAIR = /((?<=[^;,\s])\s+(?:password|pwd)\s*=\s*)(?!<set \()([^;,\s]*)/gi;
 const EMBEDDED_URL = /(\b[a-z][a-z0-9+.-]*:\/\/[^\s:/@]*:)([^@\s/]+)(?=@)/gi;
 // A `Bearer <token>` under any key (SG1 Change 1; RFC 6750 section 2.1's b64token): the space excused the whole value
 // as a sample, so the token alone is judged - a known shape, or a credential-like token with no sample tell.
 const EMBEDDED_BEARER = /(\bBearer +)([A-Za-z0-9\-._~+/]+=*)(?![A-Za-z0-9\-._~+/=$%{#])/gi;
 const bearerToken = (t) => isLive(t) && (SECRET_SHAPE.test(t) || (credentialLike(t) && holdsCredential('password', t)));
 const embeddedCredential = (v) => typeof v === 'string'
-  && ([...v.matchAll(EMBEDDED_PAIR), ...v.matchAll(EMBEDDED_URL)].some((m) => holdsCredential('password', m[2]))
+  && ([...v.matchAll(EMBEDDED_PAIR), ...v.matchAll(EMBEDDED_SPACE_PAIR), ...v.matchAll(EMBEDDED_URL)].some((m) => holdsCredential('password', m[2]))
     || [...v.matchAll(EMBEDDED_BEARER)].some((m) => bearerToken(m[2])));
 const maskBearer = (v, mask) => v.replace(EMBEDDED_BEARER, (all, head, tok) => (bearerToken(tok) ? head + mask(tok) : all));
 const maskEmbedded = (v, mask) => maskBearer(v
   .replace(EMBEDDED_PAIR, (all, head, val) => (holdsCredential('password', val) ? head + mask(val) : all))
+  .replace(EMBEDDED_SPACE_PAIR, (all, head, val) => (holdsCredential('password', val) ? head + mask(val) : all))
   .replace(EMBEDDED_URL, (all, head, val) => (holdsCredential('password', val) ? head + mask(val) : all)), mask);
 // A file-SHAPE tell: a basename ending .example / .sample / .template / .dist ships the KEYS, never
 // the values - judging it blocks the one file a session legitimately reads to learn what to fill in.
@@ -259,6 +319,8 @@ function kindByName(file) {
   if (/^(?:ini|cfg|cnf|properties|toml|conf)$/.test(e) || /^\.(?:s3cfg|boto|pypirc|gitconfig|databrickscfg)$/.test(b)) return 'ini';
   return null;
 }
+// A3: the data root's store (`.secrets`, or the older `.sensitive-data`) - not a dotenv and not the companion key file.
+const isSecretsStore = (file) => kindByName(file) === 'sensitive' && baseOf(file) !== KEY_FILE && !DOTENV_FILE.test(baseOf(file));
 function kindByContent(text, meaningful, file) {
   const first = meaningful[0];
   const e = extOf(file);
@@ -1045,7 +1107,7 @@ function sensitiveValues(file) {
 // it in the output and say nothing a guess would not.
 const MASK_MIN = 4;
 // The output masker's floor (card item 4, 2026-11-23): a value under 6 characters matches ordinary words, so it is left
-// unmasked and the start line names its key instead; the --with-sensitive run keeps MASK_MIN.
+// unmasked - except a store value under a credential-named key (A3), which keeps 2 characters or more; the --with-sensitive run keeps MASK_MIN.
 const OUTPUT_MASK_MIN = 6;
 // A character that continues a word: a value is masked only where none touches it on a side that is itself a word character.
 const WORD_CHAR = /[A-Za-z0-9_]/;
@@ -1286,6 +1348,8 @@ if (process.argv[2] === '--redacted-env') {
 function lineRedactor() {
   let masked = 0;
   const mask = (v) => { masked++; return `<set (${v.length} chars)>`; };
+  // A3: a type word (`originKey: string,`) and a value of 1-3 characters are no credential in a line
+  const lineMaskable = (k, v) => maskable(k, v) && !typeWord(v) && String(v).length > SHORT_VALUE_MAX;
   // a config file by its extension, a dotfile or a file with no extension (`.pgpass`, `.kube/config`, `credentials`)
   const CONFIG_FILE = /(?:^|\/)(?:\.env[^/]*|[^/.]+|\.[^/.]+|[^/]*\.(?:json|jsonc|json5|ya?ml|ini|toml|properties|conf|config|cfg|cnf|env|tfvars|tf|hcl|xml|pubxml|publishsettings|ppk))$/i;
   const JSON_PAIR = /("((?:[^"\\]|\\.)*)"\s*:\s*")((?:[^"\\]|\\.)*)"/g;
@@ -1303,12 +1367,13 @@ function lineRedactor() {
   // A line of the project's `.sensitive-data` (audit 2026-10-20 H3: a diff of it or a walk through it printed every value
   // raw, though the start line says a printed value is masked): every live value whatever its key, and a line that is no
   // `KEY=value` pair whole - the store is the user's, its format no promise.
-  const SENSITIVE_PAIR = /^(\s*(?:export\s+)?[A-Za-z_][\w.-]*\s*=\s*)(.*?)\s*$/;
+  const SENSITIVE_PAIR = /^(\s*(?:export\s+)?([A-Za-z_][\w.-]*)\s*=\s*)(.*?)\s*$/;
   const SENSITIVE_PREFIX = /^(?:[A-Za-z]:)?(?:[^\s:]*:)?(?:[^\s:]*[\\/])?(\.sensitive-data|\.secrets|\.env(?:\.[^\s:\\/]+)?)(?::\d+){0,2}[:-]/;
-  const sensitiveBody = (body) => {
+  // A3: a pair of the data root's store (not a dotenv, not the key file) is masked only where its key names a credential or its value looks like one
+  const sensitiveBody = (body, store = false) => {
     if (!body.trim() || COMMENT_LINE.test(body)) return body;
     const p = body.match(SENSITIVE_PAIR);
-    if (p) return isLive(unquote(p[2])) && !/^<set \(\d+ chars\)>$/.test(unquote(p[2])) ? p[1] + mask(unquote(p[2])) : body; // the masker's own form stays
+    if (p) return isLive(unquote(p[3])) && !/^<set \(\d+ chars\)>$/.test(unquote(p[3])) && (!store || storeValueMasked(p[2], unquote(p[3]))) ? p[1] + mask(unquote(p[3])) : body; // the masker's own form stays
     masked++;
     return '<sensitive-data line>';
   };
@@ -1321,9 +1386,9 @@ function lineRedactor() {
     // a search's line out of the store (`<path>/.sensitive-data:12:...`, `git grep`'s `HEAD:<path>:...`) is masked by its
     // path, whatever it holds (H3)
     const sp = SENSITIVE_PREFIX.exec(text);
-    if (sp && !TEMPLATE_FILE.test(sp[1])) return `${sp[0]}${sensitiveBody(text.slice(sp[0].length))}${cr}`;
+    if (sp && !TEMPLATE_FILE.test(sp[1])) return `${sp[0]}${sensitiveBody(text.slice(sp[0].length), sp[1] !== KEY_FILE && !DOTENV_FILE.test(sp[1]))}${cr}`;
     const [, pre, body] = text.match(/^((?:[+\- ]|[<>] )?)([\s\S]*)$/);
-    if (kind === 'sensitive') return `${pre}${sensitiveBody(body)}${cr}`;
+    if (kind === 'sensitive') return `${pre}${sensitiveBody(body, isSecretsStore(file))}${cr}`;
     if (pem) {
       if (PEM_END.test(body)) pem = false;
       else if (body.trim()) return keyLine(pre, cr);
@@ -1350,27 +1415,27 @@ function lineRedactor() {
     if (kind === 'token' && !COMMENT_LINE.test(out)) out = out.replace(/\S+/, (v) => (holdsCredential('password', v) ? mask(v) : v));
     if (kind === 'spaced') {
       const s = out.match(SPACED_LINE);
-      if (s && maskable(unquote(s[2]), unquote(s[4]))) out = `${s[1]}${s[2]}${s[3]}${/^"/.test(s[4]) ? `"${mask(unquote(s[4]))}"` : mask(s[4])}${s[5]}`;
+      if (s && lineMaskable(unquote(s[2]), unquote(s[4]))) out = `${s[1]}${s[2]}${s[3]}${/^"/.test(s[4]) ? `"${mask(unquote(s[4]))}"` : mask(s[4])}${s[5]}`;
     }
     if (kind === 'xml') out = maskXmlLine(out, mask, NONE, file);
     if (file === null || CONFIG_FILE.test(file)) {
-      out = out.replace(JSON_PAIR, (all, head, k, v) => (maskable(k, v) ? `${head}${mask(v)}"` : all));
+      out = out.replace(JSON_PAIR, (all, head, k, v) => (lineMaskable(k, v) ? `${head}${mask(v)}"` : all));
       // an HCL attribute only in an HCL file: a headerless `git show <rev>:install.sh` holds `    AUTH="oauth"   # ...`
       const h = kind === 'hcl' && out.match(HCL_ATTR);
-      if (h && maskable(unquote(h[2]), h[4])) out = `${h[1]}${h[2]}${h[3]}"${mask(h[4])}"${h[5]}`;
+      if (h && lineMaskable(unquote(h[2]), h[4])) out = `${h[1]}${h[2]}${h[3]}"${mask(h[4])}"${h[5]}`;
       // an HCL value is a value only when quoted: `password = var.db_password` names a variable
       const d = kind !== 'hcl' && out.match(DOTENV_LINE);
-      if (d && maskable(d[1], unquote(d[2]))) out = `${out.slice(0, out.indexOf('=') + 1)}${mask(unquote(d[2]))}`;
+      if (d && lineMaskable(d[1], unquote(d[2]))) out = `${out.slice(0, out.indexOf('=') + 1)}${mask(unquote(d[2]))}`;
       const y = out.match(YAML_PAIR);
-      if (y && maskable(unquote(y[2]).replace(/^:/, ''), y[5])) out = `${y[1]}${y[2]}${y[3]}${y[4]}${mask(y[5])}${y[4]}${y[6]}`;
+      if (y && lineMaskable(unquote(y[2]).replace(/^:/, ''), y[5])) out = `${y[1]}${y[2]}${y[3]}${y[4]}${mask(y[5])}${y[4]}${y[6]}`;
       const e = out.match(YAML_ENV_ITEM);
-      if (e && maskable(e[2], unquote(e[3]))) out = `${e[1]}${e[2]}=${mask(unquote(e[3]))}`;
+      if (e && lineMaskable(e[2], unquote(e[3]))) out = `${e[1]}${e[2]}=${mask(unquote(e[3]))}`;
       // an INI / properties / .npmrc pair the passes above never read - a dotted, dashed or registry-path key
       // (`spring.datasource.password=`, `client-secret = `, `//registry.npmjs.org/:_authToken=`): `git diff` and
       // `git show HEAD:.npmrc` printed them raw, the probe judging them clean (audit 2026-10-08, replayed). `=` only,
       // so a search's `path:12:` prefix is never read as a key.
       const i = !d && !y && !e && kind !== 'hcl' && kind !== 'xml' && out.match(INI_STREAM_PAIR);
-      if (i && maskable(i[2], unquote(i[4]))) out = `${i[1]}${i[2]}${i[3]}${mask(unquote(i[4]))}`;
+      if (i && lineMaskable(i[2], unquote(i[4]))) out = `${i[1]}${i[2]}${i[3]}${mask(unquote(i[4]))}`;
       out = kind === 'hcl' ? maskQuotedEmbedded(out, mask) : maskEmbedded(out, mask);
     } else {
       out = maskBearer(out.replace(EMBEDDED_URL, (all, head, val) => (holdsCredential('password', val) ? head + mask(val) : all)), mask);
@@ -1432,8 +1497,9 @@ if (payload.hook_event_name === 'SessionStart') {
         if (r.status === 1) exposed = ` WARNING: git does not ignore ${rel} (or it is tracked) - a commit publishes every value; tell the user to add it to .gitignore, and to untrack it with git rm --cached if it is tracked.`;
       }
     } catch { /* no git: nothing to commit it with */ }
-    const short = keys.filter((k) => String(chain.values[k]).length < OUTPUT_MASK_MIN);
-    if (short.length) exposed += ` WARNING: ${short.join(', ')} hold a value under ${OUTPUT_MASK_MIN} characters, which output masking skips (it would match ordinary words) - keep it out of output, or tell the user to make it longer.`;
+    // A3: the keys whose values print as they are - the key names no credential and the value has no credential shape
+    const plain = keys.filter((k) => isLive(chain.values[k]) && !storeValueMasked(k, chain.values[k]) && !embeddedCredential(chain.values[k]));
+    if (plain.length) exposed += ` Shown in output, not masked (no credential key and no credential shape, or a value of 1 character): ${plain.join(', ')} - rename a key to name its credential (as DB_PASS or API_TOKEN) to have its value masked.`;
     process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext:
       `Sensitive data: ${holds} - kept out of the chat: a Read is blocked and a printed value is masked, but only its exact text, so never print one in another form (encoded, split, reversed) and never ask the user to paste one. A command that needs them: node "${__filename}" --with-sensitive -- "<command line>" - they are in its environment, and each prints as <KEY> in its output.${exposed}` } }));
   }
@@ -1537,7 +1603,7 @@ const pathFragments = (command) => String(command).split(/[\s"'`=:;|&<>(),]+/).f
 // What a print of one file would carry: [{ key, value }]. `every`: the command named the file.
 function valuesOf(file, { every = false } = {}) {
   const out = [];
-  const put = (key, value) => { out.push({ key: String(key), value: String(value) }); return ''; };
+  const put = (key, value, any = false) => { out.push({ key: String(key), value: String(value), any }); return ''; };
   if (TEMPLATE_FILE.test(baseOf(file)) || isKeyStore(file)) return out;
   let text;
   try { text = readText(file, MAX_BYTES); } catch { return out; }
@@ -1545,10 +1611,15 @@ function valuesOf(file, { every = false } = {}) {
     // the store and the key file give every live value; a dotenv only when named, else its credential verdicts
     // the companion key file mixes credentials with slugs and org names (card item 4): its credential verdicts only
     const all = baseOf(file) === KEY_FILE ? false : every || !DOTENV_FILE.test(baseOf(file));
+    const store = isSecretsStore(file);
     for (const line of text.split(LINES)) {
       const m = COMMENT_LINE.test(line) ? null : line.match(DOTENV_LINE);
       if (!m) continue;
-      const v = unquote(m[2]);
+      const raw = unquote(m[2]);
+      const v = defaultOf(raw) ?? raw;   // L1-10: what a `${VAR:-x}` prints is its default
+      // A3: the store gives a value only when its key names a credential (2 characters or more) or the value looks like one
+      // L1-11: a password inside a value is named whether or not the whole value is hidden (a DSN's key hides it whole, the print shows the part)
+      if (store) { if (storeValueMasked(m[1], v)) put(m[1], v, keyHidesValue(m[1], v)); maskEmbedded(v, (x) => put(m[1], x, true)); continue; }
       if (all ? isLive(v) : maskable(m[1], v)) put(m[1], v); else maskEmbedded(v, (x) => put(m[1], x));
     }
     return out;
@@ -1586,9 +1657,10 @@ function collectValues(p, every = true) {
   const cwd = typeof p.cwd === 'string' && p.cwd ? p.cwd : process.cwd();
   const project = process.env.CLAUDE_PROJECT_DIR || cwd;
   const command = String((p.tool_input || {}).command || '');
-  const add = (key, value, source, file, all) => {
-    // an every-value read (the store, a named dotenv or config) keeps a value whatever it looks like
-    if (value.length < OUTPUT_MASK_MIN || isPlaceholder(value) || (!all && isSampleValue(key, value))) return;
+  const add = (key, value, source, file, all, any = false) => {
+    // an every-value read (a named dotenv or config) keeps a value whatever it looks like; a store value under a
+    // credential-named key (A3) keeps 2 characters or more
+    if ((value.length < (any ? STORE_VALUE_MIN : OUTPUT_MASK_MIN)) || isPlaceholder(value) || (!all && isSampleValue(key, value))) return;
     for (const v of new Set([value, JSON.stringify(value).slice(1, -1)])) if (!values.has(v)) values.set(v, { key, source, file: file ? baseOf(file) : null });
   };
   const take = (file, all, source) => {
@@ -1596,7 +1668,7 @@ function collectValues(p, every = true) {
     try { if (spentMs() > MASK_BUDGET_MS || !fs.statSync(file).isFile()) return; id = `${realOf(file)}\n${all}`; } catch { return; }
     if (files.has(id)) return;
     files.add(id);
-    for (const { key, value } of valuesOf(file, { every: all })) add(key, value, source, file, all);
+    for (const { key, value, any } of valuesOf(file, { every: all })) add(key, value, source, file, all, any);
   };
   // 1. the files the command names, at the cwd, the project, each directory it names and each directory a cd leaves
   let dirs = [cwd, project];

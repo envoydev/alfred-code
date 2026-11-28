@@ -14,7 +14,7 @@ test('the always-on rules keep the imperatives the pilot-3 trim dropped', () =>
     const kept = [
         ['stack/rules/alfred-navigation.md', 'never the same read in another shape or against a second path'],
         ['stack/rules/alfred-navigation.md', 'resolves its tool absolutely or checks it with `type` first'],
-        ['stack/rules/alfred-interaction.md', 'Push-back without new facts: restate the objection'],
+        ['stack/skills/habits-evaluate-proposal/SKILL.md', 'Push-back without new facts: restate the objection'],
         ['stack/rules/alfred-security.md', 'compare char counts, or have the user compare'],
     ];
     for (const [rel, phrase] of kept) assert.ok(squash(rel).includes(phrase), `${rel}: '${phrase}'`);

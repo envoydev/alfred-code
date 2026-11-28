@@ -213,6 +213,10 @@
       "mcps": [],
       "plugins": []
     },
+    "habits-evaluate-proposal": {
+      "mcps": [],
+      "plugins": []
+    },
     "habits-execution-strategy": {
       "mcps": [],
       "plugins": []
@@ -867,6 +871,7 @@
     "alfred-interaction": {
       "skills": [
         "habits-clarify",
+        "habits-evaluate-proposal",
         "habits-execution-strategy",
         "habits-explain-topic",
         "habits-plan-writing",

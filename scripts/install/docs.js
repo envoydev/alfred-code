@@ -755,7 +755,7 @@ function entrySpans(lines)
 }
 
 // Every seed a release shipped, verbatim, so an entry still as a release seeded it is told from the user's own text.
-const SHIPPED_GIT_SEEDS = ['git-seed-2.9.0.md'].map((name) => path.join(__dirname, name));
+const SHIPPED_GIT_SEEDS = ['git-seed-2.9.0.md', 'git-seed-3.19.6.md'].map((name) => path.join(__dirname, name));
 const fieldsOf = (sec) => LOCKED_FIELDS.map((f) => foldText(sec.fields[f])).join('\n');
 function shippedSections(parse)
 {

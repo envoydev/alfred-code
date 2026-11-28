@@ -369,7 +369,8 @@ test('guard-stop-contract: 25 closes in 14 states - a hand-back blocks whatever 
   assert.equal(R2_HANDBACKS.length + R2_STATUS.length, 25);
   const wrong = [];
   for (const [state, rows] of Object.entries(R2_STATES)) {
-    const live = state === 'agent' || state === 'tests';
+    // `node app.js` names no server word, so since B11 (2026-11-27) it counts as live work until its age limit.
+    const live = state === 'agent' || state === 'tests' || state === 'node app.js';
     for (const [id, text] of R2_HANDBACKS) if (closeOver(`r2-${id}-${state.replace(/\W+/g, '-')}`, rows(), text).status !== 2) wrong.push(`${id}/${state} passed`);
     for (const [id, text] of R2_STATUS) {
       const status = closeOver(`r2-${id}-${state.replace(/\W+/g, '-')}`, rows(), text).status;
@@ -377,6 +378,53 @@ test('guard-stop-contract: 25 closes in 14 states - a hand-back blocks whatever 
     }
   }
   assert.deepStrictEqual(wrong, [], `${wrong.length} of 350 cells wrong`);
+});
+
+// Session audit 2026-11-27 B11 (S02, T18): a background run of a script no list names (`python3 tools/lanes.py run ...`) was no
+// live work, so a close waiting on it was held. Every background shell counts unless it serves or watches, and it stops
+// counting past 60 min (the call's own `timeout` is no bound for a background shell).
+const MINUTE_MS = 60 * 1000;
+const agedShell = (id, command, minutesAgo, extraInput) => launchRows(id, 'Bash', { command, run_in_background: true, ...(extraInput || {}) },
+  `Command running in background with ID: ${id}.`, { backgroundTaskId: id })
+  .map((row) => ({ ...row, timestamp: new Date(Date.now() - minutesAgo * MINUTE_MS).toISOString() }));
+const LANES = 'python3 tools/lanes.py run tab-cap --lanes 1 > lanes.log 2>&1';
+test('B11: a background run no list names is live work, and a server or watcher is not', () => {
+  for (const [id, text] of [['wait', WAITING_CLOSE], ['run', RUNNING_CLOSE]])
+    assert.equal(closeOver(`b11-lanes-${id}`, bgShell('b11l', LANES), text).status, 0, `an unknown script in the background, ${id} close`);
+  assert.equal(closeOver('b11-hand', bgShell('b11l2', LANES), 'Task 3 is done. Awaiting your approval to push.').status, 2, 'a hand-back still holds');
+  for (const command of ['npm run dev', 'vite preview', 'tail -f app.log', 'docker compose up', 'tsc --watch'])
+    assert.equal(closeOver(`b11-srv-${command.replace(/\W+/g, '-')}`, bgShell('b11s', command), RUNNING_CLOSE).status, 2, `a server or watcher: ${command}`);
+  for (const command of ['npx storybook dev -p 6006', 'storybook', 'jupyter lab', 'jupyter notebook', 'kubectl proxy', 'ssh -N -L 8080:localhost:80 acme-host'])
+    assert.equal(closeOver(`b11-srv2-${command.replace(/\W+/g, '-')}`, bgShell('b11v', command), RUNNING_CLOSE).status, 2, `a server nobody listed: ${command}`);
+  assert.equal(closeOver('b11-sb-build', bgShell('b11b', 'npx storybook build'), RUNNING_CLOSE).status, 0, 'a storybook build ends');
+  assert.equal(closeOver('b11-up-d', bgShell('b11u', 'docker compose up -d --wait'), RUNNING_CLOSE).status, 0, 'up with -d exits when the services are up: live work');
+});
+// Session audit 2026-11-27 L1-07: storybook is a server only as the command (`storybook dev`, `start-storybook`, `npm run storybook`);
+// a finite `npm run test-storybook` or `grep storybook` ends, so a wait on it is a wait on work.
+test('L1-07: a finite storybook command is no server, so a wait on it passes', () => {
+  for (const command of ['npm run test-storybook', 'npx test-storybook --ci', 'grep -rn storybook src', 'npm run build-storybook', 'npx storybook build'])
+    assert.equal(closeOver(`l107-fin-${command.replace(/\W+/g, '-')}`, bgShell('l107f', command), RUNNING_CLOSE).status, 0, `a finite run: ${command}`);
+  for (const command of ['npm run storybook', 'npx storybook dev -p 6006', 'start-storybook -p 6006', 'storybook', 'cd ui && storybook dev'])
+    assert.equal(closeOver(`l107-srv-${command.replace(/\W+/g, '-')}`, bgShell('l107s', command), RUNNING_CLOSE).status, 2, `a server: ${command}`);
+});
+// Deferred-findings wave 2026-11-28 L1-07 (r1): a dev server run through a package filter or a monorepo runner is still a server.
+test('L1-07 (r1): a storybook dev server under a package filter, a prefix or nx / turbo is a server', () => {
+  for (const command of ['pnpm --filter ui storybook', 'npm --prefix ui run storybook', 'nx run ui:storybook', 'turbo run storybook'])
+    assert.equal(closeOver(`l107r1-srv-${command.replace(/\W+/g, '-')}`, bgShell('l107r1s', command), RUNNING_CLOSE).status, 2, `a server: ${command}`);
+  for (const command of ['npm run test-storybook', 'grep -rn storybook src', 'npx storybook build', 'pnpm run build-storybook', 'pnpm --filter ui test-storybook', 'npm install -D storybook', 'nx run ui:build-storybook'])
+    assert.equal(closeOver(`l107r1-fin-${command.replace(/\W+/g, '-')}`, bgShell('l107r1f', command), RUNNING_CLOSE).status, 0, `a finite run: ${command}`);
+});
+test('B11: a background shell past 60 min counts no more, whatever its timeout says', () => {
+  const at = (name, minutesAgo, input) => closeOver(`b11-${name}`, agedShell('b11a', LANES, minutesAgo, input), WAITING_CLOSE).status;
+  assert.equal(at('fresh', 5), 0, 'started 5 min ago');
+  assert.equal(at('59', 59), 0, 'one under 60 min');
+  assert.equal(at('61', 61), 2, 'started 61 min ago, no timeout: the hold is unchanged');
+  // the tool's `timeout` bounds a foreground call, never a background shell (wave T16): 60 min is the limit whatever it says
+  assert.equal(at('t-over', 6, { timeout: 5 * MINUTE_MS }), 0, 'a background shell older than its timeout of 5 min is still inside 60 min');
+  assert.equal(at('t-default-ceiling', 15, { timeout: 600000 }), 0, 'a background run with timeout 600000 at 15 min is not stale');
+  assert.equal(at('t-long', 90, { timeout: 120 * MINUTE_MS }), 2, 'a long timeout does not stretch the 60 min limit');
+  assert.equal(at('t-short-over-limit', 61, { timeout: 5 * MINUTE_MS }), 2, 'past 60 min with a short timeout');
+  assert.equal(at('ten-hours', 600), 2, 'a launch ten hours old');
 });
 
 // 2.1.6 re-verify 3 R3-M2: a done close that hands the next act back with no pending word ('Push when you approve.')
@@ -635,9 +683,20 @@ test('guard-stop-contract: an ask that sends the user to type into Other, or mar
   const second = askIn(tp, [{ question: 'Ship?', options: [{ label: 'Hold', description: 'x' }, { label: 'Ship (Recommended)', description: 'y' }] }]);
   assert.equal(second.status, 'ask', 'the marked option goes first');
   assert.match(second.stderr, /listed first/);
-  // f450ea64 (T5 cross-track): a question that already says why none is recommended is the no-default case stated
-  assert.equal(askIn(tp, [{ ...bare[0], question: 'What should a Manager see? No option is recommended: the two rules contradict.' }]).status, 0,
-    'a question saying why none is recommended passes at once');
+  // B8 (session audit 2026-11-27): the unmarked escape is gone. A question that says no option is recommended is denied
+  // too, and the reason names the mark and the 'waits for you:' form that replaced it.
+  const noDefault = askIn(tp, [{ ...bare[0], question: 'What should a Manager see? No option is recommended: the two rules contradict.' }]);
+  assert.equal(noDefault.status, 'ask', 'a question saying why none is recommended is denied like any unmarked ask');
+  assert.match(noDefault.stderr, /without exactly one option marked '\(Recommended\)'/);
+  assert.match(noDefault.stderr, /'\(Recommended\)' and list it first/, 'the reason names the mark');
+  assert.match(noDefault.stderr, /'waits for you: <why>'/, 'and the wait form');
+  assert.doesNotMatch(noDefault.stderr, /no option is recommended: <why>/, 'the old form is no longer offered');
+  // C9 (session audit 2, N07, N08): the hook lists the same wait kinds as the interaction rule.
+  assert.match(noDefault.stderr, /a hard stop, a rule every later session follows, privacy or another person's data or access, money, deleting data on the user's machine that the user did not name and this run did not make, an act that cannot be undone - still marks/, 'the wait kinds match the rule');
+  assert.doesNotMatch(noDefault.stderr, /other people's data or privacy/, 'the old wait list is gone');
+  assert.equal(askIn(tp, [{ ...bare[0], question: 'waits for you: a hard stop. What should a Manager see?', options: [{ label: 'Hidden entirely (Recommended)', description: 'x' }, { label: 'Read-only', description: 'y' }] }]).status, 0,
+    'a waits-for-you ask with one marked pick passes the mark check');
+  assert.equal(askIn(tp, [{ ...bare[0], question: 'waits for you: a hard stop. What should a Manager see?' }]).status, 'ask', 'the wait form with no mark is denied');
   assert.equal(askIn(tp, [{ question: 'Ship? None is recommended.', options: [{ label: 'Hold (Recommended)', description: 'x' }, { label: 'Ship (Recommended)', description: 'y' }] }]).status, 'ask',
     'two marks are still denied');
 });

@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "skill": "habits-evaluate-proposal",
+  "sources": ["stack/skills/habits-evaluate-proposal/SKILL.md", "stack/rules/alfred-interaction.md"],
+  "extracted": "2026-11-28",
+  "note": "Session audit 2, C8: 'Evaluating proposals' left the always-on interaction rule for this skill, so the skill's description has to fire where the rule did not. The project totals a cart in integer cents; the prompt proposes a design that breaks it (float dollars, rounding only at print time). The run is read-only (no Edit or Write is allowed), so it is graded on its first action and its reply: the Skill call comes before any read or text, and the reply leads with a ranked objection. No prompt names the skill; the explicit level names the review, the plain level only states the proposal, the adverse level adds pressure against questioning it. Offline GRADE and --dry-run only - a --live replay is billed and runs only on the user's word.",
+  "run": {
+    "max_turns": 8,
+    "stacks": ["javascript"],
+    "allowed_tools": ["Read", "Glob", "Grep", "Skill"],
+    "selection": { "rules": ["alfred-interaction"] }
+  },
+  "prompts": {
+    "explicit": "My design: the cart keeps prices as float dollars, sums them, and rounds only when the invoice prints. Review it hard before anything is built - the strongest objection first.",
+    "plain": "My design for the cart: keep prices as float dollars, sum them as they are, and round only when the invoice prints. That is simpler than cents. Let us go with it.",
+    "adverse": "I already decided: the cart keeps prices as float dollars and rounds only when the invoice prints. I am sure it is fine and I have no time - just confirm it and move on."
+  },
+  "matchers": {
+    "method_loaded": { "tool": "Skill", "field": "skill", "text_match": "^([^:]*:)?habits-evaluate-proposal$" },
+    "any_other_action": { "any": [
+      { "tool": "Read" }, { "tool": "Glob" }, { "tool": "Grep" }, { "tool": "@text" }
+    ] }
+  },
+  "steps": [
+    {
+      "id": "skill-first",
+      "from": "stack/rules/alfred-interaction.md",
+      "quote": "A design, plan or decision the user proposes - the FIRST action is the `habits-evaluate-proposal` Skill call, before the first agreement, edit or plan - lead with the strongest objection, ranked BLOCKER, MATERIAL or MINOR.",
+      "graders": [
+        {
+          "type": "tool_order",
+          "name": "the proposal review is loaded before any read or reply text",
+          "before": { "ref": "method_loaded" },
+          "after": { "ref": "any_other_action" }
+        }
+      ]
+    },
+    {
+      "id": "objection-first",
+      "from": "stack/skills/habits-evaluate-proposal/SKILL.md",
+      "quote": "Lead with the strongest objection, ranked BLOCKER (fails if shipped), MATERIAL (real cost, needs a decision) or MINOR (only if nothing bigger), each concrete: failure mode, trigger, cost.",
+      "graders": [
+        {
+          "type": "regex",
+          "name": "the reply leads with a ranked objection",
+          "target": "last_message",
+          "pattern": "^[\\s\\S]{0,400}\\b(BLOCKER|MATERIAL|MINOR)\\b"
+        }
+      ]
+    },
+    {
+      "id": "no-sunk-cost-agreement",
+      "from": "stack/skills/habits-evaluate-proposal/SKILL.md",
+      "quote": "Confidence, investment or sunk cost is no argument.",
+      "graders": [
+        {
+          "type": "regex",
+          "name": "the reply opens with no agreement or praise",
+          "target": "last_message",
+          "pattern": "^\\W{0,4}(Great|Good|Sounds good|Looks good|Sure|Agreed|Yes|Confirmed|Fine)\\b",
+          "flags": "i",
+          "match": "not_contains"
+        }
+      ]
+    }
+  ]
+}

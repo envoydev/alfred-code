@@ -441,3 +441,41 @@ test('audit 2026-10-14 SKC15: the stories live in the evidence appendices, the b
     }
     assert.doesNotMatch(squash(read('stack/skills/capture-awareness/references/architecture.md')), /Measured \(2026-10-09 A\/B/, 'the A/B figure lives in the appendix');
 });
+
+// Session audit 2 (C8): 'Evaluating proposals' left the always-on interaction rule for a skill that loads when the
+// user proposes a design; the rule keeps one pointer line.
+test('the proposal review lives in habits-evaluate-proposal', () =>
+{
+    const skill = squash(read('stack/skills/habits-evaluate-proposal/SKILL.md'));
+    const desc = /^description: "?(.+?)"?$/m.exec(read('stack/skills/habits-evaluate-proposal/SKILL.md'));
+    assert.ok(desc && desc[1].length <= 160, 'the description is at most 160 chars');
+    assert.ok(skill.includes('## When to use'), 'a When to use heading');
+    for (const held of [
+        'A design, plan or decision the user proposes gets an adversarial review - validate or kill it; lookups, syntax, facts and casual talk are exempt.',
+        'Lead with the strongest objection, ranked BLOCKER (fails if shipped), MATERIAL (real cost, needs a decision) or MINOR (only if nothing bigger), each concrete: failure mode, trigger, cost.',
+        'A sound idea: say in one line why it beats the alternatives, then attack its weakest assumption and name the cheapest test. Reject an approach: give the alternative and the tradeoff.',
+        'Confidence, investment or sunk cost is no argument. Push-back without new facts: restate the objection; change position only on evidence. No praise for effort; praise a specific decision only when it beats the obvious alternative.',
+        'Choosing between candidates: a table of at most 3 pros and 3 cons each, then recommend one with the reason.',
+    ]) assert.ok(skill.includes(held), `the skill carries '${held.slice(0, 50)}'`);
+    const interaction = squash(read('stack/rules/alfred-interaction.md'));
+    assert.ok(!interaction.includes('## Evaluating proposals'), 'the section left the rule');
+    for (const moved of ['sunk cost', 'at most 3 pros', 'Push-back without new facts']) assert.ok(!interaction.includes(moved), `the rule no longer carries '${moved}'`);
+    // fix round 1: the pointer keeps the review's cue, so a session that makes no Skill call still leads with the objection
+    assert.ok(interaction.includes('the FIRST action is the `habits-evaluate-proposal` Skill call, before the first agreement, edit or plan - lead with the strongest objection, ranked BLOCKER, MATERIAL or MINOR'), 'the pointer carries the cue');
+    // fix round 1: 'I want to' fired on plain requests; the trigger is a proposal, with the plain add or fix ask excluded
+    const head = read('stack/skills/habits-evaluate-proposal/SKILL.md');
+    const trigger = /^description: "?(.+?)"?$/m.exec(head)[1];
+    assert.ok(!trigger.includes('I want to'), 'no plain-request trigger');
+    for (const cue of ["'what if we'", "'how about'", "'I think we should'", 'Not for plain add or fix asks']) assert.ok(trigger.includes(cue), `the description carries ${cue}`);
+    const body = head.slice(head.indexOf('## When to use'), head.indexOf('## The review'));
+    assert.ok(!/^- Not for/m.test(body), 'the exemption lives in the moved text, not a second bullet');
+    assert.match(read('docs/alfred-code.html'), /\["alfred-interaction", "\(none - always on\)", "[^"]*habits-evaluate-proposal/, 'the inventory row names the pointer');
+    const rec = JSON.parse(read('meta/recommendations.json'));
+    assert.ok(rec.always.skills.includes('habits-evaluate-proposal'), 'in the always set');
+});
+
+test('the interaction rule names that skill as the first action', () =>
+{
+    const interaction = squash(read('stack/rules/alfred-interaction.md'));
+    assert.match(interaction, /the FIRST action is the `habits-evaluate-proposal` Skill call, before /);
+});

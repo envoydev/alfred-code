@@ -787,10 +787,16 @@ const sectionHash = (text) => crypto.createHash('sha1').update(stripStamp(text))
 // The section's FIRST SENTENCE, capped at QUOTE_CHARS: the finish ask quotes it so there is something concrete to
 // compare a change against, and a section that grew to 6000 chars must not grow the ask with it.
 const QUOTE_CHARS = 200;
+// B17: a line holding only a list marker ('1.', '-', '*') has no text to quote: the excerpt takes the first line that does.
+const LIST_MARKER_ONLY = /^\s*(?:[-*+]|\d+[.)])\s*$/;
+// ... and a marker that leads text is no part of the sentence: '1. Refunds are processed.' quotes 'Refunds are processed.', not '1.'.
+const LIST_MARKER_LEAD = /^(?:[-*+]|\d+[.)])\s+/;
+const excerptLine = (lines) => lines.find((l) => l.trim() && !COMMENT.test(l) && !LIST_MARKER_ONLY.test(l)) || '';
 function firstSentence(text) {
-  const body = norm(text).split('\n').slice(1).find((l) => l.trim() && !COMMENT.test(l)) || '';
-  const m = /^(.*?[.!?])(\s|$)/.exec(body.trim());
-  const one = (m ? m[1] : body).trim();
+  const body = excerptLine(norm(text).split('\n').slice(1));
+  const line = body.trim().replace(LIST_MARKER_LEAD, '');
+  const m = /^(.*?[.!?])(\s|$)/.exec(line);
+  const one = (m ? m[1] : line).trim();
   return one.length > QUOTE_CHARS ? `${one.slice(0, QUOTE_CHARS - 3)}...` : one;
 }
 const stampLineOf = (t) => norm(t).split('\n').find((l) => STAMP.test(l)) || '';
@@ -2303,7 +2309,7 @@ module.exports = {
   overlayNames, mergedBranches, promote, autoPromote, deletedUnmerged, prune, status,
   lint, integrity, seedIds, loadWatch, watchesSourceRoot, watchHits, watchOf, unowned, notOwnedOf, snapshot, changedSince,
   recomputed, refRecomputed, durableDomains, watchMerge,
-  sectionHash, firstSentence, ceilings, askRef, protectedRef, shownFrom, adrRecords, adrIndex, adrNew, orientationState,
+  sectionHash, firstSentence, excerptLine, ceilings, askRef, protectedRef, shownFrom, adrRecords, adrIndex, adrNew, orientationState,
 };
 if (require.main !== module) return;
 

@@ -41,11 +41,16 @@ const skillHeadings = require('./skill-headings.js');
 const ruleOpenings = require('./rule-openings.js');
 const nativeRules = require('./native-rules.js');
 const { CANARY_RULE } = require('./native-rules-constants.js');
+const { nvmPathWarning } = require('./node-path.js');
 const { createReport } = require('./report.js');
 const { NEW_SESSION_LINE, TOP_REL } = require('./report-constants.js');
 const { shippedText } = require('./retired-rules.js');
 const uninstallLayer = require('./uninstall.js');
 const toolIgnoresLayer = require('./tool-ignores.js');
+const { scanOldNameReferences } = require('./old-name-hold/effects.js');
+const { holdLines, holdsRename } = require('./old-name-hold/references.js');
+const { installedPaths } = require('./old-name-hold/installed.js');
+const { MAX_SCAN_FILES } = require('./old-name-hold/constants.js');
 const workspace = require('./workspace.js');
 const childKeep = require('./child-keep.js');
 const childHide = require('./child-hide.js');
@@ -714,8 +719,6 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         }
 
         // --- the run ---------------------------------------------------------------
-        // The store's rename (item 3).
-        const secrets = secretsStep({ projectRoot, info: dataInfo, log });
         // What a release retired from the MCP catalog and this run still prunes: the first update past
         // a retirement only (mcp.dueRetired) - after it, the name is the user's add-back registration.
         const versionDue = mcp.dueRetired({
@@ -771,6 +774,13 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             // Workspace layering: prepare's answer, this run's own --add lines, and whether its read-back was blind.
             workspace: wsPrep, userAdds, workspaceBlind: readBlind, installedBefore,
         };
+        // The store's rename (item 3), after the context: the retired copies this same update prunes are judged by its own prune test.
+        const pruned = retiredCopiesPruned(ctx);
+        const stackFiles = installedPaths({
+            hooks: [...new Set(manifest.catalogs.hooks.map((e) => e.split('::')[0])), ...pruned.hooks], engines: HOOK_ENGINES, modules: HOOK_MODULES,
+            skills: manifest.catalogs.skills.map((e) => e.split('|').pop()), agents: manifest.agents, rules: [...manifest.rules, ...pruned.rules],
+        });
+        const secrets = secretsStep({ projectRoot, info: dataInfo, log, stackFiles });
         const pinSnapshot = args.keepPins
             ? pinsLayer.snapshotPins({ files: pinFiles(ctx), log })
             : null;
@@ -867,6 +877,12 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         settings.dropEmptySharedSettings({ file: path.join(claudeDir, 'settings.json'), tracked: (at) => gitTracks(ctx, at), log, note });
 
         summarise(ctx, failures);
+        // A1 (R10): the same line the SessionStart hook says, from the same pure function - a node that one `nvm uninstall` removes.
+        if (args.action === 'install' || args.action === 'update')
+        {
+            const nvmLine = nvmPathWarning({ execPath: process.execPath, pathEnv: env.PATH, home, platform: process.platform, exists: fs.existsSync });
+            if (nvmLine) log(`  ${nvmLine}`);
+        }
         if (args.action === 'install' || args.action === 'update') for (const line of [ctx.report.line(TOP_REL), ...(ctx.report.changedSessionItems() ? [NEW_SESSION_LINE] : [])]) log(line);
         return failures ? 0 : 0;   // fail-soft by design: a step that failed is REPORTED, never fatal
     }
@@ -1224,19 +1240,37 @@ function sensitiveFile(ctx, root)
     else if (r === 'blocked') ctx.log(`  !! sensitive data: ${root}/${dataRoot.SECRETS_FILE} is not a file - nothing written`);
 }
 
+// L1-26: a retired hook or rule copy that this same update prunes (the prunes run later, in the layers) is the stack's text on its
+// way out, so it must not hold the rename. A copy the prune keeps as the project's own still holds it.
+function retiredCopiesPruned(ctx)
+{
+    const goes = (kind, folder, names) =>
+    {
+        const dir = path.join(ctx.claudeDir, folder);
+        const keep = retiredKeep(ctx, kind, dir);
+        return names.filter((name) => fs.existsSync(path.join(dir, name)) && !keep(name));
+    };
+    return { hooks: goes('hook', 'hooks', ctx.manifest.retired.hooks), rules: goes('rule', 'rules', ctx.manifest.retired.rules) };
+}
+
 // THE STORE'S RENAME, in two phases (item 3, 2026-10-25): `.sensitive-data` becomes `.secrets`. The first run on this
 // release only records `secrets: dual <by>` and says the rename is next; the rename runs once the stamp holds that line
 // AND this run is another session's than the one that wrote it (an unset or empty session id differs from every `by`) - a
 // session opened before the update may still run a guard that knows only the old name, so the session that updated never
 // renames under it. Returns the stamp's { by }: as recorded, else this run's, marked `fresh` for secretsRecord.
-function secretsStep({ projectRoot, info, log })
+function secretsStep({ projectRoot, info, log, stackFiles })
 {
     const sid = process.env.CLAUDE_CODE_SESSION_ID || '';
     const rec = info.recorded.secrets;
     const roots = [info.root];
     if (rec && (!sid || rec.by !== sid))
     {
-        for (const r of dataRoot.renameSecrets({ projectDir: projectRoot, roots }))
+        // B4: a file the user owns that still names the old store - or a scan cut at the file cap - holds the rename; the old
+        // file stays and both names stay readable.
+        const scan = legacyStoreAt(projectRoot, roots) ? scanOldNameReferences({ projectRoot, root: info.root, installed: stackFiles }) : null;
+        const held = scan !== null && holdsRename(scan.files, scan.capped);
+        if (held) for (const line of holdLines(info.root, scan.files, scan.capped, MAX_SCAN_FILES)) log(line);
+        if (!held) for (const r of dataRoot.renameSecrets({ projectDir: projectRoot, roots }))
         {
             const at = (name) => `${r.root}/${name}`;
             if (r.state === 'renamed') log(`  sensitive: renamed .sensitive-data -> .secrets - restart any session opened before this update (${r.root})`);

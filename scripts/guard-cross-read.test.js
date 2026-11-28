@@ -36,6 +36,13 @@ function fixture() {
 function envOf(fx, extra = {}) {
   const env = scrubbed();
   for (const k of STRIPPED) delete env[k];
+  // Windows names are case-free, and a child handed two spellings of one name ('PROGRAMFILES', 'ProgramFiles') keeps the
+  // first in sort order - the runner's own value, not the test's (CI Windows leg, 2026-11-28)
+  // Windows also sets a 64-bit child's ProgramFiles from ProgramW6432 as it starts it (measured on a Windows 11 VM, x64
+  // node 26), so a test value for ProgramFiles reaches the hook only beside the same ProgramW6432
+  const programFiles = Object.keys(extra).find((x) => x.toLowerCase() === 'programfiles');
+  if (process.platform === 'win32' && programFiles) extra = { ProgramW6432: extra[programFiles], ...extra };
+  if (process.platform === 'win32') for (const k of Object.keys(env)) if (Object.keys(extra).some((x) => x.toLowerCase() === k.toLowerCase())) delete env[k];
   return { ...env, HOME: fx.home, USERPROFILE: fx.home, TMPDIR: fx.tmp, TEMP: fx.tmp, TMP: fx.tmp, CLAUDE_PROJECT_DIR: fx.proj, ...extra };
 }
 function run(fx, payload, env = {}, session = 'xr') {
@@ -620,4 +627,161 @@ test('a grant of the account folder, or of one holding it, opens no other projec
   fx.put('.claude/settings.json', grant('~/.claude'));
   passes(fx, read(fx.own), {}, 'this project\'s own memory still opens');
   passes(fx, read(fx.at('.claude', 'plugins', 'cache', 'x')), {}, 'the rest of the account folder is open as before');
+}));
+
+// ---- sqlite3 and interpreter calls on a path past the workspace (session audit fixes, B6) ---------------------------
+// The sibling sits beside the fake home, outside the project zone, so only the write half can judge it.
+const WINDOWS = process.platform === 'win32';
+function outsideDb(fx) {
+  const dir = path.join(fx.outer, 'Other');
+  fs.mkdirSync(dir, { recursive: true });
+  const db = path.join(dir, 'db');
+  fs.writeFileSync(db, 'x');
+  return { db, relative: path.relative(fx.proj, db).split(path.sep).join('/') };
+}
+
+test('sqlite3 writing a database past the workspace asks first', { skip: WINDOWS && 'POSIX paths' }, withFixture((fx) => {
+  const { db, relative } = outsideDb(fx);
+  const r = asks(fx, bash(`sqlite3 ${db} "delete from notes"`), {}, 'an absolute database past the workspace');
+  assert.match(blockText(r), new RegExp(db.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), 'the ask names the database');
+  asks(fx, bash(`sqlite3 ${relative} "delete from notes"`), {}, 'a relative database past the workspace');
+  asks(fx, bash(`cd .. && sqlite3 ${path.relative(path.dirname(fx.proj), db).split(path.sep).join('/')} "vacuum"`), {}, 'a relative database after a cd');
+  asks(fx, bash(`sqlite3 -cmd '.timeout 5' -header ${db} "delete from notes"`), {}, 'options before the database');
+  asks(fx, bash(`sqlite3 "file:${db}" "delete from notes"`), {}, 'a file: URI with no mode');
+  asks(fx, bash(`sqlite3 "file:${db}?mode=rwc" "delete from notes"`), {}, 'a file: URI that writes');
+}));
+
+test('sqlite3 on a read-only handle, :memory: or a project database passes with no prompt', { skip: WINDOWS && 'POSIX paths' }, withFixture((fx) => {
+  const { db } = outsideDb(fx);
+  fx.put('work/proj/data.db');
+  passes(fx, bash(`sqlite3 "file:${db}?mode=ro" "select 1"`), {}, 'a mode=ro URI is a read');
+  passes(fx, bash(`sqlite3 -readonly ${db} "select 1"`), {}, 'the -readonly flag is a read');
+  passes(fx, bash(`sqlite3 --readonly ${db} "select 1"`), {}, 'the --readonly flag is a read');
+  passes(fx, bash('sqlite3 :memory: "select 1"'), {}, ':memory:');
+  passes(fx, bash('sqlite3 data.db "select 1"'), {}, 'a database inside the project');
+  passes(fx, bash(`sqlite3 ${fx.proj}/data.db "delete from t"`), {}, 'the project database by its absolute path');
+  passes(fx, bash('sqlite3 --version'), {}, 'no database at all');
+  passes(fx, bash('sqlite3 -readonly $DB "select 1"'), {}, 'an unexpanded variable is not judged');
+}));
+
+test('an interpreter call that names an existing path past the workspace asks first', { skip: WINDOWS && 'POSIX paths' }, withFixture((fx) => {
+  const { db, relative } = outsideDb(fx);
+  fx.put('work/proj/erase.py');
+  const r = asks(fx, bash(`python -I erase.py ${db}`), {}, 'python on an outside file');
+  assert.match(blockText(r), /python/, 'the ask names the interpreter');
+  asks(fx, bash(`python3 erase.py ${relative}`), {}, 'python3 on a relative outside file');
+  asks(fx, bash(`node erase.js --db ${db}`), {}, 'node with an option and an outside file');
+  asks(fx, bash(`ruby erase.rb ${db}`), {}, 'ruby');
+  asks(fx, bash(`perl erase.pl ${db}`), {}, 'perl');
+  asks(fx, bash(`bash erase.sh ${db}`), {}, 'bash');
+  asks(fx, bash(`sh erase.sh ${db}`), {}, 'sh');
+  asks(fx, bash(`python3 -c "import sys; print(sys.argv)" ${db}`), {}, 'python3 -c with an outside argument');
+  asks(fx, bash(`python3 erase.py "${db}"`), {}, 'a quoted outside path');
+}));
+
+test('a flag one interpreter reads as a switch does not hide a script past the workspace from another', { skip: WINDOWS && 'POSIX paths' }, withFixture((fx) => {
+  const { db, relative } = outsideDb(fx);
+  asks(fx, bash(`sh -e ${relative}`), {}, 'sh -e is errexit, so the word after it is the script');
+  asks(fx, bash(`bash -e -u ${relative}`), {}, 'bash -e -u then the script');
+  asks(fx, bash(`python3 -E ${relative}`), {}, 'python3 -E ignores the environment, so the next word is the script');
+  asks(fx, bash(`python3 -I -B ${db}`), {}, 'python3 switches then the file');
+  asks(fx, bash(`bash -o pipefail ${db}`), {}, 'bash -o takes pipefail, then the script');
+  asks(fx, bash(`ruby -w ${db}`), {}, 'ruby -w then the script');
+  asks(fx, bash(`perl -w ${db}`), {}, 'perl -w then the script');
+  asks(fx, bash(`node --no-warnings ${db}`), {}, 'node --no-warnings then the script');
+  passes(fx, bash(`bash -c 'echo hi'`), {}, 'bash -c takes code');
+  passes(fx, bash('node -e "1"'), {}, 'node -e takes code');
+  passes(fx, bash('python3 -m pytest'), {}, 'python3 -m takes a module');
+  passes(fx, bash(`bash -o pipefail -c 'echo ${relative}'`), {}, 'bash -o value then -c code');
+  passes(fx, bash(`ruby -e '1' -r json`), {}, 'ruby -e and -r take values');
+  passes(fx, bash(`perl -e 'print 1' -I lib`), {}, 'perl -e and -I take values');
+}));
+
+test('L1-15: an interpreter option spelled --name=<path> asks as --name <path> does', { skip: WINDOWS && 'POSIX paths' }, withFixture((fx) => {
+  const { db } = outsideDb(fx);
+  asks(fx, bash(`node migrate.js --db ${db}`), {}, 'the two-word spelling');
+  asks(fx, bash(`node migrate.js --db=${db}`), {}, 'the one-word spelling');
+  asks(fx, bash(`python3 migrate.py --db="${db}"`), {}, 'the one-word spelling, quoted');
+  passes(fx, bash('node migrate.js --db=data.db --level=3'), {}, 'a value that names no existing path');
+  passes(fx, bash(`node --eval=${db}`), {}, 'a value option of the interpreter is code, not a path');
+}));
+
+test('L1-15 (r1): a flag value that is the filesystem root alone is no path word, in both spellings', { skip: WINDOWS && 'POSIX paths' }, withFixture((fx) => {
+  passes(fx, bash('node build.js --base=/'), {}, 'one word, --base=/');
+  passes(fx, bash('node build.js --base /'), {}, 'two words, --base /');
+  passes(fx, bash('python3 serve.py --root=/'), {}, 'one word, --root=/');
+  passes(fx, bash('python3 serve.py --root /'), {}, 'two words, --root /');
+  const { db } = outsideDb(fx);
+  asks(fx, bash(`node build.js --base=${db}`), {}, 'keep: a real outside path in one word');
+  asks(fx, bash(`node build.js --base ${db}`), {}, 'keep: a real outside path in two words');
+}));
+
+// L1-16 runs on POSIX here with the Windows variables set by the test; the Windows leg itself is NOT RUN on a Windows host.
+test('L1-16: a script under a Windows system folder named by ProgramFiles, ProgramFiles(x86), SystemRoot or windir is exempt', withFixture((fx) => {
+  const folders = { ProgramFiles: 'Program Files', 'ProgramFiles(x86)': 'Program Files (x86)', SystemRoot: 'Windows', windir: 'WinDir' };
+  for (const [name, folder] of Object.entries(folders)) {
+    const dir = path.join(fx.outer, folder);
+    fs.mkdirSync(dir, { recursive: true });
+    const tool = path.join(dir, 'tool.py');
+    fs.writeFileSync(tool, 'x');
+    asks(fx, bash(`python3 "${tool}"`), {}, `${name} unset: the script past the workspace asks`);
+    passes(fx, bash(`python3 "${tool}"`), { [name]: dir }, `${name} set: its folder is a system folder`);
+    if (process.platform === 'win32') passes(fx, bash(`python3 "${tool.toUpperCase()}"`), { [name]: dir.toLowerCase() }, `${name}: case is free on Windows`);
+  }
+  const { db } = outsideDb(fx);
+  asks(fx, bash(`python3 erase.py ${db}`), { ProgramFiles: path.join(fx.outer, 'Program Files') }, 'another folder past the workspace still asks');
+}));
+
+test('an interpreter call on a project path, a missing path, a system path or code with no path passes with no prompt', { skip: WINDOWS && 'POSIX paths' }, withFixture((fx) => {
+  const { relative } = outsideDb(fx);
+  fx.put('work/proj/scripts/x.py');
+  fx.put('work/proj/src/a.ts');
+  passes(fx, bash('python3 scripts/x.py src/a.ts'), {}, 'both paths inside the project');
+  passes(fx, bash(`python3 scripts/x.py ${fx.proj}/src/a.ts`), {}, 'an absolute project path');
+  passes(fx, bash('python3 -c "print(1)"'), {}, 'python3 -c with no path');
+  passes(fx, bash('node -e "console.log(1)"'), {}, 'node -e with no path');
+  passes(fx, bash(`python3 scripts/x.py ${relative}.missing`), {}, 'an outside path that does not exist');
+  passes(fx, bash('python3 scripts/x.py --verbose -n 3'), {}, 'options and a number');
+  passes(fx, bash('bash ~/.nvm/x'), {}, 'a toolchain folder under the home folder');
+  passes(fx, bash('python3 scripts/x.py $OUT'), {}, 'an unexpanded variable');
+  passes(fx, bash('echo python3 ../../../Other'), {}, 'an echo of the words');
+  if (fs.existsSync('/usr/bin/env')) passes(fx, bash('python3 scripts/x.py /usr/bin/env'), {}, 'a system tool path');
+}));
+
+test('a copy to a path past the workspace still asks beside the sqlite3 and interpreter rule', { skip: WINDOWS && 'POSIX paths' }, withFixture((fx) => {
+  const { relative } = outsideDb(fx);
+  asks(fx, bash(`cp x ${relative}.copy`), {}, 'cp a ../Other/b');
+  asks(fx, bash(`echo hi > ${relative}.out`), {}, 'a redirect past the workspace');
+  passes(fx, bash('cp x x2'), {}, 'a copy inside the project');
+}));
+
+// CI Windows leg, 2026-11-28: the runner's temp folder is an 8.3 short name (RUNNER~1) the target's real path never matches,
+// so a system folder the environment names through another spelling of the same place is still that folder.
+test('L1-16: a system folder the environment names through another spelling of the same place (a link, a short name) is still exempt', withFixture((fx) => {
+  const dir = path.join(fx.outer, 'Program Files');
+  fs.mkdirSync(dir, { recursive: true });
+  const tool = path.join(dir, 'tool.py');
+  fs.writeFileSync(tool, 'x');
+  const link = path.join(fx.outer, 'pf-link');
+  fs.symlinkSync(dir, link, 'junction');
+  passes(fx, bash(`python3 "${tool}"`), { ProgramFiles: link }, 'ProgramFiles names the folder through a link');
+}));
+
+// CI Windows leg, 2026-11-28: a checkout outside HOME (D:\a on the runner) made the sensitive-data runner's own call - node on a
+// script in the hooks folder - an ask naming 'the installed plugins' own code'. Running the plugin's own scripts writes nothing.
+test("a node call on a script in the guards' own hooks folder passes wherever the plugin lives, HOME or not", withFixture((fx) => {
+  const runner = path.join(path.dirname(GUARD), 'guard-secret-value.js');
+  passes(fx, bash(`node "${runner}" --with-sensitive -- "true"`), {}, 'the runner call, the plugin outside HOME');
+  const { db } = outsideDb(fx);
+  asks(fx, bash(`node erase.js ${db}`), {}, 'another path past the workspace still asks');
+}));
+
+test("a hook file handed to another script as an argument is still judged, not taken for the runner", withFixture((fx) => {
+  const hook = path.join(path.dirname(GUARD), 'guard-secret-value.js');
+  const outside = path.join(fx.outer, 'tools', 'rewrite.js');
+  fs.mkdirSync(path.dirname(outside), { recursive: true });
+  fs.writeFileSync(outside, 'x');
+  asks(fx, bash(`node "${outside}" "${hook}"`), {}, 'a script past the workspace that is handed a hook file');
+  fx.put('work/proj/rewrite.js');
+  asks(fx, bash(`node rewrite.js "${hook}"`), {}, 'a project script handed a hook file past the workspace');
 }));

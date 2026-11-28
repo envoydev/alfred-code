@@ -15,7 +15,9 @@ const { spawnSync } = require('node:child_process');
 const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-gate-'));
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
-const REVIEWED = reviewedTranscript(TMP);
+// the user typed the quote the receipt carries: an authorized: quote counts only as the user's own words (C3)
+const typed = (text) => JSON.stringify({ type: 'user', timestamp: '2026-11-27T10:00:00Z', message: { role: 'user', content: text } });
+const REVIEWED = reviewedTranscript(TMP, [typed('merge it')]);
 
 function pushRepo() {
   const base = fs.mkdtempSync(path.join(TMP, 'push-'));
@@ -29,10 +31,10 @@ function pushRepo() {
   return { dir, git, remote: path.join(base, 'remote.git') };
 }
 const headOf = (dir) => spawnSync('git', ['-C', dir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
-const receipt = (dir, head) => {
+const receipt = (dir, head, quote = 'merge it') => {
   const file = path.join(dir, '.alfred', 'state', 'approvals', 'PUSH-GATE');
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, ['VERIFIED the merge', 'authorized: "merge it"', `head: ${head}`, 'spec: 1 commit', 'live-probe: `npm test` 12/12'].join('\n') + '\n');
+  fs.writeFileSync(file, ['VERIFIED the merge', `authorized: "${quote}"`, `head: ${head}`, 'spec: 1 commit', 'live-probe: `npm test` 12/12'].join('\n') + '\n');
 };
 const runRaw = (dir, payload, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-ungated-commit.js')], {
   input: JSON.stringify({ transcript_path: REVIEWED, session_id: 'forge-s1', cwd: dir, ...payload }), encoding: 'utf8',
@@ -54,7 +56,8 @@ test('an MCP merge needs the publish receipt', () => {
   const { dir } = pushRepo();
   const r = run(dir, mcp('accept_merge_request', { merge_request_iid: 4, sha: headOf(dir) }));
   assert.strictEqual(r.status, 2, r.stderr);
-  assert.match(r.stderr, /accept_merge_request/);
+  assert.match(r.stderr, /^Blocked: merge without the publish gate receipt/m, 'the denial names the verb (B7)');
+  assert.doesNotMatch(r.stderr, /accept_merge_request|merge_request_iid/, 'and no slice of the call');
   assert.match(r.stderr, /PUSH-GATE/);
 });
 
@@ -181,6 +184,14 @@ test('a merge with no change ref on the remote falls back to the local rule', ()
   assert.strictEqual(run(dir, bash('gh pr merge 9')).status, 0);
 });
 
+test('a merge receipt quoting words the user never typed meets the ask (C3)', () => {
+  const { dir } = pushRepo();
+  receipt(dir, headOf(dir), 'merge it right now');
+  const r = run(dir, bash('gh pr merge 9'));
+  assert.strictEqual(r.status, 2, 'the receipt is the model\'s own sentence');
+  assert.match(r.stderr, /not in any message the user typed/);
+});
+
 test('an unreachable remote falls back within the cap', () => {
   const { dir, git } = pushRepo();
   receipt(dir, headOf(dir));
@@ -218,7 +229,7 @@ test('4b: a merge chained after a push is refused (R015: it runs after the push)
   const r = run(dir, bash('git push origin main && gh pr merge 7 --squash'));
   assert.strictEqual(r.status, 2, r.stderr);
   assert.match(r.stderr, /so it judges only a merge that runs first/);
-  assert.match(r.stderr, /gh pr merge 7/);
+  assert.match(r.stderr, /^Blocked: merge - /m, 'the denial names the verb (B7)');
   const alone = run(dir, bash('gh pr merge 7 --squash'));
   assert.strictEqual(alone.status, 2, alone.stderr);
   assert.match(alone.stderr, /never saw/);

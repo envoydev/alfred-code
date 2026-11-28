@@ -406,4 +406,20 @@ test('docs-session: print mode ends without the FINISH ask; interactive still ge
     }
 });
 
+// A2a (session audit 2026-11-27, S24 and T04): auto-run is no absence. A text the model or the user reads says 'auto-run is
+// on' and what happens, never that nobody is at the terminal. The scan joins `'...' + '...'` across line breaks and folds
+// whitespace, so a phrase a literal wraps is still found; the hooks, the skills and the shipped rules are all read.
+test("A2a: no hook, skill or shipped rule says 'nobody is at the terminal'", () =>
+{
+    const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]));
+    const stack = path.join(__dirname, '..', 'stack');
+    const files = [...walk(path.join(stack, 'hooks')).filter((f) => f.endsWith('.js')),
+        ...walk(path.join(stack, 'skills')).filter((f) => f.endsWith('.md')),
+        ...fs.readdirSync(path.join(stack, 'rules')).filter((f) => f.endsWith('.md')).map((f) => path.join(stack, 'rules', f))];
+    assert.ok(files.length > 100, `the scan reads the stack (${files.length} files)`);
+    const found = files.filter((f) => /nobody is at the terminal/i.test(fs.readFileSync(f, 'utf8')
+        .replace(/(['"`])\s*\+\s*\1/g, '').replace(/\\n/g, ' ').replace(/\s+/g, ' '))).map((f) => path.relative(stack, f));
+    assert.deepStrictEqual(found, [], 'these files still say it');
+});
+
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));

@@ -12,7 +12,7 @@ seats do the specialist work. It is READ-ONLY from start to finish - no step her
 so no approval stamp and no commit gate come into play. The measurements behind these rules live in
 `references/evidence.md` - an audit appendix, not a run-time load.
 
-**Modes.** Auto-run, auto-compact and output scoring are modes the user turns on and off with the mode commands (`/alfred-code:mode:auto-run on`, `/alfred-code:mode:scoring on`); each stays on, new sessions included, until its off command, and a hook line on each prompt says which are on. Under the hook's auto-run contract, follow it. With no hook line (hooks off, a host that runs none), a mode is on only when the user said so in this conversation and holds for this conversation: under auto-run each stop takes its `(Recommended)` option, listed in the close, an unmarked one waits, nothing goes outward, no fresh-session hand-off; under scoring this run's output is graded before it is handed over. A `--mode-*` token after the command is no part of the request and switches nothing: drop it and say the mode commands replaced it. A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `/alfred-code:mode:auto-run on`, typed on its own line, turns auto-run on, and never hand-write an `AUTO` line.
+**Modes.** Auto-run, auto-compact and output scoring are modes the user turns on and off with the mode commands (`/alfred-code:mode:auto-run on`, `/alfred-code:mode:scoring on`); each stays on, new sessions included, until its off command, and a hook line on each prompt says which are on. Under the hook's auto-run contract, follow it. With no hook line (hooks off, a host that runs none), a mode is on only when the user said so in this conversation and holds for this conversation: under auto-run each stop takes its `(Recommended)` option, listed in the close, one whose question opens 'waits for you:' waits, nothing goes outward, no fresh-session hand-off; under scoring this run's output is graded before it is handed over. A `--mode-*` token after the command is no part of the request and switches nothing: drop it and say the mode commands replaced it. A typed 'no stops' or 'run it without asking me' is no waiver in this flow: say in one line that `/alfred-code:mode:auto-run on`, typed on its own line, turns auto-run on, and never hand-write an `AUTO` line.
 
 ## When to use
 
@@ -86,7 +86,7 @@ emitting each stop, not a memory: resume needs only the findings file plus the n
 
 **Every ask marks exactly one option `(Recommended)`, listed first** - the move this stop's rule
 recommends, the reason in its description; an ask with no mark is malformed, rebuild it before
-sending - an unmarked ask gets its first option taken whatever it says. A step-done stop:
+sending - the stop hook denies an unmarked ask, and an ask that opens 'waits for you: <why>' keeps its mark and waits. A step-done stop:
 
 ```ask
 <Step> done - <findings path>. Continue to <next step>: <the one reason it is next>.

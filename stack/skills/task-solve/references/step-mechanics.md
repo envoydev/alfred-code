@@ -61,7 +61,7 @@ are in `SKILL.md`, and step 4's per-plan APPROVED stamp is under 'Agents-mode di
   as attended, so the ask waits for a user who is away (usage audit 2026-11-03: deleted first, a close ask sat 3.8 hours).
 - **Under auto-run an unpushed commit is a `Leftovers:` line, never an ask** - the hook leaves an ask naming a push to
   the user, and in the same AskUserQuestion call it would hold the commit question too (audit 2026-10-14 SKF-03).
-- **Under AUTO nobody is at the terminal** (audit 2026-10-10, sessions c6142301 and 9a4ef375: an overnight run
+- **Under AUTO the run has no person to ask** (audit 2026-10-10, sessions c6142301 and 9a4ef375: an overnight run
   asked for a fresh session nobody could take, and a waived close printed none of its fields). So the fresh-session
   offer and the post-compaction hold are logged, not asked - the hooks read a live AUTO stamp as unattended - and the
   fresh-session option is never taken, since nobody is there to paste the resume block. Every stop still prints its
@@ -164,6 +164,8 @@ the 12th 'write it here as markdown' ask in one project, each a full-context tur
 another session waits for the commit / publish answer, so every id it quotes is final.
 
 ## Doc-drift surfaces - the step-6 close line
+
+**Doc-drift awareness** - one line at most in the close report, never auto-run, by the surface list below.
 
 An architecture-critical surface, any one of which earns the close report's one-line pointer to
 the architecture capture: a schema / EF migration, a new module or project, a moved boundary or

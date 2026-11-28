@@ -144,11 +144,25 @@ const SHELL_READ = /^(?:cat|bat|less|more|nl|type|get-content|gc|head|tail|grep|
 // code-quality analyzer, the security auditor and the integration reviewer - and the output scoring, which grades a plan
 // against the docs its producer read, handed the code docs. The architecture
 // analyzer, which reports smells, is handed the architecture doc alone (the user's ruling of 2026-10-22). A bare name is
-// the stack's own only where the install stamp records its copy (the copy route); a project's own agent of the same
-// name, or another plugin's, gets nothing.
+// the stack's own only where the install stamp records its copy (the copy route). A project's own agent of the same name,
+// or another plugin's, is no judge here: like any seat it gets the code docs only by the C10 rule, `seatGetsPush`.
 const JUDGE = /^(?:[\w-]*solution-designer|[\w-]+-verifier|code-quality-analyzer|security-auditor|integration-reviewer|output-scoring)$/;
 const ARCH_SEAT = /^architecture-analyzer$/;
+// The built-in seats that never write: they get no push at their start (C10, 2026-11-27). A closed set - any other built-in,
+// general-purpose among them, may edit.
+const READ_ONLY_BUILTINS = Object.freeze(['Explore', 'Plan', 'claude-code-guide', 'statusline-setup']);
+// A seat definition's own `tools:` entry (a line, or a list of `- tool` lines under it) inside its frontmatter, the edit
+// tools that make a seat write, and the grant of every tool.
+const SEAT_FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---/;
+const SEAT_TOOLS_ENTRY = /^tools:[ \t]*([^\n]*(?:\n[ \t]*-[^\n]*)*)/m;
+// L2-26: the seat's own `disallowedTools:` entry, same shape. A seat denied both Edit and Write cannot write, whatever `tools:` grants.
+const SEAT_DISALLOWED_ENTRY = /^disallowedTools:[ \t]*([^\n]*(?:\n[ \t]*-[^\n]*)*)/m;
+const seatDenies = (list, tool) => new RegExp(`(?:^|[\\s,"'[-])${tool}(?=$|[\\s,"'\\]])`).test(list);
+const SEAT_EDIT_TOOL = /(?:^|[\s,"'[-])(?:Edit|Write|MultiEdit|NotebookEdit)(?=$|[\s,"'\]])/;
+const SEAT_ALL_TOOLS = /^["']?\*["']?$/;
 const STAMP_BYTES = 64 * 1024;
+// The stamp line of the full copy route, whose seats sit on `picked-agents:` (copiedSeats).
+const STAMP_COPY_ROUTE = /^seats-route:[ \t]*copy[ \t]*$/m;
 // The locked keys the seed carries, for an install whose seed is not beside this hook.
 const KNOWN_LOCKED = /^(?:consent|checkpoint|safety|attribution|checks)$/;
 const SEED = path.join(__dirname, '..', 'skills', 'capture-preferences', 'references', 'git-seed.md');
@@ -930,8 +944,10 @@ function shellReads(ctx, command, cwd) {
 }
 
 // ---- who is handed what -------------------------------------------------------------------------------------------
-// The seats the copy route copied, from the install stamp's `library-agents:` line (`name=<sha>,...`); empty on the plugin
-// route, with no stamp, or with one that cannot be read.
+// The seats an install holds as copies, from the install stamp: the `library-agents:` line (`name=<sha>,...`), which the
+// plugin routes fill (seats linked from the library); on the full copy route (`seats-route: copy`) that line is empty and
+// the `picked-agents:` line (`name@<home>,...`) names the copied seats, so it is read too. Empty with no stamp or one that
+// cannot be read.
 function copiedSeats(ctx) {
   for (const base of ctx.bases) {
     const file = path.join(base, '.claude', 'alfred-code.stamp');
@@ -941,8 +957,9 @@ function copiedSeats(ctx) {
       const fd = fs.openSync(file, 'r');
       try { const buf = Buffer.alloc(STAMP_BYTES); text = buf.toString('utf8', 0, fs.readSync(fd, buf, 0, STAMP_BYTES, 0)); } finally { fs.closeSync(fd); }
     } catch { continue; }
-    const m = /^library-agents:[ \t]*(.*)$/m.exec(text);
-    return new Set(m ? m[1].split(',').map((x) => x.split('=')[0].trim()).filter((x) => /^[\w-]+$/.test(x)) : []);
+    const names = (key, mark) => { const m = new RegExp(`^${key}:[ \\t]*(.*)$`, 'm').exec(text); return m ? m[1].split(',').map((x) => x.split(mark)[0].trim()).filter((x) => /^[\w-]+$/.test(x)) : []; };
+    const copyRoute = STAMP_COPY_ROUTE.test(text);
+    return new Set([...names('library-agents', '='), ...(copyRoute ? names('picked-agents', '@') : [])]);
   }
   return new Set();
 }
@@ -960,6 +977,22 @@ function seatDocs(ctx, type, arch) {
   if (JUDGE.test(seat)) return { defs: CODE_DOCS, kind: 'code' };
   if (ARCH_SEAT.test(seat) && arch) return { defs: CODE_DOCS.filter((d) => d.key === 'ARCHITECTURE'), kind: 'architecture' };
   return null;
+}
+// Whether a seat is handed the code preferences at its start (C10): a stack judge or the architecture seat (`alfred-code:`
+// spelled, as before); a stack or project seat whose definition grants an edit tool, lists no tools or lists `*`; a built-in
+// or unresolved seat unless its type is a read-only built-in. No type, no push. `seat` is what `seatOf` returned.
+function seatGetsPush(seat, type) {
+  if (!type) return false;
+  const name = String(type).replace(/^alfred-code:/, '');
+  if (name !== type && (JUDGE.test(name) || ARCH_SEAT.test(name))) return true;
+  if (seat === 'other' || !seat || typeof seat.frontmatter !== 'string') return !READ_ONLY_BUILTINS.includes(String(type));
+  const block = SEAT_FRONTMATTER.exec(seat.frontmatter);
+  const entry = block ? SEAT_TOOLS_ENTRY.exec(block[1]) : null;
+  const denied = block ? SEAT_DISALLOWED_ENTRY.exec(block[1]) : null;
+  if (denied && seatDenies(denied[1], 'Edit') && seatDenies(denied[1], 'Write')) return false;
+  if (!entry) return true;
+  const tools = entry[1].trim();
+  return !tools || SEAT_ALL_TOOLS.test(tools) || SEAT_EDIT_TOOL.test(tools);
 }
 const runOf = (name) => { const n = String(name || '').trim().replace(/^\//, ''); return RUN_NAME.test(n) ? n : ''; };
 // A run starts where the transcript stood when it was recorded, and ends at the user's next typed turn - any but the run's
@@ -986,7 +1019,7 @@ function recordRun(marks, run, input) {
 // A row the user typed: not the harness's (a skill body, a summary, a command's output, a notification, a seat's hand-back
 // frame - hook-prelude.js harnessPrompt's list - a `!` shell command and its output, an Esc's interrupt marker, which
 // carries no isMeta), not a tool result.
-const HARNESS_ROW = /^\s*(?:<(?:local-command-stdout|local-command-caveat|task-notification|agent-message|bash-input|bash-stdout|bash-stderr)\b|Another Claude session sent a message:|\[Request interrupted by user)/;
+const HARNESS_ROW = /^\s*(?:<(?:local-command-stdout|local-command-caveat|task-notification|agent-message|bash-input|bash-stdout|bash-stderr)\b|Another Claude session sent a message:|Here is a note offered by a side agent\b|\[Request interrupted by user)/;
 // A typed reply that only says go on keeps the run (the user's answer of 2026-10-22, 'Keep go-on replies'): a typed
 // 'continue' after an Esc ended it, so the helpers after it lost the hand-over. English only, as the other hooks read.
 const GO_ON = /^\s*(?:continue|go on|proceed|carry on|resume|keep going|yes|ok|okay)[\s.!]*$/i;
@@ -1096,7 +1129,7 @@ function seatPush(ctx, files, seat, extra = {}) {
       : `The user's code preferences - ${PRECEDENCE}. Name the entry id in each decision or finding it shapes:`,
     ...c.parts,
     ...(c.named.length ? ['', `Not pasted here - read before a decision it bears on: ${nameList(c.named, (sectioned || needs[0]).doc.rel)}.`] : []),
-    ...(c.later.length ? ['', `Not pasted yet, and they bind this work: ${nameList(c.later, c.laterRel)} - your first Read or symbol lookup hands them over, or Read ${c.laterRel} whole.`] : []),
+    ...(c.later.length ? ['', `Not pasted yet, and they bind this ${seat.hold === 'edit' ? 'change' : 'work'}: ${nameList(c.later, c.laterRel)} - ${seat.hold === 'edit' ? 'your first edit is held, and the retry hands them over' : 'your first Read or symbol lookup hands them over'}, or Read ${c.laterRel} whole.`] : []),
   ].join('\n');
 }
 
@@ -1297,10 +1330,26 @@ function ownerOf(input, start) {
   } catch { return null; }
 }
 const RUN_KEYS = ['run', 'part', 'runAt', 'runFile', 'runId', 'arch'];
-// An actor's member records, in both places recordFiles names: a clear or a compact start drops them.
-const dropMembers = (files) => files.forEach((f) => { try { const d = path.dirname(f); const stem = path.basename(f, '.json');
-  for (const e of fs.readdirSync(d)) if (e.startsWith(stem) && /^-m-[0-9a-f]{12}\.json$/.test(e.slice(stem.length))) fs.rmSync(path.join(d, e));
+// An actor's member records, in both places recordFiles names: a clear start drops them. A compact start (`keepReads`) drops
+// only the push mark `entered`, so the entry pieces ride the actor's next call again and the read marks stay (A4).
+const dropMembers = (files, keepReads) => files.forEach((f) => { try { const d = path.dirname(f); const stem = path.basename(f, '.json');
+  for (const e of fs.readdirSync(d)) {
+    if (!e.startsWith(stem) || !/^-m-[0-9a-f]{12}\.json$/.test(e.slice(stem.length))) continue;
+    const file = path.join(d, e);
+    if (!keepReads) { fs.rmSync(file); continue; }
+    const marks = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (marks && typeof marks === 'object' && 'entered' in marks) { delete marks.entered; fs.writeFileSync(file, JSON.stringify(marks)); }
+  }
 } catch {} });
+// A4: the note a compact start carries in place of a re-armed hold: the preference docs the actor read before the compaction
+// (a mark is `<doc key>` or `<doc key>#<entry>`), and what to do before a change they govern.
+function compactNote(marks) {
+  const keys = new Set(Object.keys(marks).map((k) => k.split('#')[0]));
+  const read = ALL_DOCS.filter((d) => keys.has(d.key)).map((d) => d.file);
+  if (!read.length) return '';
+  return `A compaction dropped the text of the preference docs this session read: ${read.join(', ')}. Their read marks stay, so no hold repeats - `
+    + 'read a doc again before you change what it governs.';
+}
 function main() {
   try { prelude().blockingStdio(); } catch { /* no prelude: the default stdio */ }
   let input;
@@ -1326,26 +1375,21 @@ function main() {
   const actor = input.agent_id ? String(input.agent_id).replace(/^agent-/, '') : 'main';
   const files = Object.assign(recordFiles(base, input.session_id, member ? `${actor}-m-${member.key}` : actor), { strip: member && RUN_KEYS });
   if (input.hook_event_name === 'SessionStart') {
-    if (members && /^(?:clear|compact)$/.test(input.source)) dropMembers(files);
+    if (members && /^(?:clear|compact)$/.test(input.source)) dropMembers(files, input.source === 'compact');
+    // A /clear starts a new conversation: the record goes. A compaction keeps it, the run and a seat's architecture
+    // hand-over with it (A4): the read hold fires once per session, and the start adds a note naming what was read.
     if (input.source === 'clear') dropRecord(files);
-    else if (input.source === 'compact') {
-      // The docs left the context; the run and a seat's architecture hand-over go on.
-      const kept = {};
-      const was = loadMarks(files);
-      for (const k of ['run', 'runAt', 'runFile', 'runId', 'arch']) if (was[k] !== undefined) kept[k] = was[k];
-      dropRecord(files);
-      if (Object.keys(kept).length) saveMarks(files, kept);
-    }
+    const note = input.source === 'compact' ? compactNote(loadMarks(files)) : '';
     if (input.agent_id) {
       // a seat's own compaction: the personal doc is the main session's, the seat's tool order is its own
       const tools = input.agent_type && !NO_ORDER_SEAT.test(String(input.agent_type)) ? toolsText(ctx, seatOf(ctx, input.agent_type)) : '';
-      const text = [tools, hostText()].filter(Boolean).join('\n\n');
+      const text = [tools, hostText(), note].filter(Boolean).join('\n\n');
       if (text) emit('SessionStart', { additionalContext: text });
       return;
     }
     // The personal doc leads: in an output Claude Code caps, the tools line is the part to lose; the host lines are short.
     const personal = personalPush(ctx);
-    const rest = [personal, toolsText(ctx, null), hostText()].filter(Boolean).join('\n\n');
+    const rest = [personal, toolsText(ctx, null), hostText(), note].filter(Boolean).join('\n\n');
     const memory = memoryText(ctx, rest ? rest.length + 2 : 0);
     const text = [rest, memory].filter(Boolean).join('\n\n');
     // A measurement, never a block (`mode`): the usage analyzer's preferences claim reads it (item 7, 2026-10-25).
@@ -1354,9 +1398,15 @@ function main() {
     return;
   }
   if (input.hook_event_name === 'SubagentStart') {
-    const tools = NO_ORDER_SEAT.test(String(input.agent_type || '')) ? '' : toolsText(ctx, seatOf(ctx, input.agent_type));
+    const resolved = seatOf(ctx, input.agent_type);
+    const tools = NO_ORDER_SEAT.test(String(input.agent_type || '')) ? '' : toolsText(ctx, resolved);
     const main = loadMarks(recordFiles(ctx, input.session_id, 'main'));
-    const seat = seatDocs(ctx, input.agent_type, runKinds(main.run, main.part).arch && runLive(main));
+    // The architecture seat outside an architecture run keeps getting nothing (the user's ruling of 2026-10-22); every other
+    // seat that can write gets the code docs and, with an agent_id, the read mark.
+    const stack = stackSeat(ctx, input.agent_type);
+    const named = ARCH_SEAT.test(stack) || JUDGE.test(stack);
+    const seat = seatDocs(ctx, input.agent_type, runKinds(main.run, main.part).arch && runLive(main))
+      || (!named && seatGetsPush(resolved, input.agent_type) ? { defs: CODE_DOCS, kind: 'code', hold: 'edit' } : null);
     const docs = seat ? seatPush(ctx, input.agent_id ? files : null, seat, seat.kind === 'architecture' ? { arch: true } : {}) : '';
     const text = [docs, tools, hostText()].filter(Boolean).join('\n\n');
     if (text) emit('SubagentStart', { additionalContext: text });
@@ -1480,7 +1530,7 @@ function main() {
   emit('PreToolUse', { block: true, permissionDecisionReason: reasons.join('\n\n') }, input);
 }
 
-module.exports = { hostLines, parseDoc, scopeOf, clean, codeNeeds, codeReason, gitReason, gitWrites, exempt, contextOf, relOf, personalPush, seatPush, seatDocs, shellMarks, shellReads, memoryLine, CODE_DOCS, GIT_DOC, PERSONAL_DOC, INLINE_CAP, PUSH_CAP, MEMORY_ROOM };
+module.exports = { seatGetsPush, hostLines, parseDoc, scopeOf, clean, codeNeeds, codeReason, gitReason, gitWrites, exempt, contextOf, relOf, personalPush, seatPush, seatDocs, shellMarks, shellReads, memoryLine, CODE_DOCS, GIT_DOC, PERSONAL_DOC, INLINE_CAP, PUSH_CAP, MEMORY_ROOM };
 Object.assign(module.exports, { ownerOf, pathLine, withPathLine, shellTargets });
 if (require.main === module) {
   try { main(); if (PUSH && !WROTE) emit('PreToolUse', { additionalContext: '' }); } catch { /* fail open: a hand-over hook never blocks on its own error */ }

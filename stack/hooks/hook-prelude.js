@@ -435,7 +435,7 @@ const PROTECTIVE = new Set(['guard-catastrophic-rm', 'guard-secret-value', 'guar
 // The hooks that answer a Cursor payload in Cursor's own shape, so GATE 6 lets them through (the rule loader, workspace stage 4a).
 const CURSOR_RUNS = new Set(['rules-session']);
 
-// UNATTENDED - nobody is at the terminal, so a Stop block or an offer reaches no person: it only buys
+// UNATTENDED - no person can answer (print mode, or auto-run once the user is away), so a Stop block or an offer reaches no person: it only buys
 // the model another turn (pilot 2, 2026-09-27: 8 of 12 print-mode cells ended on 'docs ok', nine
 // em-dash blocks re-sent finished answers). Not a gate every hook runs - the hooks that ASK call it at
 // the ask; a denial that protects something never does. True on ALFRED_CODE_UNATTENDED=1 (exactly
@@ -941,14 +941,15 @@ function autoRunFor(input, env, flags)
     catch { return false; }
 }
 // THE PLUGIN'S OWN COMMANDS ARE NEVER AUTO-RUN'S (the user's ruling, 2026-11-20): the stack's auto-run answers no ask of a
-// typed /alfred-code:init, update, configure or validate - their walk asks go to the user. A walk runs from its typed command
+// typed /alfred-code:init, update, configure or validate - their walk asks go to the user; since B3 (2026-11-27) the same holds for
+// every plugin's /<plugin>:init, update, configure, validate, install and setup (R4: an /alfred-tools:update ask was answered). A walk runs from its typed command
 // to the next typed slash command or to its close. Inside it stay: a built-in command (its output row follows it), a mode
 // command, a compaction whose summary names the walk, and a reply typed after an ask, a question or a cut-off tool call. A
 // reply typed after the assistant's last text, when that text asks nothing, is the walk's close passed. A walk older than
 // the transcript's tail is read from the whole file. Only the ask answering and communication-reminder's line read it: the readers
 // of `unattended` still see auto-run as nobody at the terminal.
-const PLUGIN_WALK_RE = /(?:<command-name>|^\s*)\/alfred-code:(init|update|configure|validate)(?=<\/command-name>|\s|$)/;
-const SUMMARY_WALK_RE = /\/alfred-code:(init|update|configure|validate)\b/;
+const PLUGIN_WALK_RE = /(?:<command-name>|^\s*)\/[a-z0-9-]+:(init|update|configure|validate|install|setup)(?=<\/command-name>|\s|$)/;
+const SUMMARY_WALK_RE = /(?<![\w/.-])\/[a-z0-9-]+:(init|update|configure|validate|install|setup)\b/;
 const WALK_MODE_COMMAND_RE = /(?:<command-name>|^\s*)\/alfred-code:mode:/;
 const SLASH_PROMPT_RE = /^\s*(?:<command-(?:message|name)>|\/[A-Za-z][\w:-]*(?:\s|$))/;
 const NOT_TYPED_RE = /^\s*<(?:bash-(?:input|stdout|stderr)|local-command-(?:stdout|stderr|caveat))\b/;
@@ -1018,7 +1019,7 @@ function flowEndStep(track, row)
     track.closed = false;
     return ends ? 'end' : '';
 }
-// The plugin walk the rows end inside ('init', 'update', 'configure' or 'validate'), '' for none, null when no row decides
+// The plugin walk the rows end inside ('init', 'update', 'configure', 'validate', 'install' or 'setup'), '' for none, null when no row decides
 // (no typed slash command and no compaction in the rows). `replyAfter`: a reply typed after the last row, the prompt now.
 // Pure: rows are parsed objects.
 function pluginWalkOf(rows, replyAfter = false)
@@ -1151,8 +1152,9 @@ function writeRunMarker(root, sessionId, skill, promptText, env = process.env, p
 // ('Another Claude session sent a message:' over an `<agent-message>` frame - its transcript row is `isMeta` with
 // `origin.kind: peer`, which the payload does not carry). One test for every hook that reads a prompt as someone typing
 // (audit 2026-10-14 HK14: a hand-back ended auto-mode, drew the answer budget - 351 of 960 injections in a week - and
-// reset the turn of the since-removed session monitor).
-const HARNESS_PROMPT_RE = /^\s*(?:<(?:task-notification|local-command-stdout|local-command-caveat|agent-message)\b|Another Claude session sent a message:)/;
+// reset the turn of the since-removed session monitor). A side agent's note opens 'Here is a note offered by a side agent'
+// (session audit 2026-11-27, C2): it is the harness's text too, at the start of the prompt only.
+const HARNESS_PROMPT_RE = /^\s*(?:<(?:task-notification|local-command-stdout|local-command-caveat|agent-message)\b|Another Claude session sent a message:|Here is a note offered by a side agent\b)/;
 function harnessPrompt(prompt)
 {
     return HARNESS_PROMPT_RE.test(String(prompt || ''));

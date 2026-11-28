@@ -99,7 +99,8 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   is the ONE parser every reader calls - the start hook, the scoring switch, the ON line, the banner, the dispatch guard
   and the stop contract's solve-flow mark. A mode command line gives `mode`, `flagOnly` and the field it switches
   (`autoRun`, `scoring`, `compact`); anything but one `on` / `off` after it sets `extra`, which switches nothing and is
-  said with ONE line, `[mode] type the command alone on its line, then on or off`; the bare command says the mode's
+  said with ONE line, `[mode] type the command alone on its line, then on or off` - or, where `extra` is one plain word
+  (`auto-run om`), `[mode] 'om' is not on or off - type <command> on or off`; the bare command says the mode's
   state. After a `task-*`, `capture-*`, `loop-*`, `issue-*` or `mode-*` command group every leading token shaped like a
   flag (`--mode-*` and the two older 2.x spellings, `MODE_LIKE_RE`) goes to `old` and switches NOTHING; a prose mention
   starts nothing; the expansion matcher takes every family name (audit 2026-10-14 HK06). The commands are handled at
@@ -160,7 +161,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   real answer the commit gate's `answered:` reads - taking the next option when the marked one is the fresh-session
   hand-off, and leaving to the user an ask with an unmarked question or a recommended OUTWARD act (`AUTO_OUTWARD_RE`:
   push, merge, deploy, publish, release, ship, a PR, an issue or ticket filed, a story, task or epic raised, submitted, filed, created, opened or added with Jira, Linear, YouTrack, GitHub, GitLab, a backlog or a tracker named beside it (2026-11-19, bcb7d392; its wait row carries `clause: tracker-filing`), an ask naming its outward acts, a comment on or a page or ticket update aimed at a ticket, issue, PR, card, thread, Confluence, Notion, wiki, Jira, Linear or a ticket key, post, send, upload ('uploads' is the files only after an age word - 'older HEIC uploads' - with no 'to' after it, or before 'folder' - `AUTO_UPLOADS_VERB` - and then only when the pick opens with a local verb ('Resize them', 'Fix them'), goes on to no second clause or place ('then', 'and', 'to', a comma) and the ask names nothing that sends them, `outwardAsk`; every other ask holding 'uploads' waits), a remote branch or tag
-  deleted, a hard reset, a database dropped, rotate (only where the ask names a credential - a key, keypair, token, secret, creds, password, passphrase or certificate, inside an `_` name too), revoke, pay; 'no' / 'never' / 'without' before an act negates it anywhere, and the pick's own 'not' / 'nothing is' scope line too (`AUTO_PICK_SCOPE_RE`) - never the question's, where 'not pushed yet. Do it now?' is a state the pick acts on; a pick whose WHOLE label is a hold (`AUTO_HOLD_ONLY_RE`: 'Hold', 'Hold - push later', 'Skip the publish', 'Leave them for later', 'Stop here') and whose description carries no act on (`AUTO_FORWARD_ACT_RE`: 'then push', 'push once CI is green') is answered whatever its question names, while a second act or a condition after the hold ('Skip the push, publish to npm', 'Hold - push when green') is judged as any pick (sessions f2de8d99 and eb8ad61b, 2026-11-25..27, replayed: 155 of 283 auto-run asks answered before, 196 after) - and a BILLED run, `autoBilled`: billed, a paid run, spend, a dollar amount, the pick's own words always, the question's unless the pick declines and its amount only in a forward frame, 45 of 2,457 local recommended questions held, 2026-11-04 - audit HK01: an auto-answered 'Open the PR' was push
+  deleted, a hard reset, a database dropped, rotate (only where the ask names a credential - a key, keypair, token, secret, creds, password, passphrase or certificate, inside an `_` name too), revoke, pay; 'no' / 'never' / 'without' before an act negates it anywhere, and the pick's own 'not' / 'nothing is' scope line too (`AUTO_PICK_SCOPE_RE`) - never the question's, where 'not pushed yet. Do it now?' is a state the pick acts on; a pick that `holdLabel` calls a hold (the label opens with a hold word - hold, skip, defer, leave, postpone, park, stop here - and, once each clause holding later, when, once, after or until is cut, nothing outward is left: 'Hold', 'Hold - push later', 'Skip the publish', 'Hold - publish when rooms are empty', 'Stop here') and whose description carries no act on (`AUTO_FORWARD_ACT_RE`: 'then push', 'push once CI is green') is answered whatever its question names, while an act outside a deferral ('Skip the push, publish to npm', 'Hold, then push') is judged as any pick (sessions f2de8d99 and eb8ad61b, 2026-11-25..27, replayed: 155 of 283 auto-run asks answered before, 196 after; B14, 2026-11-27: the deferral clause). A pick's own label and description are read for the outward act, the description with its held clauses cut first (`withoutHeldClauses`: an act word directly followed, in one clause, by 'waits for you' (or 'your word', 'OK', 'go'; 'waits for CI' cuts nothing), 'stays held', 'is' or 'stays your word' or 'asks you later' / 'asks you first', and 'for you to <act>'; a deferral, 'then needs', 'tell me when' or 'asks you for the token' cuts nothing), while 'pushes nothing' is a scope line like 'nothing is pushed' only when the clause ends after 'nothing' - an act outside such a clause ('publish now, the push waits for your word') still waits (wave T16 round 3, replayed over eb8ad61b: 4 waited asks answered, 4 still waiting); the question is read too only when the label names no act of its own (`bareConfirm`: every word a confirm word, or one verb on a bare pronoun) or names 'outward acts'. A question carrying a plan, spec or design graded under its pass level ('inline-plan scored 60/100 (level 90)', `gradeUnderPass`) waits: each grade pairs with the pass in its own clause, then its sentence, then the question's one pass, and a grade with no pass named is read against the scoring level (deferred-findings wave 2026-11-28). The wait row of the ledger names why - and a BILLED run, `autoBilled`: billed, a paid run, spend, a dollar amount, the pick's own words always, the question's unless the pick declines and its amount only in a forward frame, 45 of 2,457 local recommended questions held, 2026-11-04 - audit HK01: an auto-answered 'Open the PR' was push
   consent to the commit gate; 2026-10-16, the user's report: 'pay for seats' and the fresh-session cost line 're-sends
   about 401k tokens per message' read as outward and sent an approval ask to the user - over 2,656 recommended questions
   in real transcripts the narrowed pattern drops 91 hits, all of those shapes or a `/purchases/` path, and adds none);
@@ -289,6 +290,16 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
   through), so a broken install blocks every Read, Edit, Write and Grep as well; the secret guard's own
   filesystem-server row carries it too (hooks audit 2026-11-19 B6-S3), and every other hook keeps the default
   `continue`.
+  THE REMAINING PRICE of `node` as the one hook launcher (audit R10, the user's pick 'Keep node, warn early', 2026-11-27: a
+  `sh` launcher would need Git Bash on Windows, and a plugin hook line is the same on every OS): a node that rests on one
+  `~/.nvm/versions/node/<version>/` folder is gone with `nvm uninstall` of that version, and every hook then fails to start, so
+  the dispatchers' `onFailure: "block"` refuses every shell and file call. The core's `library-stamp.js` says so once, on a
+  `startup` SessionStart only (not a resume, compact or clear), and init and update print the same line, both from
+  `scripts/install/node-path.js` (`nvmPathWarning`, pure, read from the plugin's own tree and failing open to no line where an
+  older layout lacks it). It reads `process.execPath` and the PATH at that start: no `~/.nvm/current/bin/node` that exists on
+  the PATH (a dangling link does not count) is the whole test. What it does not cover: Windows, fnm, Volta, asdf and a node
+  moved by hand, and a user who sees the line and keeps the versioned node - the hooks then fail as before, and the fix stays the
+  user's shell profile (`export NVM_SYMLINK_CURRENT=true`, `nvm alias default <version>`, `nvm use default`).
   A GUARD ASKS BEFORE IT BLOCKS (guards ask instead of block, 2026-11-25): every PreToolUse block goes through
   `askOrBlock(input, reason, { env, guard })` in `hook-prelude.js`, the one place a block decides - with `canAsk(input, env)`,
   `blockVerdict` and `blockExitCode` beside it - and each guard's own `blockCall` is one call to it. Where a person can answer, the hook
@@ -602,7 +613,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     `agent_type` beside an `agent_id` - audit 2026-10-14 HK16, the user's ruling: its 85 runs made 143 of a week's 277
     range-cap blocks, the verifiers 9), whose size and sweep gates still do; the shell's literal spans (`sed -n a,bp`, `head`, `tail`, `awk 'NR>=a && NR<=b'`)
     printed to the terminal are rows on the same log; a file the working tree ADDS completes past the cap, and a
-    changed one's denial names `git diff HEAD -- <file>`; an inverted grep (`grep -v`, or a pipe into one) prints the
+    changed one's denial names `git diff HEAD -- <file>`; a range of 40 lines or fewer passes the cap whatever share of the file it is (`SMALL_RANGE_LINES`, session audit B9, 2026-11-27; it is still logged), and a Read of a harness file (`<config dir>/projects/<project>/<session>/tool-results/<file>` or `<tmp>/claude-<uid>/<project>/<session>/tasks/<id>.output`, judged on the real path) passes whole (`isHarnessFile`); an inverted grep (`grep -v`, or a pipe into one) prints the
     file minus its matches and is judged like `cat`; a loop whose `cat` reads its variable over literal paths or a
     one-folder glob is sized per file (no sweep while all of them print at most THRESHOLD lines and BIG_BYTES); a
     relative target with no file at any anchor prints nothing, after a `cd` the guard cannot follow too (it failed
@@ -716,8 +727,9 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     with a recording mask; a file `secretIn` calls no credential file gives nothing); (2) `WELL_KNOWN` - the home
     credential files, the account settings and credentials, the project's root `.env*`, `.mcp.json` and settings files -
     credential verdicts only; (3) the stores (`denyStores`) and the key file at the project, the cwd, their data roots,
-    the home and the account dir, every value; (4) variables named like a credential. A value under 6 characters
-    (`OUTPUT_MASK_MIN`; the start line names a store key holding one), a placeholder and - outside a store - a sample are
+    the home and the account dir, every value of a dotenv or a named file, but of the data-root store only the values A3 below
+    names; (4) variables named like a credential. A value under 6 characters
+    (`OUTPUT_MASK_MIN`; a store value under a credential-named key keeps 2 characters or more), a placeholder and - outside a store - a sample are
     not masked, and a value is masked only as a whole token, never inside a word (card item 4, 2026-11-23: a 5- and a
     12-character value were masked inside a field name and an issue key, and the letters around the mask gave them away;
     the `--with-sensitive` run keeps `MASK_MIN`, 4); each value is matched in its literal and
@@ -757,9 +769,29 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     default `--secret-file` - is neither masked by name nor refused by mention, `isDataRootSecrets`; both names and the data root
     in any letter case, since a case-insensitive disk opens `.ALFRED/.SECRETS` too - final review 2026-10-25 C2), a dotenv the user fills by hand, in the checkout the call runs in, else its main worktree (`sensitiveFile`, memory.js
     `projectRootOf`; the root is always `.alfred` - an absolute `ALFRED_CODE_DATA_PATH`, a harness's scratch, is the one value kept). Its kind is `sensitive` by
-    NAME: every value is a credential whatever its key (`DB_HOST` too), so a Read and a Grep of its content block and
-    `--redacted` of it masks every value; the masker's line pass reads a line out of it - a walk's `<path>/.secrets:N:` (either name)
-    prefix, `git grep`'s, a diff header naming it - by the same rule, a line that is no `KEY=value` pair masked whole (audit
+    NAME: a Read and a Grep of its content block and `--redacted` of it masks every value, whatever its key (`DB_HOST` too).
+    THE OUTPUT MASKER shows a plain store value (A3, the user's pick 'Mask secret-shaped values only', 2026-11-27, its key words widened
+    to short secrets such as `ADMIN_CODE=4821` and `DB_LOGIN=hunter2`): a store value is masked only when `keyHidesValue` or a value shape
+    holds. KEY: a part of the key, split on `_` `-` `.` and case changes, is one of `OUTPUT_CREDENTIAL_WORDS` (TOKEN, SECRET, KEY, APIKEY,
+    PASSWORD, PASSWD, PASS, PWD, PIN, OTP, CODE, LOGIN, DSN, CREDENTIAL, CREDENTIALS, CRED, AUTH, CERT, PRIVATE, SIGNING, SALT, HASH, COOKIE,
+    SESSION, PASSPHRASE; the controller's ruling added PASSPHRASE), a trailing S allowed (`TOKENS`, `PASSWORDS`). A word of 5 letters or more
+    also starts or ends a part (`SECRETKEY`, `GITHUBTOKEN`), and KEY, PASS and PWD end a joined part (`MASTERKEY`, `DBPASS`, `ADMINPWD`) unless
+    it is an ordinary word (`NOT_CREDENTIAL_WORDS`: `MONKEY`, `HOTKEY`, `PUBKEY`, `BYPASS`, ...); `KEYBOARD_LAYOUT` shows. LENGTH: a value of 4 characters or
+    more is masked under any of those words; a value of 2 or 3 only under a strong one (`STRONG_CREDENTIAL_WORDS`: PASSWORD, PASSWD, PASS, PWD,
+    PIN, OTP, SECRET, TOKEN, PASSPHRASE), since a weak word would mask every `src` or `30` in the output (`KEY_PREFIX=app`, `CODE_DIR=src`,
+    `SESSION_TIMEOUT=30` show; `SMTP_PWD=x9`, `OTP=123` and `ADMIN_CODE=4821` are masked); a 1-character value never (`PIN=7` shows: it would
+    hit every standalone `7`). SHAPE: `credentialLike`, a PEM key, or a password embedded in the value (a connection string; an embedded password
+    from the store skips the 6-character floor like a keyed one). `ORG_SLUG=acme-app` and `KEYBOARD_LAYOUT=us` print as they are.
+    The line-shape redactor skips a value of 1-3 characters and a type word (`typeWord`: `originKey: string,`; a capitalised name followed by `,`
+    `;` `)` or `>` only with no digit and under 16 characters, or with 2 or more capital humps and no digit run past 3 - `ApiKey;`, `Uint8Array,`, `S3Client;` show, `Summer2024x;` and `Xy9fakefakefake;` are masked), and a store pair
+    in a walk or a diff is judged by the same key and shape test (`storeValueMasked`); a line of the store that is no pair is still
+    masked whole. The SessionStart note adds `Shown in output, not masked ...: <keys>` - names only - so the user can rename a key. The
+    input guard's `SECRET_KEY_SOURCE` (lint holds it equal to `meta/environment.json`) is untouched: `OUTPUT_CREDENTIAL_WORDS` is the
+    masker's alone. Accepted: a short secret under a key that names no credential prints (the spec's risk row). The default inside a
+    `${POSTGRES_PASSWORD:-acme}` placeholder is its value and is masked, and a whitespace `password=x` pair in a
+    store value is masked like the `;` form (deferred-findings wave 2026-11-28). The line pass
+    reads a line out of the store - a walk's `<path>/.secrets:N:` (either name)
+    prefix, `git grep`'s, a diff header naming it - by the same rule (audit
     2026-10-20 H3: a walk through the store and a diff of a tracked store printed every value raw).
     THE STORE CHECK (swap 1 ruling 6; `storeCarry` over the data table `STORE_CARRIERS`): the store stays model-blind
     on every host and version. A copy, move, link, archive or `git add` NAMING it - `cp`, `ditto`, `mv`, `ln`,
@@ -913,7 +945,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     counts), and a file whose mtime is later is named, `review-code` on it asked for (`editedAfterReview`). A file gone
     from the tree whose index still stages a version of its own is late whatever the times say (that version is
     committed; a staged removal commits no content and is skipped). A review with no time on record judges nothing;
-    `carried:` skips it. A second side note and the user's ruling 'After the last edit', 2026-10-22: one review early in a
+    `carried:` skips it. A PROSE file (`proseFile`: a `PROSE_EXTENSIONS` extension - `.md`, `.mdx`, `.txt`, `.rst`, `.adoc` - a CHANGELOG file with no extension or a prose one (`scripts/changelog.js` is code), or a file under `docs/` whose extension is not in `DOCS_CODE_EXTENSIONS`, which lists `.html`, `.css`, `.vue` and `.sql` beside the code languages; never `requirements*.txt`, `constraints*.txt` or `CMakeLists.txt`, which are build and dependency lists) is no file of the code: an edit to such files only, after the review or after the receipt was written, keeps both (`proseOnly`, B15, session audit 2026-11-27), while any other file still voids them. A block reason of the publish half names the VERB that made the act a publish (`git push`, `merge`, `release`, `open a change request`, `a git call that may push` - `PUBLISH_VERB`), never a slice of the command (B7); a `$(...)` whose whole body is one git read (`gitReadSubstitution`: `git` and `log`, `show`, `rev-parse`, `describe`, `diff`, `status`, `ls-files`, `branch --show-current` or `config --get`, with no separator, redirect, nesting or `--output`) is no hidden publish, and one that pushes still is. A second side note and the user's ruling 'After the last edit', 2026-10-22: one review early in a
     long session covered every later commit. A quality loop passes because its verifier seats return after its fixes.
     A file's time moves when its code does not too, so a review of the code that STARTS - the model's review skill or a
     verifier / reviewer seat (`guard-fresh-session-start.js` on PreToolUse `Skill` / `Agent`, before its early exits) or
@@ -1052,11 +1084,11 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     re-verify 4 R4-M2). Consent is read per clause
     and per gate (re-verify 2 R2-M3): a commit verb consents to the COMMIT-GATE and a publish verb (push, merge, release,
     open the PR) to the PUSH-GATE; a negation before or after the verb ('don't push', 'no need to commit', 'commit is
-    not needed'), a stop ('hold off on the push'), a deferral (a wait on CI defers a push, a release or a ship, never a
+    not needed'), a stop ('hold off on the push'), a hold ('waits for your word', B20 - a row pasted into the prompt counts as the user's word like typed text, which already held), a deferral (a wait on CI defers a push, a release or a ship, never a
     merge: 'merge it once CI is green' consents), the user keeping the act ('I'll push it myself') or a
     statement about the verb refuses it, and only its own gate; 'commit' leading a noun ('commit messages', 'at commit
     description') is the noun and neither consents nor refuses (E-batch U26b). Opening a pull request ('open the PR') is
-    consent; a question, a negation or the PR's description / template / page is not (H3).
+    consent; a question, a negation or the PR's description / template / page is not (H3). A wait on a review, an approval, a sign-off, QA or testing defers a publish verb, a merge included, and a 'land' whose object is a PR, MR or branch is a publish verb (2026-11-28). A quote cut out of the user's refusal is no typed consent (C17, 2026-11-28): `quoteTyped` places each part of the quote at its first place in a typed turn that holds no refused act verb of the gate's own class - the same `actNegated` test `consentIn` uses, read over the turn's clauses, a line break ending a sentence - so typed 'don't push it yet' gives a quote of 'push it' no place, while 'don't push it yet. ok, push it' and 'commit and push, don't merge' keep theirs; no cap and no foreign-letter check on the turn, one pass with no backtracking.
   - `guard-stop-contract.js` (`Stop` + `SubagentStop`; PreToolUse `SubagentHandback` - the output-scoring seal, below; PreToolUse `AskUserQuestion` - its notes INJECTED, and a
     PreToolUse note lands beside the tool result, which for an ask is the user's ANSWER, so each is worded for that
     moment ('the ask just answered ... verify, re-ask if it moved'); the ask's own SHAPE is FIXED IN PLACE when every reason is
@@ -1113,10 +1145,10 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     root-cause probe - 27,380 runs for 250 rows nobody read) - blocks a turn ending on a decision-shaped question in prose (the quality
     loop's mode and stage-close asks worded as statements included), or a 'done, next step pending' close - unless every pending item the close states is a WAIT ('still running',
     'waiting on', 'awaiting') on work this session launched that is still out and ENDS (an async Agent, one a SendMessage
-    resumed, a Monitor, a background shell whose command names finite work - a test, build, lint, install, migrate, deploy
-    run - and no watcher: re-verify 2 R2-B1 turned a list of servers into a list of work that finishes; read from the
+    resumed, a Monitor, a background shell that is no server or watcher - B11, session audit 2026-11-27: any background command counts, `python3 tools/lanes.py run x > log`
+    included, until it is older than `BACKGROUND_STALE_MS` (60 min; the call's own `timeout` bounds a foreground call and is ignored for a background one); a `background_tasks` registry shell has no age bound (the registry carries no start time), so a hung one holds until the registry drops it; re-verify 2 R2-B1's list of work that finishes (`FINITE_RE`) is gone; read from the
     transcript's newest 8MB, 2.1.6 H4 - and before it, at Stop, the payload's own `background_tasks` registry when it
-    carries one: a running subagent, workflow, teammate, cloud session, MCP task or monitor, or a finite shell, is live work,
+    carries one: a running subagent, workflow, teammate, cloud session, MCP task or monitor, or a shell that is no server, is live work,
     and an empty registry outranks the lagging transcript, audit 2026-10-08; when
     that cannot be read, an agent / review / implementer still running or a waiter that wakes the session); a wait counts only when
     it names the running work (a report, a verdict, an agent - an approval, a go-ahead, a decision or a sign-off is a
@@ -1201,7 +1233,7 @@ The nineteen hooks folded into the core plugin: gates, guards, engines and what 
     the first that fires on a close the base test held writes one `mode: probe`, `kind: done-close-exempt` row naming it -
     the rate a change to one is measured on (C03 had no row). `status-question` (usage audit 2026-11-03 U10, 629719b3):
     the newest typed prompt is a status or time question ('How much time is left?', 'Any ETA?') and the Stop registry
-    holds live work this session launched - the answer they asked for; with no live work in the registry it holds. The
+    holds live work this session launched - the answer they asked for. Any typed question (a wh-word opener, or '?' after is/are/do/does/did/have/has - never 'can/could/would/will you', 'please' or 'do it') is exempt too, `typed-question` (B12, 2026-11-27), unless the reply hands a decision over ('up to you', 'your call'); a close of numbered or bulleted steps for the user that ends on exactly 'then tell me', 'let me know when' or 'tell me when it is done' (a short tail after when/once/after, never 'which one', 'if I should', 'when you want' or 'when to') is instructions, no prose ask (B13). The
     audit's second U10 close (68541f68: the user picked the login route, the close told them how) already passes through
     the answered-ask exemption and is pinned in `guard-stop-closes.test.js`.
     THE RETUNE (3.7.1; the user's ruling of 2026-11-03: hold the judge, keep the regex, cover more): a labelled corpus of

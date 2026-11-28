@@ -423,7 +423,7 @@ test('solve resumes by the feature and closes on the counted purge', () =>
     // the PF1 A/B rep round (2026-11-14): the handoff lookup first and always, so 'urgent' never skips it
     assert.match(solve, /\*\*On invocation, resume before starting\*\* - both before step 1, in this order: 1\. `node \.claude\/hooks\/handoff\.js left <feature>` - always, a new request included/);
     assert.doesNotMatch(solve, /Delete or archive the cycle note|memory_list|memory_delete/);
-    assert.match(solve, /Purge the notes - `node \.claude\/hooks\/handoff\.js purge <feature>` - then the purge count \(`references\/step-mechanics\.md`\)/);
+    assert.match(solve, /Purge the notes - `node \.claude\/hooks\/handoff\.js purge <feature>` - then the purge count and the doc-drift close line \(`references\/step-mechanics\.md`\)/);
     // Usage audit 2026-10-10 (C20): the receipt rides the close stop's Result field, where the stop check reads.
     assert.match(solve, /The close stop's `Result:` line carries the receipts - `Completed <date>, notes purged: <names\|none>`/);
     const line = (text) => (/The purge is counted, not claimed\.\*\* At close, from the project root: `([^`]+)`/.exec(text) || [])[1];
@@ -585,7 +585,7 @@ test('PF1: task-solve keeps its state in the plan folder, resumes through the sc
     assert.match(flat(read('stack/skills/task-solve/references/step-mechanics.md')), /paste its output under a `Build record` heading/, 'the conformance rules carry the build record (one home)');
     assert.doesNotMatch(text, /Stamp `(?:Approved|Completed|Conformance)/);
     assert.doesNotMatch(text.replace(/Flat plans \(until 4\.0\.0\)[^.]*\./, ''), /`Resume:` line is the one cursor|work\/plans\/<feature>\.md|work\/plans\/csv\.md/);
-    assert.strictEqual(asks(skill('task-solve')).length, 11, 'no ask template added or dropped');
+    assert.strictEqual(asks(skill('task-solve')).length, 12, 'no ask template added or dropped');
 });
 
 test('PF1: task-implement ticks through the script, runs fail before its ask alone, and carries the foreign-start ask', () => {

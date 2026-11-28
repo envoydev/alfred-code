@@ -61,6 +61,7 @@ const docsRootEnv = () => (layout && typeof layout.docsRoot === 'function' ? lay
 let layout = null;
 try { layout = require('./layout.js'); } catch { /* an older copy route: the pre-2.8.0 flow/ */ }
 const MAX_HOLDS = 2;
+const COMPACT_NOTE_IDS = 6;
 const INLINE_CHARS = 3000;
 const ASK_SECTIONS = 3;
 const FILES_NAMED = 4;
@@ -158,17 +159,23 @@ const actorKey = (input) => (input.agent_id || input.agent_type ? agentKey(input
 function gateOf(state, input) {
   const key = actorKey(input);
   if (!state.gate || typeof state.gate !== 'object' || Array.isArray(state.gate)) state.gate = {};
-  if (!state.gate[key]) {
+  const held = state.gate[key];
+  if (!held || typeof held !== 'object' || Array.isArray(held)) {
     state.gate[key] = key === MAIN_ACTOR
       ? { consults: Array.isArray(state.consults) ? state.consults : [], holds: Number(state.holds) || 0, candidates: !!state.candidates }
       : { consults: [], holds: 0, candidates: false };
   }
-  return state.gate[key];
+  // A stored record with a malformed field reads as an empty one (fail open: a compact start once threw on it).
+  const gate = state.gate[key];
+  if (!Array.isArray(gate.consults)) gate.consults = [];
+  if (typeof gate.holds !== 'number') gate.holds = Number(gate.holds) || 0;
+  return gate;
 }
-// A compaction or a /clear re-arms this actor's gate in each joined member's file of the session too (stage 6).
-function rearmMembers(input) {
+// A /clear re-arms this actor's gate in each joined member's file of the session too (stage 6); a compaction only drops the
+// actor's entry claims, so its orientation is sent again (A4: the read marks stay).
+function rearmMembers(input, rearmGates) {
   const stem = `${path.basename(statePath(input.session_id), '.json')}-m-`;
-  for (const f of tmpEntries().filter((e) => e.startsWith(stem) && /^[0-9a-f]{12}\.json$/.test(e.slice(stem.length)))) {
+  for (const f of rearmGates ? tmpEntries().filter((e) => e.startsWith(stem) && /^[0-9a-f]{12}\.json$/.test(e.slice(stem.length))) : []) {
     MEMBER = f.slice(stem.length, -5); const st = loadState(input.session_id);
     Object.assign(gateOf(st, input), { consults: [], holds: 0, candidates: false }); saveState(input.session_id, st);
   }
@@ -408,16 +415,27 @@ function orientation(root, docs, cap = 4096) {
   ];
 }
 
+// A4: the note a compact start carries in place of a re-armed hold: the sections this actor read before the compaction,
+// at most COMPACT_NOTE_IDS of them with a count for the rest, and what to do before a change they cover.
+function compactNote(ids) {
+  const named = [...new Set(ids)];
+  const list = `${named.slice(0, COMPACT_NOTE_IDS).join(', ')}${named.length > COMPACT_NOTE_IDS ? ` (+${named.length - COMPACT_NOTE_IDS} more)` : ''}`;
+  return `A compaction dropped the text of the docs this session read: ${list}. Their read marks stay, so no hold repeats - `
+    + `read a section again (\`${READ} show <file>#<id>\`) before you change what it documents.`;
+}
 const ranOutOfTime = (docs) => typeof docs.outOfTime === 'function' && docs.outOfTime();
 function sessionStart(input, root, docs, state) {
   // A snapshot the budget cut short is none (docs.js snapshot): the next start - a compaction or resume, on a cache
   // warmed by this one - takes it again, where a cancelled hook used to leave nothing and every later start was
   // cancelled the same way (A2).
   if (!state.snapshot) { try { state.snapshot = phase('snapshot', () => docs.snapshot()); } catch {} saveState(input.session_id, state); }
-  // A compaction or a /clear dropped the sections this actor read: its gate holds again (a seat's own compaction runs
-  // this hook inside the seat, with its agent_id - only that seat's gate re-arms).
-  if (input.source === 'compact' || input.source === 'clear') {
-    Object.assign(gateOf(state, input), { consults: [], holds: 0, candidates: false });
+  // A /clear starts a new conversation: this actor's gate holds again (a seat's own run of this hook, with its agent_id,
+  // re-arms only that seat's gate). A compaction keeps the read marks (A4, session audit 2026-11-27): the first-change hold
+  // fires once per session, and the start adds a note naming what was read, in place of a second hold.
+  const gate = gateOf(state, input);
+  const readBefore = input.source === 'compact' ? gate.consults.filter((c) => typeof c === 'string' && c) : [];
+  if (input.source === 'clear') {
+    Object.assign(gate, { consults: [], holds: 0, candidates: false });
     saveState(input.session_id, state);
   }
   // Repair the branch snapshots BEFORE looking for merged branches, so a snapshot repaired here is promotable in
@@ -477,7 +495,9 @@ function sessionStart(input, root, docs, state) {
   // 'the section covering the file'). An engine copy older than the probe keeps the line.
   let watched = true;
   try { if (typeof docs.watchesSourceRoot === 'function') watched = docs.watchesSourceRoot(); } catch {}
-  if (!docsOff('gate') && readable && watched) {
+  if (!docsOff('gate') && readable && watched && readBefore.length) {
+    extra.push(compactNote(readBefore));
+  } else if (!docsOff('gate') && readable && watched) {
     let roots = ['src', 'tests'];
     try { roots = docs.loadWatch().sourceRoots; } catch {}
     extra.push(`Before your first change under ${roots.map((x) => `${x}/`).join(' or ')}, read the section covering the file.`);
@@ -506,7 +526,7 @@ function main() {
     const stranded = sweepStrandedRoot(root);
     if (stranded !== null) log(root, input, { event: 'stranded-root', from: LEGACY_DOCS_ROOT, files: stranded });
     startNote = [phase('untracked', () => recordUntracked(input, root)), ...garbageRecordLines(input, root)].filter(Boolean).join('\n');
-    if (input.source === 'compact' || input.source === 'clear') rearmMembers(input);
+    if (input.source === 'compact' || input.source === 'clear') rearmMembers(input, input.source === 'clear');
   }
   // Stage 6: a call whose file sits in a joined member is judged by that member's docs and gate (preferences-session.js
   // ownerOf, loaded only when the start's chain lists a member); a member with no durable docs leaves it to the start.
@@ -1170,6 +1190,27 @@ function scratchOnly(command, root, cwd) {
   if (!words.length || words.some((x) => x.includes('$'))) return false;   // a shell `$` word: its value is unknown here
   return words.map(real).every((p) => !under(p, project) && temps.some((d) => under(p, d)));
 }
+// B16 (session audit 2026-11-27, S13 and S15): the plugin's own state - the data root, `.alfred/`, apart from its docs root, which
+// holds the user's own docs (`layout.underStateOnly`, as rules-summary.js reads it) - is no project change. A write whose targets all
+// sit there draws no docs hold, and no path rule attaches to it. A target that is the unknown-write marker, or empty, is never
+// state; a copy with no layout.js, or an older one with no `underStateOnly`, reads none as state.
+function pluginStateOnly(targets, root) {
+  if (!layout || typeof layout.underStateOnly !== 'function' || !Array.isArray(targets) || !targets.length) return false;
+  return targets.every((target) => typeof target === 'string' && target && !isUnknown(target) && layout.underStateOnly(root, target.replace(/^['"]|['"]$/g, '')));
+}
+// The path words a stdin-script interpreter call names after its flags (`python3 -I - <path> <<'EOF'`): the heredoc body is
+// not an argument, so a 'tests/' inside it names no path. A call with an inline script (`-e`, `-c`) names none here.
+function interpreterPathWords(command) {
+  if (!shellReader || typeof shellReader.commandWords !== 'function') return [];
+  const words = [];
+  for (const w of shellReader.commandWords(command)) {
+    if (w.argv.some((a) => INLINE_FLAG.test(a))) return [];
+    // L1-17: a `--name=value` flag names its value as the next word would
+    words.push(...w.argv.map((a) => (a.startsWith('--') ? a.replace(/^--[^=\s]*=/, '') : a))
+      .filter((a) => !a.startsWith('-') && /[\\/]/.test(a) && !/^[a-z][\w+.-]*:\/\//i.test(a)));
+  }
+  return words;
+}
 const relative = (root, paths) => [...new Set(paths.map((p) => toPosix(path.relative(root, path.resolve(root, p.replace(/^['"]|['"]$/g, ''))))).filter((p) => p && !p.startsWith('..')))];
 
 // Only reading a section's text is a consult: `where`, `toc` and listings point at sections without reading them.
@@ -1678,7 +1719,9 @@ function preToolUse(input, root, docs, state) {
   const named = (c) => (MEMBER ? [...relative(root, OWNER.targets), ...writeTargets(c).filter(isUnknown)] : writeTargets(c));
   const shellWrites0 = isShellTool(name) ? named(command) : null;
   // a computed interpreter write that only touches scratch paths is dropped here (U27-2), so it neither holds nor attributes
-  const shellWrites = shellWrites0 && shellWrites0.includes(UNKNOWN_INTERPRETER_WRITE) && scratchOnly(command, root, input.cwd)
+  // ... and so does one whose every path word is the plugin's own state (B16): its script body naming 'tests/' is no source write
+  const shellWrites = shellWrites0 && shellWrites0.includes(UNKNOWN_INTERPRETER_WRITE)
+    && (scratchOnly(command, root, input.cwd) || pluginStateOnly(interpreterPathWords(command), root))
     ? shellWrites0.filter((t) => t !== UNKNOWN_INTERPRETER_WRITE) : shellWrites0;
   let wrote = [];
   if (fileWrite) wrote = paths;
@@ -1717,7 +1760,7 @@ function preToolUse(input, root, docs, state) {
   }
   if (!isWrite) return;
   const inRoots = (p) => roots.some((x) => p === x || p.startsWith(`${x}/`));
-  let targets = wrote.map(unWorktree).filter(inRoots);
+  let targets = wrote.map(unWorktree).filter(inRoots).filter((p) => !pluginStateOnly([p], root));
   // A run artifact is no source change (audit 2026-10-11 SD09, session 5f9fec85: `rm -f` of a git-ignored `.trx` under
   // a test project's TestResults/ was held and a 3,606-char section pasted beside it). A path git ignores, or one under a
   // TestResults/ folder, leaves the hold's targets; a tracked file is never ignored, so its edit is still held.
@@ -2080,7 +2123,7 @@ function stop(input, root, docs, state) {
   process.stdout.write(JSON.stringify({ decision: 'block', reason })); // guard-ask: Stop hold
 }
 
-module.exports = { writeTargets, consultedBy, toolPaths, toPosix, sweepOldState, sweepRecords, saveState, loadState, sectionRefs, otherSessionWrites, pathsUnder, unknownRoots, stashMoves, seatsOut, architectureWrites, docsRootEnv };
+module.exports = { pluginStateOnly, writeTargets, consultedBy, toolPaths, toPosix, sweepOldState, sweepRecords, saveState, loadState, sectionRefs, otherSessionWrites, pathsUnder, unknownRoots, stashMoves, seatsOut, architectureWrites, docsRootEnv };
 if (require.main === module) {
   try { main(); entryTail(); if (startNote) { const note = startNote; startNote = ''; emit('SessionStart', note); } slowRow(); }
   catch (error) { process.stderr.write(`docs-session: ${error.message}\n`); }

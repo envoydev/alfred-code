@@ -473,7 +473,7 @@ function readPending(text)
 }
 
 module.exports = {
-    DATA_ROOT_DEFAULT, SENSITIVE_FILE, SECRETS_FILE, LEGACY_SECRETS_FILE, SECRET_FILES, findSecretsFile, renameSecrets, repointRunBooks, adoptCredentials, ENGINES, engineServer, engineOfServer, ENGINE_SERVER, settingFrom,
+    DATA_ROOT_DEFAULT, SENSITIVE_FILE, SECRETS_FILE, LEGACY_SECRETS_FILE, SECRET_FILES, findSecretsFile, renameSecrets, repointRunBooks, RUN_BOOKS, adoptCredentials, ENGINES, engineServer, engineOfServer, ENGINE_SERVER, settingFrom,
     checkDataPath, dataRootOf, ROOT_ENTRIES, stackEntries, readRootLine, sameRoot, gitIgnores, targetOf,
     DATA_IGNORE_HEAD, CLAUDE_IGNORE, CLAUDE_VERSIONING_IGNORE, CURSOR_VERSIONING_IGNORE, DOCS_STATE_IGNORE, docsInsideRoot, dataIgnoreText, ensureRootIgnore, SENSITIVE_DEFAULT, ensureSensitiveFile, storeValues,
     writeText, moveEntry, readPending,

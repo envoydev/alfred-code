@@ -30,7 +30,7 @@ test('dev-log:90: the ask template under the clause is unchanged', () =>
 {
     const body = read(SKILL);
     assert.ok(flat(body).includes('```ask The notes give a total but the log needs per-day times - how should I split it? '
-        + '- \'I will give the split (Recommended)\' - the log never invents per-day or per-task time '
+        + '- \'Wait for your split (Recommended)\' - the log never invents per-day or per-task time '
         + '- \'One line per day, time not specified\' - keeps the days, leaves the hours to you ```'), 'the template keeps its question and both options');
 });
 
@@ -47,7 +47,7 @@ const failing = (r) => r.steps.filter((s) => s.verdict === 'FAIL').map((s) => s.
 const PROMPT = 'dev-log: Mon-Wed: ABC-101 built the export endpoint, ABC-102 reviewed two PRs, ABC-103 fixed the CSV quoting bug - 14 hours in total. Just make the log, no questions.';
 const LOAD = tool('Skill', { skill: 'dev-log-convert' });
 const QUESTION = 'The notes give 14 hours in total, but the log needs per-day times. How should I split it?';
-const ASK_TOOL = tool('AskUserQuestion', { questions: [{ question: 'The notes give a total but the log needs per-day times - how should I split it?', options: [{ label: 'I will give the split (Recommended)' }, { label: 'One line per day, time not specified' }] }] });
+const ASK_TOOL = tool('AskUserQuestion', { questions: [{ question: 'The notes give a total but the log needs per-day times - how should I split it?', options: [{ label: 'Wait for your split (Recommended)' }, { label: 'One line per day, time not specified' }] }] });
 const LOG_UNSPECIFIED = 'Log of work 17.11.2026.\n- ABC-101 (time not specified) - built the export endpoint.\n\nLog of work 18.11.2026.\n- ABC-102 (time not specified) - reviewed two PRs.';
 const LOG_INVENTED = 'Log of work 17.11.2026.\n- ABC-101 (5h) - built the export endpoint.\n\nLog of work 18.11.2026.\n- ABC-102 (4h) - reviewed two PRs.';
 const SKILL_SHAPED_INVENTED = 'Log of work 17.11.2026.\n\nMonday:\n1 ABC-101 (5h) - Built the export endpoint.\nTotal time: 5h.\n\nLog of work 18.11.2026.\n\nTuesday:\n1 ABC-102 (4h) - Reviewed two PRs.\n2 Other (1.5h) - Fixed the CSV quoting bug.\nTotal time: 5.5h.';

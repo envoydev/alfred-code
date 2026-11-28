@@ -235,7 +235,11 @@ function unopenedAt(gitNamed = false) {
     if (c === '$' && command[i + 1] === '(' && command[i + 2] !== '(') open = i + 2;
     else if (c === '`') { tick = !tick; if (tick) open = i + 1; }
     if (open < 0 || opened(open)) continue;
-    if (!gitNamed || /\bgit\b/.test(command.slice(open, closeOf(open, c === '`')))) return i;
+    if (!gitNamed) return i;
+    const end = closeOf(open, c === '`');
+    const closed = c === '`' || command[end - 1] === ')';
+    const body = command.slice(open, closed && c !== '`' ? end - 1 : end);
+    if (/\bgit\b/.test(body) && !(closed && gitReadSubstitution(body))) return i;
   }
   return -1;
 }
@@ -247,6 +251,16 @@ const xargsReplaces = (c) => {
   const before = k.words.filter((w) => w.s < c.at).map((w) => command.slice(w.s, w.e));
   const from = before.lastIndexOf('xargs');
   return before.slice(from + 1).some((w) => /^-(?!-)\S*[Ii]/.test(w) || /^--re/.test(w));
+};
+// B7 (session audit 2026-11-27): a substitution whose whole body is one git read - `$(git diff --name-only)`, `$(git ls-files)`,
+// `$(git status --porcelain)` - only prints text for the command around it, so it is no hidden publish. A plain test of the
+// body, never a shell reader: it starts with `git` and a read subcommand, and holds no separator, redirect, nesting or
+// `--output`, so `$(git log; git push)` and `$(git diff | xargs git push)` stay gated.
+const GIT_READ_SUBSTITUTION = /^git\s+(?:log|show|rev-parse|describe|diff|status|ls-files|branch\s+--show-current|config\s+--get)(?=\s|$)[^;&|<>`\n()]*$/;
+const GIT_OUTPUT_OPTION = /(?:^|\s)--output(?:[=\s]|$)/;
+const gitReadSubstitution = (text) => {
+  const body = String(text).trim();
+  return GIT_READ_SUBSTITUTION.test(body) && !GIT_OUTPUT_OPTION.test(body);
 };
 // The git subcommands that only read - no ref, config or index write - so a command made only of them may run before a push
 // the gate lets out ungated (audit 2026-10-08: `git status && git push` on a level branch moves nothing): a literal call
@@ -374,6 +388,24 @@ const PUSH_GATE_ON = !(() => { try { return require('./hook-prelude.js').partOff
 // MCP tool (`accept_merge_request`, `repo_pull_request_write {autoComplete: true}`, `push_files`) needs the same receipt.
 // A forge call whose verb the lexicon does not know is an ask - a deny where no prompt can show (dontAsk, bypassPermissions, print mode, an unattended run, ALFRED_CODE_GUARD_ASK=0, Cursor).
 // With the publish half off nothing is gated or asked.
+// The verb a publish block names (B7): a fixed word for the act, picked by what made it a publish.
+const PUBLISH_VERB = Object.freeze({
+  push: 'git push', unreadGit: 'a git call that may push', openRequest: 'open a change request', other: 'publish',
+  merge: 'merge', branch: 'branch write', release: 'release',
+});
+const forgeVerb = (found) => {
+  const concept = found && found.concept;
+  const names = forgeLib ? forgeLib.CONCEPTS : {};
+  if (concept && concept === names.MERGE) return PUBLISH_VERB.merge;
+  if (concept && concept === names.BRANCH) return PUBLISH_VERB.branch;
+  if (concept && concept === names.RELEASE) return PUBLISH_VERB.release;
+  if (concept && concept === names.CREATE) return PUBLISH_VERB.openRequest;
+  return PUBLISH_VERB.other;
+};
+const publishVerb = (match) => {
+  if (match.git) return match.hidden ? PUBLISH_VERB.unreadGit : PUBLISH_VERB.push;
+  return forgeVerb(match.forge);
+};
 let publishMatch = null;
 let askMatch = null;
 let forgeLib = null;
@@ -686,11 +718,13 @@ const STOP_BEFORE = /\b(?:stop|quit|hold off(?: on)?|hold|wait with|wait on)\s+(
 const BARE_NO_AFTER = /^[^\p{L}\p{N}]*(?:no|nope)[^\p{L}\p{N}]*$/iu;
 const NEGATION_AFTER = /^[^\p{L}\p{N}]*(?:[\p{L}'-]+\s+){0,2}?(?:is(?:n'?t| not)|are(?:n'?t| not)|was(?:n'?t| not)|not (?:needed|necessary|required|now|yet|today)|would be a mistake)(?!\p{L})/iu;
 const STATEMENT_AFTER = /^\s+(?:is|was|are|were|has been|looks|seems)\s+(?!(?:fine|ok|okay|good|allowed|approved|welcome|alright|all right|safe)\b)/i;
-const DEFERRAL_CLAUSE = /\b(?:not yet|not now|later|hold off|tomorrow|after (?:i|you|we)\b|once (?:i|you)\b|when i\b)/i;
+const DEFERRAL_CLAUSE = /\b(?:not yet|not now|later|hold off|tomorrow|after (?:i|you|we)\b|once (?:i|you)\b|when i\b|(?:waits?|waiting|awaits?|awaiting)\s+(?:for\s+)?(?:your|my|the user'?s?)\s+(?:word|go|ok|okay|approval|say|answer|green light))/i;
 // A wait on CI defers a push, a publish, a release or a ship, but not a MERGE: 'merge it once CI is green' is the ordinary
 // way to ask for the merge CI gates (2.1.6 re-verify 4 R4-m1).
 const CI_DEFERRAL = /\b(?:after|once|when|until|till|as soon as) (?:the )?(?:ci|checks?|pipeline)\b/i;
 const MERGE_VERB = /^merge/i;
+// A wait on a review, an approval, a sign-off, QA or testing defers a publish verb too, a merge included ('We land the PR after review').
+const REVIEW_DEFERRAL = /\bafter (?:the )?(?:review|approval|sign-?off|QA|testing)\b/i;
 const USER_KEEPS = /\bmyself\b/i;
 const NOUN_BEFORE = /\b(?:the|a|an|this|that|my|your|its|our|last|first|previous|next)\s+$/i;
 // U26b (usage audit 2026-11-03): 'commit' leading a noun ('commit messages', 'at commit description') is the noun, never the act -
@@ -701,8 +735,28 @@ const WHY_CLAUSE = /^\s*(?:why|who|did you|have you|what)\b/i;
 const ANSWERED_NO = /^[^\p{L}\p{N}]*(?:no|nope|not yet|not now|later)[^\p{L}\p{N}]*$/iu;
 const CLASS_COMMIT = /^(?:commit|land)/i;
 const CLASS_PUSH = /^(?:push|publish|release|ship|merge|land)|\bPR\b|pull|^(?:open|create|raise|submit)/i;
+// L2-05: a 'land' whose object is a PR, MR, pull request or branch publishes, so it is a push-class verb and its deferral ('land the PR later') refuses the push only.
+const LAND_VERB = /^land/i;
+const LAND_PUBLISH_OBJECT = /^\s+(?:(?:the|a|an|this|that|my|our|your)\s+)?(?:[\w-]+\s+)?(?:PRs?|MRs?|pull[\s-]?requests?|merge[\s-]?requests?|branch(?:es)?)\b/i;
+const isOwnAct = (gate, word, after) => (gate === 'PUSH-GATE'
+  ? CLASS_PUSH.test(word)
+  : CLASS_COMMIT.test(word) && !(LAND_VERB.test(word) && LAND_PUBLISH_OBJECT.test(after)));
 const GENERIC_CONSENT = /^(?:go ahead|do it|approve[ds]?|yes)/i;
 const CONSENT_QUOTE_CAP = 1000;
+const LINE_BREAKS = /\s*[\r\n]+\s*/g;
+// Global copies of the act verb patterns, each reset by its reader before a scan.
+const ACT_SCANNERS = [CONSENT_VERB, CONSENT_PR].map((re) => new RegExp(re.source, `${re.flags.replace('g', '')}g`));
+// A typed turn is judged one sentence at a time, so the cap above bounds a sentence and not a long message (N01, 2026-11-27).
+const SENTENCE_END = /[.!?\n]+/;
+// The match key of a quote and of a typed turn (C3): curly quotes straight, the ellipsis sign as three dots, every non-word
+// character a space. A quote cut at '...' is held when each part is, in order, whole words of one typed turn.
+const CURLY_APOSTROPHE = /[\u2018\u2019\u201B]/g;
+const CURLY_QUOTE = /[\u201C\u201D]/g;
+const ELLIPSIS_SIGN = /\u2026/g;
+const ELLIPSIS_GAP = /\.{3,}/;
+const NON_WORD = /[^\p{L}\p{N}]+/gu;
+const straightText = (text) => normQuote(text).replace(CURLY_APOSTROPHE, "'").replace(CURLY_QUOTE, '"').replace(ELLIPSIS_SIGN, '...');
+const matchKey = (text) => straightText(text).replace(NON_WORD, ' ').trim();
 // The first bound past `i` in the sorted bounds, by binary search.
 function boundAfter(bounds, i) {
   let lo = 0;
@@ -713,35 +767,49 @@ function boundAfter(bounds, i) {
 // A quote holding any letter outside ASCII: the lists cannot read it, so it is no consent (the header, ENGLISH ONLY).
 const foreignQuote = (text) => /[^\x00-\x7f]/.test(String(text).replace(/[^\p{L}]/gu, ''));
 const FOREIGN_HINT = ' - the gate reads a quote in English only; ask with AskUserQuestion (English labels) and write the picked option as `answered: <the chosen label>`';
-function consentIn(text, gate) {
-  if (text.length > CONSENT_QUOTE_CAP || foreignQuote(text)) return false;
-  const clean = text.replace(POSITIVE_IDIOM, (m) => ' '.repeat(m.length));
+// The sorted clause bounds of a text, the clause around an index, and the slices of one act verb match - shared by consentIn and the
+// quote reader, so one negation test reads both.
+function clauseBoundsOf(clean) {
   const bounds = [0];
   for (const b of clean.matchAll(CLAUSE_END)) bounds.push(b.index + b[0].length);
   bounds.push(clean.length + 1);
-  const clauseOf = (i) => {
-    const k = boundAfter(bounds, i);
-    return [bounds[k - 1] || 0, Math.min(k < bounds.length ? bounds[k] : clean.length, clean.length)];
-  };
-  const own = gate === 'PUSH-GATE' ? CLASS_PUSH : CLASS_COMMIT;
+  return bounds;
+}
+function actSlices(clean, bounds, m) {
+  const k = boundAfter(bounds, m.index);
+  const a = bounds[k - 1] || 0;
+  const z = Math.min(k < bounds.length ? bounds[k] : clean.length, clean.length);
+  return { z, clause: clean.slice(a, z), before: clean.slice(a, m.index), after: clean.slice(m.index + m[0].length, z) };
+}
+// Is this match no act: the verb used as a noun ('the push', 'commit messages') or in a question about the past ('why did you push').
+function actIsNoun({ clause, before, after }, m) {
+  if ((NOUN_BEFORE.test(before) && !ACT_BEFORE.test(before)) || WHY_CLAUSE.test(clause)) return true;
+  return /^commit$/i.test(m[0].trim()) && NOUN_AFTER.test(after);
+}
+// Is this act verb match refused: a negation, a stop, a deferral, the user keeping the act, or a bare 'no' answer after it.
+function actNegated(clean, bounds, m, slices) {
+  const { z, clause, before, after } = slices;
+  const nk = boundAfter(bounds, z);
+  const nextEnd = nk < bounds.length ? bounds[nk] : undefined;
+  const answeredNo = nextEnd !== undefined && ANSWERED_NO.test(clean.slice(z, nextEnd));
+  return answeredNo || NEGATION_BEFORE.test(before) || STOP_BEFORE.test(before) || NEGATION_AFTER.test(after)
+    || BARE_NO_AFTER.test(after) || DEFERRAL_CLAUSE.test(clause) || (CI_DEFERRAL.test(clause) && !MERGE_VERB.test(m[0].trim())) || (REVIEW_DEFERRAL.test(clause) && CLASS_PUSH.test(m[0].trim())) || USER_KEEPS.test(clause);
+}
+function consentIn(text, gate, detail) {
+  if (text.length > CONSENT_QUOTE_CAP || foreignQuote(text)) return false;
+  const clean = text.replace(POSITIVE_IDIOM, (m) => ' '.repeat(m.length));
+  const bounds = clauseBoundsOf(clean);
   let ownHit = false;
   let otherHit = false;
   let genericHit = false;
   for (const re of [CONSENT_VERB, CONSENT_PR]) {
     for (const m of clean.matchAll(new RegExp(re.source, `${re.flags.replace('g', '')}g`))) {
-      const [a, z] = clauseOf(m.index);
-      const clause = clean.slice(a, z);
-      const before = clean.slice(a, m.index);
-      const after = clean.slice(m.index + m[0].length, z);
-      if ((NOUN_BEFORE.test(before) && !ACT_BEFORE.test(before)) || WHY_CLAUSE.test(clause)) continue;
-      if (/^commit$/i.test(m[0].trim()) && NOUN_AFTER.test(after)) continue;
-      const nk = boundAfter(bounds, z);
-      const nextEnd = nk < bounds.length ? bounds[nk] : undefined;
-      const answeredNo = nextEnd !== undefined && ANSWERED_NO.test(clean.slice(z, nextEnd));
-      const negated = answeredNo || NEGATION_BEFORE.test(before) || STOP_BEFORE.test(before) || NEGATION_AFTER.test(after)
-        || BARE_NO_AFTER.test(after) || DEFERRAL_CLAUSE.test(clause) || (CI_DEFERRAL.test(clause) && !MERGE_VERB.test(m[0].trim())) || USER_KEEPS.test(clause);
+      const slices = actSlices(clean, bounds, m);
+      const { after } = slices;
+      if (actIsNoun(slices, m)) continue;
+      const negated = actNegated(clean, bounds, m, slices);
       const word = m[0].trim();
-      if (negated && own.test(word)) return false;
+      if (negated && isOwnAct(gate, word, after)) { if (detail) detail.refused = true; return false; }
       if (negated || STATEMENT_AFTER.test(after)) continue;
       if (GENERIC_CONSENT.test(word)) genericHit = true;
       else if (gate !== 'PUSH-GATE' || CLASS_PUSH.test(word)) ownHit = true;
@@ -784,7 +852,7 @@ function transcriptScan() {
   // started (the plan review left out) and what it covered (null: the whole change); answers: each AskUserQuestion
   // answer, its labels and when it landed; done: the tool_use ids of the review calls that counted; typedDone: when each
   // typed review that counted started.
-  _scan = { ran: new Set(), labels: new Set(), typed: [], reviews: [], reviewSeat: false, codeReviews: [], answers: [], refused: new Set(),
+  _scan = { ran: new Set(), labels: new Set(), typed: [], typedRaw: [], reviews: [], reviewSeat: false, codeReviews: [], answers: [], refused: new Set(),
     done: new Set(), typedDone: [], unprovenFindings: [] };
   const tp = payload.transcript_path;
   if (!tp) return _scan;
@@ -947,14 +1015,40 @@ function transcriptScan() {
           _scan.labels.add(normQuote(lbl));
         }
       }
+      // A message the user typed while the model worked is a `queued_command` attachment, not a user row (final review I2): a
+      // human-origin one is a typed turn, so its 'commit it' gives consent and its 'wait, do not commit' takes it back. A task
+      // notice or any other origin is the harness's. Same transcript file; discard-consent.js reads these rows too.
+      if (line.includes('"queued_command"') && line.length < 256 * 1024) {
+        let row;
+        try { row = JSON.parse(line); } catch { row = null; }
+        const att = row && row.type === 'attachment' && row.attachment;
+        if (att && att.type === 'queued_command' && att.origin && att.origin.kind === 'human') {
+          const text = textOf(att.prompt);
+          if (text.trim() && !harnessRow(text)) {
+            _scan.typed.push(normQuote(text));
+            _scan.typedRaw.push({ text, ts: tsOf(row) });
+          }
+        }
+      }
       // A turn the user TYPED: a user row whose content is text, never a tool_result (an ask's answer is the
       // harness's row) and never a meta row (a skill body, a command expansion).
       if (/"type"\s*:\s*"user"/.test(line) && !line.includes('"tool_result"') && line.length < 256 * 1024) {
         let row;
         try { row = JSON.parse(line); } catch { return; }
-        if (!row || row.type !== 'user' || row.isMeta) return;
+        if (!row || row.type !== 'user' || row.isMeta || row.isCompactSummary) return;   // a compaction summary quotes old words: never a typed turn
         const text = textOf(row.message && row.message.content);
-        if (text && !/^\s*<(?:command-name|local-command|bash-|task-notification)/.test(text)) _scan.typed.push(normQuote(text));
+        // A slash command the user typed opens with its tags and is a typed turn whose words are its `<command-args>` (empty with
+        // none): a later command, `/model opus` included, ends an earlier 'commit it' (N01, one extra ask on the safe side).
+        // Any other row is a typed turn unless the harness wrote it: the gate's own openers joined with the prelude's
+        // `harnessPrompt` (a side agent's note, a peer message), and only a row that OPENS with the tags is a command.
+        if (/^\s*<(?:command-message|command-name)>/.test(text) && !harnessRow(text)) {
+          const args = ((/<command-args>([\s\S]*?)<\/command-args>/.exec(text) || [])[1] || '').trim();
+          if (args) _scan.typed.push(normQuote(args));
+          _scan.typedRaw.push({ text: args, ts: tsOf(row) });
+        } else if (!/^\s*<(?:command-name|local-command|bash-|task-notification)/.test(text) && !harnessRow(text) && !/^\s*Stop hook feedback:/.test(text) && text) {   // a sibling hook's Stop hold is the harness's row (final review I1)
+          _scan.typed.push(normQuote(text));
+          _scan.typedRaw.push({ text, ts: tsOf(row) });
+        }
         // a review the user TYPED as a slash command is a review run too, once its result line followed it
         const typedSkill = /<command-name>\/?([\w:-]+)<\/command-name>/.exec(text);
         if (typedSkill && REVIEW_SKILL.test(typedSkill[1])) {
@@ -1045,6 +1139,25 @@ function transcriptScan() {
   _scan.unprovenFindings = [...new Set(open.filter((k) => reviewProof(k.review) === 'findings' && k.review !== 'verify-plan').map((k) => k.review))];
   return _scan;
 }
+// The trivial-diff exit skips the verify receipt only, never the user's word (N01, 2026-11-27: a one-line commit went through
+// with none). Consent is read from the LATEST typed turn alone - a sentence the commit reading takes - or from a picked
+// option label it takes that landed after that turn (the controller's ruling: an old 'commit it' never covers a later change).
+// The raw text is split at sentence ends, since normQuote joins the lines of a message into one.
+function trivialConsent(scan) {
+  const last = scan.typedRaw[scan.typedRaw.length - 1];
+  if (last) {
+    // a sentence that refuses the commit ('do not commit yet') takes the whole turn's consent: a later 'commit it' in it is a plan, not the word
+    const refusal = {};
+    let said = false;
+    for (const part of last.text.split(SENTENCE_END)) {
+      const sentence = normQuote(part);
+      if (sentence && consentIn(sentence, 'COMMIT-GATE', refusal)) said = true;
+    }
+    if (said && !refusal.refused) return true;
+  }
+  const since = last ? (last.ts || Infinity) : -1;   // a typed turn with no time is the newest: no earlier answer counts
+  return scan.answers.some((a) => a.ts > since && a.labels.some((label) => consentIn(label, 'COMMIT-GATE')));
+}
 // Is this exact string one of the assistant's own AskUserQuestion option labels? Compared with the
 // `(Recommended)` marker STRIPPED, because the harness stores the marked label as the user's answer
 // (correction 3) - so the marker's presence proves nothing either way. A quote the user TYPED in a turn of
@@ -1056,6 +1169,57 @@ function isOwnOptionLabel(span) {
   const s = transcriptScan();
   if (!s.labels.has(want)) return false;
   return !s.typed.some((t) => t.includes(want));
+}
+// Is this quote the user's own words (C3, N02)? Its parts (the quote cut at '...') are whole words of one turn the user typed
+// (a slash command's args included; a side agent's note, a peer message and a compaction summary are no typed turn) or of
+// an ask answer a person gave - an answer a hook gave (`user` false) is nobody's words. The quote's own consent is judged
+// apart by consentIn. A part's place in the turn is read too (C17): an act verb of the gate's own class inside the place,
+// refused by the turn's own clause around it ('don't push it yet'), makes it no place - a quote cut out of a refusal is not
+// the user's yes. The turn has no cap and no foreign-letter check: those stay on the quote.
+function quoteTyped(quote, scan, gate) {
+  const parts = straightText(quote).split(ELLIPSIS_GAP).map(matchKey).filter(Boolean);
+  if (!parts.length) return false;
+  const places = parts.map(partPlace);
+  const turns = [...scan.typedRaw.map((t) => t.text), ...scan.answers.filter((a) => a.user).map((a) => a.text)];
+  return turns.some((text) => turnHolds(turnView(text, gate), places));
+}
+// The part's key words with any run of non-word characters between them, whole words only: the key holds letters and digits.
+const partPlace = (part) => new RegExp(`(?<![\\p{L}\\p{N}])${part.split(' ').join('[^\\p{L}\\p{N}]+')}(?![\\p{L}\\p{N}])`, 'giu');
+// A line break ends a sentence here, since the clause reader would otherwise run two lines into one.
+const turnView = (text, gate) => ({ raw: straightText(String(text).replace(LINE_BREAKS, '. ')), gate, clean: null, bounds: null });
+// True when an own-class act verb or a generic yes that lies whole inside [from, to) of the turn is refused by its clause.
+function actRefusedIn(view, from, to) {
+  if (view.clean === null) {
+    view.clean = view.raw.replace(POSITIVE_IDIOM, (m) => ' '.repeat(m.length));
+    view.bounds = clauseBoundsOf(view.clean);
+  }
+  for (const scanner of ACT_SCANNERS) {
+    scanner.lastIndex = from;
+    for (let m = scanner.exec(view.clean); m && m.index + m[0].length <= to; m = scanner.exec(view.clean)) {
+      const slices = actSlices(view.clean, view.bounds, m);
+      // 'hold off on the push' names the noun after a stop word: that is the refusal, not a noun use
+      const word = m[0].trim();
+      if (!(isOwnAct(view.gate, word, slices.after) || GENERIC_CONSENT.test(word)) || (actIsNoun(slices, m) && !STOP_BEFORE.test(slices.before))) continue;
+      if (actNegated(view.clean, view.bounds, m, slices)) return true;
+    }
+  }
+  return false;
+}
+// Each part sits at its first place that no refusal covers, after the end of the one before it: one pass, no backtracking.
+function turnHolds(view, places) {
+  let from = 0;
+  for (const place of places) {
+    place.lastIndex = from;
+    let end = -1;
+    let m = place.exec(view.raw);
+    while (m && end === -1) {
+      if (!actRefusedIn(view, m.index, m.index + m[0].length)) end = m.index + m[0].length;
+      else { place.lastIndex = m.index + 1; m = place.exec(view.raw); }
+    }
+    if (end === -1) return false;
+    from = end;
+  }
+  return true;
 }
 // The session's latest ask answer, for a denial that names what the receipt should carry: a receipt quoted the user's
 // typo ('commit and oush to develop') while the picked option sat in the transcript (audit 2026-10-10, session bda299a8).
@@ -1079,7 +1243,7 @@ function answeredWaiver(line) {
   if (!answeredAt(label, true)) return { problem: 'the answered: waiver was picked by no person (a hook gave that answer) - a skipped review needs the user' };
   let nobody = false;
   try { nobody = require('./hook-prelude.js').unattended(payload); } catch { nobody = false; }
-  if (nobody) return { problem: 'the answered: waiver was given while nobody is at the terminal (auto-mode answers its own Recommended option) - a skipped review needs the user' };
+  if (nobody) return { problem: 'the answered: waiver was given while auto-run is on or in print mode (auto-mode answers its own Recommended option) - a skipped review needs the user' };
   return { problem: null };
 }
 // When the latest answer carrying `label` landed - with `own`, only an answer a person gave - or 0 when none carries it.
@@ -1133,6 +1297,25 @@ function lastCodeReviewMs() {
 // committed and its time is unknown (a staged removal commits no content and is skipped). A file a review's snapshot saw
 // with the content it holds now passes whatever its time says: a stash and pop or a branch round-trip moved the time,
 // not the code (a third side note; the user's ruling 'Snapshot at review' - hook-prelude.js snapshotReview).
+// B15 (session audit 2026-11-27): prose is a closed list. An edit to prose files only after the review, or after the receipt,
+// leaves the review standing - a README or a changelog holds no code to review. Prose is a file with a prose extension, a
+// CHANGELOG file with no extension or a prose one (`scripts/changelog.js` is code), and a file under `docs/` whose extension is
+// not code (a page in html, css, vue or sql is). A code or test file still voids it,
+// and so does a dependency or build list that only looks like text (`requirements*.txt`, `constraints*.txt`, `CMakeLists.txt`).
+const PROSE_EXTENSIONS = Object.freeze(['.md', '.mdx', '.txt', '.rst', '.adoc']);
+const DOCS_CODE_EXTENSIONS = Object.freeze(['.js', '.cjs', '.mjs', '.ts', '.tsx', '.jsx', '.py', '.rb', '.go', '.rs', '.java', '.cs', '.sh', '.ps1', '.json', '.yml', '.yaml', '.toml', '.html', '.css', '.vue', '.sql']);
+const CODE_SHAPED_TEXT = /^(?:requirements|constraints)[^/]*\.txt$|^CMakeLists\.txt$/i;
+const CHANGELOG_NAME = /^CHANGELOG/i;
+const proseFile = (file) => {
+  const rel = String(file).replace(/\\/g, '/');
+  const name = path.posix.basename(rel);
+  const extension = path.posix.extname(name).toLowerCase();
+  if (CODE_SHAPED_TEXT.test(name)) return false;
+  if (CHANGELOG_NAME.test(name)) return extension === '' || PROSE_EXTENSIONS.includes(extension);
+  if (rel.startsWith('docs/')) return !DOCS_CODE_EXTENSIONS.includes(extension);
+  return PROSE_EXTENSIONS.includes(extension);
+};
+const proseOnly = (files) => files.every(proseFile);
 function editedAfterReview() {
   const set = commitSet();
   let top = set.top;
@@ -1140,6 +1323,7 @@ function editedAfterReview() {
   const reviews = timedCodeReviews();
   const late = [];
   for (const rel of [...set.tracked.keys(), ...set.untracked]) {
+    if (proseOnly([rel])) continue;
     const abs = path.join(top, rel);
     let changed;
     try { changed = fs.statSync(abs).mtimeMs; } catch {
@@ -1285,6 +1469,10 @@ function judgeReceipt(body, opts) {
       r.problem = `the authorized: quote is character-identical to an option label THIS run wrote - that is the model's sentence, not the user's. Consent given by picking an option is spelled \`answered: <the chosen label>\` instead${answerHint()}`;
       return r;
     }
+    if (!quoteTyped(authorized, transcriptScan(), opts && opts.gate)) {
+      r.problem = `the authorized: quote (${JSON.stringify(authorized).slice(0, 60)}) is not in any message the user typed - quote the user's own words, or ask`;
+      return r;
+    }
   } else if (answered) {
     if (!answered.replace(/^option\s+\d+\s*/i, '').replace(/["'“‘”’]/g, '').trim()) {
       r.problem = `the answered: line names no option${answerHint()}`;
@@ -1398,6 +1586,7 @@ function judgeReceipt(body, opts) {
       try {
         const set = commitSet();
         for (const f of [...set.tracked.keys(), ...set.untracked]) {
+          if (proseOnly([f])) continue;
           let m = 0;
           try { m = fs.statSync(path.resolve(set.top || gitTop || root, f)).mtimeMs; } catch { continue; }
           if (m > opts.receiptMtimeMs + 2000) later.push(f);
@@ -1589,9 +1778,9 @@ function sessionStartMs() {
   } catch { return 0; }
 }
 if (publishMatch) {
-  // The act is echoed into the denial and the ledger row: capped, and a credential in a remote URL masked - the secret
-  // guard runs first on the shell route, but not when it is switched off (audit 2026-10-08).
-  const act = publishMatch.act.replace(/(\/\/)[^@\s/]+@/g, '$1***@').slice(0, 200);
+  // The denial names the VERB that made the act a publish, never a slice of the command (B7, session audit 2026-11-27): a
+  // slice carried a substitution's text and, once, a credential in a remote URL.
+  const act = publishVerb(publishMatch);
   const isGitPush = publishMatch.git;
   // a dry run publishes nothing (the push's own argv), and neither does a push with nothing ahead of its upstream - each
   // only as the command's one act (pushAlone)
@@ -1634,7 +1823,7 @@ if (publishMatch) {
   const leadMoves = !dryRun && ahead;
   const leadPublishes = leadMoves || (isGitPush && !alone);
   const gated = leadPublishes || chainedPublish.length > 0;
-  const actOf = (a) => command.slice(a.at, a.end).trim().replace(/\s+/g, ' ').replace(/(\/\/)[^@\s/]+@/g, '$1***@').slice(0, 200);
+  const actOf = (a) => forgeVerb(a);
   const shown = leadPublishes || !chainedPublish.length ? act : actOf(chainedPublish[0]);
   if (gated && !carriesOwnReceipt('PUSH-GATE', publishMatch.index)) {
     const r = readReceipt('PUSH-GATE', sessionStartMs());
@@ -1729,6 +1918,8 @@ function lineFinding(file, text, lineNo) {
   return '';
 }
 function prelude() { return require('./hook-prelude.js'); }
+// A prompt the harness wrote (hook-prelude.js harnessPrompt); an install without the prelude judges by the gate's own openers alone.
+function harnessRow(text) { try { return prelude().harnessPrompt(text) === true; } catch { return false; } }
 
 // What the commit takes in, read from the command: the commit's own flags and paths, and every `git add` before it.
 // Each path is placed where ITS git call runs and handed to git as a top-relative `:(top)` pathspec - read from the
@@ -2166,7 +2357,15 @@ try {
     try { lines += fs.readFileSync(path.join(set.top, f), 'utf8').split('\n').filter(Boolean).length; } catch { /* unreadable - the row alone counts */ }
   }
   if (files === 0) process.exit(0); // nothing to commit - let git say so
-  if (files <= 2 && lines <= 15) { recordTrivial(set); process.exit(0); }
+  if (files <= 2 && lines <= 15) {
+    if (!trivialConsent(transcriptScan())) {
+      blockCall(payload,
+        'Blocked: git commit - no word from the user asks for this commit since the user\'s latest message. A small change skips the gate receipt, not the user\'s consent.\n' +
+          'Ask the user with AskUserQuestion, the recommended option first: \'Commit now (Recommended)\'. A typed \'commit it\' or a picked \'Commit now\' lets it through; an answered commit ask counts only when it comes after the latest message. ' +
+          'The gate reads English only: a word in another language gives no consent, so ask with English labels.');
+    }
+    recordTrivial(set); process.exit(0);
+  }
 } catch {
   process.exit(0); // not a git repo / git unavailable - never block on our own failure
 }

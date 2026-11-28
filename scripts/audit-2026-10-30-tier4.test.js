@@ -121,7 +121,8 @@ test('RU-06: the always-on set keeps caps only on the FIRST-action shape, the se
     for (const [name, phrases] of Object.entries(kept))
         for (const p of phrases) assert.ok(inj(name).includes(p), `${name} keeps '${p}'`);
     const ACRONYMS = new Set(['AGENTS', 'ADR', 'SDK', 'JSON', 'YAML', 'OS', 'ESM', 'XML', 'API', 'CI', 'PII', 'PR', 'MCP', 'DB', 'BLOCKER', 'MATERIAL', 'MINOR',
-        'ASD']);   // ASD-STE100, the writing standard alfred-interaction names (2026-11-19)
+        'ASD',   // ASD-STE100, the writing standard alfred-interaction names (2026-11-19)
+        'UI']);   // the quality gates' UI-change line (session audit 2, C12)
     let caps = 0;
     for (const name of ['alfred-docs-root', 'alfred-interaction', 'alfred-navigation', 'alfred-preferences', 'alfred-quality-gates', 'alfred-security'])
     {
@@ -129,7 +130,8 @@ test('RU-06: the always-on set keeps caps only on the FIRST-action shape, the se
         caps += (prose.match(/\b[A-Z]{2,}(?:-[A-Z]{2,})*\b/g) || []).filter((t) => !ACRONYMS.has(t)).length;
     }
     // 28 since 2026-11-19: a ninth FIRST action, the explainer's second try when an explanation did not land
-    assert.strictEqual(caps, 28, 'emphasis tokens: 32 before, 21 after RU-06, 27 with the six unmeasured restored, 28 with the explainer pointer (9 of them the pinned FIRST action)');
+    // 29 since 2026-11-28 (session audit 2, C8): a tenth FIRST action, the proposal review's skill pointer
+    assert.strictEqual(caps, 29, 'emphasis tokens: 32 before, 21 after RU-06, 27 with the six unmeasured restored, 28 with the explainer pointer, 29 with the proposal-review pointer (10 of them the pinned FIRST action)');
 });
 
 // RU-13: the credentials line keeps presence-never-value, the store and the pinned phrases, and leaves the commands' spelling

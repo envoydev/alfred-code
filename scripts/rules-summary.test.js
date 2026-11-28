@@ -278,6 +278,25 @@ function hook(root, home, payload)
     return r.stdout;
 }
 
+// B16 (session audit 2026-11-27, S15): the plugin's own state under .alfred/ is no project file - no path rule attaches to it.
+test('B16: an Edit of a file under .alfred/ attaches no path rule, while the same kind of file in the project still does', () =>
+{
+    const { home, done } = fixture();
+    try
+    {
+        const { root } = workspace(home);
+        writeRule(root, 'md-style', RULE_BODY('Write docs in plain words. More words follow.')(['**/*.md']));
+        const edit = (file) => hook(root, home, { tool_name: 'Edit', tool_input: { file_path: file } });
+        assert.match(JSON.parse(edit(path.join(root, 'notes', 'readme.md'))).hookSpecificOutput.additionalContext, /- md-style: Write docs in plain words\./, 'a project doc gets its rule');
+        assert.strictEqual(edit(path.join(root, '.alfred', 'state', 'sessions', 'scoring', 'x.draft.md')), '', 'a state file gets none');
+        assert.match(JSON.parse(edit(path.join(root, '.alfred', 'docs', 'guide.md'))).hookSpecificOutput.additionalContext, /md-style/, 'the docs root holds the user\'s own docs: its rules still attach');
+        assert.strictEqual(hook(root, home, { tool_name: 'Write', tool_input: { file_path: '.alfred/state/approvals/NOTES.md' } }), '', 'a relative state path gets none');
+        assert.match(JSON.parse(edit(path.join(root, '.alfred-old', 'z.md'))).hookSpecificOutput.additionalContext, /md-style/, 'a folder that only starts with .alfred is a project path');
+        assert.match(JSON.parse(edit(`${root}/.alfred/../notes/other.md`)).hookSpecificOutput.additionalContext, /md-style/, 'a path that climbs out of .alfred/ is a project path');
+    }
+    finally { done(); }
+});
+
 test('a Read records the touch and prints nothing; the first Edit prints the reminder once', () =>
 {
     const { home, env, done } = fixture();
