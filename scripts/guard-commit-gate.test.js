@@ -991,6 +991,22 @@ test("guard-ungated-commit: a deferred 'land the PR' does not refuse the commit 
     ['land it later', 2, 2], ['land the change later', 2, 2],
   ]), []);
 });
+// L2-05 (r1, wave 2026-11-28): one word may stand between the article and the noun - 'the release branch', 'the fix PR'.
+test("guard-ungated-commit: a deferred 'land the release branch' does not refuse the commit before it (L2-05 r1)", () => {
+  assert.deepStrictEqual(perGateWrong([
+    ['Commit it, then land the release branch later.', 0, 2], ['Commit it. Then we land the feature branch later.', 0, 2], ['Commit it, and land the fix PR later.', 0, 2],
+    ['Commit it, then land the PR later.', 0, 2],
+    ['land it later', 2, 2], ['land the change later', 2, 2],
+  ]), []);
+});
+// GAP (r1, wave 2026-11-28): a wait on review, approval, sign-off, QA or testing defers a publish verb like a wait on CI, a merge included.
+test("guard-ungated-commit: a land, push or merge that waits on review defers the push and keeps the commit (r1 gap)", () => {
+  assert.deepStrictEqual(perGateWrong([
+    ['Commit it. We land the PR after review.', 0, 2], ['Commit it. We push after the approval.', 0, 2], ['Commit it. We merge after sign-off.', 0, 2],
+    ['Commit it. We release after QA.', 0, 2], ['Commit it. We ship after testing.', 0, 2],
+    ['Commit it. We land the PR.', 0, 0], ['commit it and push', 0, 0],
+  ]), []);
+});
 // R4-m1: 'once CI is green' was a deferral for every verb, so 'merge it once CI is green' - the ordinary way to ask for a
 // merge that waits on CI - was refused at the PUSH-GATE. A push, publish, release or ship still waits on CI; a merge
 // is the act that CI gates and consents.

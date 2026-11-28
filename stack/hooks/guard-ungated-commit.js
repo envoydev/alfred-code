@@ -723,6 +723,8 @@ const DEFERRAL_CLAUSE = /\b(?:not yet|not now|later|hold off|tomorrow|after (?:i
 // way to ask for the merge CI gates (2.1.6 re-verify 4 R4-m1).
 const CI_DEFERRAL = /\b(?:after|once|when|until|till|as soon as) (?:the )?(?:ci|checks?|pipeline)\b/i;
 const MERGE_VERB = /^merge/i;
+// A wait on a review, an approval, a sign-off, QA or testing defers a publish verb too, a merge included ('We land the PR after review').
+const REVIEW_DEFERRAL = /\bafter (?:the )?(?:review|approval|sign-?off|QA|testing)\b/i;
 const USER_KEEPS = /\bmyself\b/i;
 const NOUN_BEFORE = /\b(?:the|a|an|this|that|my|your|its|our|last|first|previous|next)\s+$/i;
 // U26b (usage audit 2026-11-03): 'commit' leading a noun ('commit messages', 'at commit description') is the noun, never the act -
@@ -735,7 +737,7 @@ const CLASS_COMMIT = /^(?:commit|land)/i;
 const CLASS_PUSH = /^(?:push|publish|release|ship|merge|land)|\bPR\b|pull|^(?:open|create|raise|submit)/i;
 // L2-05: a 'land' whose object is a PR, MR, pull request or branch publishes, so it is a push-class verb and its deferral ('land the PR later') refuses the push only.
 const LAND_VERB = /^land/i;
-const LAND_PUBLISH_OBJECT = /^\s+(?:(?:the|a|an|this|that|my|our|your)\s+)?(?:PRs?|MRs?|pull[\s-]?requests?|merge[\s-]?requests?|branch(?:es)?)\b/i;
+const LAND_PUBLISH_OBJECT = /^\s+(?:(?:the|a|an|this|that|my|our|your)\s+)?(?:[\w-]+\s+)?(?:PRs?|MRs?|pull[\s-]?requests?|merge[\s-]?requests?|branch(?:es)?)\b/i;
 const isOwnAct = (gate, word, after) => (gate === 'PUSH-GATE'
   ? CLASS_PUSH.test(word)
   : CLASS_COMMIT.test(word) && !(LAND_VERB.test(word) && LAND_PUBLISH_OBJECT.test(after)));
@@ -791,7 +793,7 @@ function actNegated(clean, bounds, m, slices) {
   const nextEnd = nk < bounds.length ? bounds[nk] : undefined;
   const answeredNo = nextEnd !== undefined && ANSWERED_NO.test(clean.slice(z, nextEnd));
   return answeredNo || NEGATION_BEFORE.test(before) || STOP_BEFORE.test(before) || NEGATION_AFTER.test(after)
-    || BARE_NO_AFTER.test(after) || DEFERRAL_CLAUSE.test(clause) || (CI_DEFERRAL.test(clause) && !MERGE_VERB.test(m[0].trim())) || USER_KEEPS.test(clause);
+    || BARE_NO_AFTER.test(after) || DEFERRAL_CLAUSE.test(clause) || (CI_DEFERRAL.test(clause) && !MERGE_VERB.test(m[0].trim())) || (REVIEW_DEFERRAL.test(clause) && CLASS_PUSH.test(m[0].trim())) || USER_KEEPS.test(clause);
 }
 function consentIn(text, gate, detail) {
   if (text.length > CONSENT_QUOTE_CAP || foreignQuote(text)) return false;
