@@ -645,3 +645,9 @@ test('C12: a UI change is opened in the running app before done, or the close na
 {
     assert.ok(injected('alfred-quality-gates').toLowerCase().includes('a ui change is opened in the running app (the browser or simulator tools) before done, or the close names it as unseen'));
 });
+
+// Session audit 2 (C13, N15): a typed instruction met a standing project rule and the agent followed one without asking.
+test('C13: when a typed instruction meets a standing project rule, ask once which wins, then name the ruling back as a preference to save', () =>
+{
+    assert.ok(injected('alfred-preferences').toLowerCase().includes('when a typed instruction meets a standing project rule, ask once which wins, then name the ruling back as a preference to save'));
+});
