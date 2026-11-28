@@ -202,3 +202,56 @@ test('seatGetsPush decides by seat kind and type', () =>
     assert.strictEqual(seatGetsPush(frontmatter('tools:\n- Read\n- Grep\n'), 'x'), false);
     for (const type of ['', undefined, null]) assert.strictEqual(seatGetsPush('other', type), false, `no type: ${type}`);
 });
+
+// The full copy route (ALFRED_CODE_SKILLS_VIA_PLUGIN=false) writes `seats-route: copy` with an EMPTY `library-agents:` line and
+// the seats it copied on `picked-agents:` (name@home); the library route records its seats on `library-agents:` instead.
+const COPY_ROUTE_STAMP = 'seats-route: copy\npicked-skills: \npicked-agents: security-auditor@alfred-code,aspnet-verifier@alfred-code\nlibrary-skills: \nlibrary-agents: \n';
+const LIBRARY_ROUTE_STAMP = 'seats-route: library\npicked-skills: \npicked-agents: security-auditor@alfred-code\nlibrary-skills: \nlibrary-agents: \n';
+const longCodeDoc = () =>
+{
+    const long = (i) => entry(`c${i}`, `Entry ${i}`, `- Rule: rule number ${i} ${'stays put. '.repeat(70)}\n- Scope: every language`);
+    return { 'PERSONAL-CODE-PREFERENCES.md': `# Personal code preferences\n\nUpdated: 2026-10-22\n\n${Array.from({ length: 14 }, (_, i) => long(i + 1)).join('\n')}`, 'ARCHITECTURE-PREFERENCES.md': ARCHITECTURE };
+};
+const readBy = (session, agent) => ({ hook_event_name: 'PreToolUse', session_id: session, tool_name: 'Read', tool_input: { file_path: 'src/app.ts' }, ...agent });
+const readHandsDocs = (result) => out(result).permissionDecision === undefined && /preferences/.test(String(out(result).additionalContext || ''));
+
+test('on the full copy route a bare stack judge is read from picked-agents: it gets the push, the Read pointer and a held first Read', () =>
+{
+    const p = project(longCodeDoc());
+    try
+    {
+        p.write('.claude/alfred-code.stamp', COPY_ROUTE_STAMP);
+        const session = sessionId();
+        const agent = { agent_id: 'j1', agent_type: 'security-auditor' };
+        const text = pushText(p.hook(startOf(session, 'security-auditor', { agent_id: 'j1' })));
+        assert.match(text, /Not pasted yet/);
+        assert.match(text, /your first Read or symbol lookup hands them over/, 'a judge is held on its Reads');
+        assert.ok(readHandsDocs(p.hook(readBy(session, agent))), 'its first Read hands over the next part');
+    }
+    finally { p.rm(); }
+});
+
+test('the library route reads library-agents only: a picked-agents line there makes no bare name a judge', () =>
+{
+    const p = project(longCodeDoc());
+    try
+    {
+        p.write('.claude/alfred-code.stamp', LIBRARY_ROUTE_STAMP);
+        p.write('.claude/agents/security-auditor.md', '---\nname: security-auditor\ntools: Read, Grep\n---\nbody\n');
+        const session = sessionId();
+        assert.strictEqual(pushText(p.hook(startOf(session, 'security-auditor', { agent_id: 'j1' }))), '');
+        p.write('.claude/alfred-code.stamp', 'seats-route: library\nlibrary-agents: security-auditor=ab12\n');
+        assert.match(pushText(p.hook(startOf(sessionId(), 'security-auditor', { agent_id: 'j2' }))), /first Read or symbol lookup/, 'a recorded library copy is a judge');
+    }
+    finally { p.rm(); }
+});
+
+test('a bare judge name with no definition and no stamp is an unresolved seat and gets the push', () =>
+{
+    const p = project();
+    try
+    {
+        assert.match(pushText(p.hook(startOf(sessionId(), 'security-auditor', { agent_id: 'j1' }))), PUSH_MARK);
+    }
+    finally { p.rm(); }
+});

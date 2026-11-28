@@ -158,6 +158,8 @@ const SEAT_TOOLS_ENTRY = /^tools:[ \t]*([^\n]*(?:\n[ \t]*-[^\n]*)*)/m;
 const SEAT_EDIT_TOOL = /(?:^|[\s,"'[-])(?:Edit|Write|MultiEdit|NotebookEdit)(?=$|[\s,"'\]])/;
 const SEAT_ALL_TOOLS = /^["']?\*["']?$/;
 const STAMP_BYTES = 64 * 1024;
+// The stamp line of the full copy route, whose seats sit on `picked-agents:` (copiedSeats).
+const STAMP_COPY_ROUTE = /^seats-route:[ \t]*copy[ \t]*$/m;
 // The locked keys the seed carries, for an install whose seed is not beside this hook.
 const KNOWN_LOCKED = /^(?:consent|checkpoint|safety|attribution|checks)$/;
 const SEED = path.join(__dirname, '..', 'skills', 'capture-preferences', 'references', 'git-seed.md');
@@ -939,8 +941,10 @@ function shellReads(ctx, command, cwd) {
 }
 
 // ---- who is handed what -------------------------------------------------------------------------------------------
-// The seats the copy route copied, from the install stamp's `library-agents:` line (`name=<sha>,...`); empty on the plugin
-// route, with no stamp, or with one that cannot be read.
+// The seats an install holds as copies, from the install stamp: the `library-agents:` line (`name=<sha>,...`), which the
+// plugin routes fill (seats linked from the library); on the full copy route (`seats-route: copy`) that line is empty and
+// the `picked-agents:` line (`name@<home>,...`) names the copied seats, so it is read too. Empty with no stamp or one that
+// cannot be read.
 function copiedSeats(ctx) {
   for (const base of ctx.bases) {
     const file = path.join(base, '.claude', 'alfred-code.stamp');
@@ -950,8 +954,9 @@ function copiedSeats(ctx) {
       const fd = fs.openSync(file, 'r');
       try { const buf = Buffer.alloc(STAMP_BYTES); text = buf.toString('utf8', 0, fs.readSync(fd, buf, 0, STAMP_BYTES, 0)); } finally { fs.closeSync(fd); }
     } catch { continue; }
-    const m = /^library-agents:[ \t]*(.*)$/m.exec(text);
-    return new Set(m ? m[1].split(',').map((x) => x.split('=')[0].trim()).filter((x) => /^[\w-]+$/.test(x)) : []);
+    const names = (key, mark) => { const m = new RegExp(`^${key}:[ \\t]*(.*)$`, 'm').exec(text); return m ? m[1].split(',').map((x) => x.split(mark)[0].trim()).filter((x) => /^[\w-]+$/.test(x)) : []; };
+    const copyRoute = STAMP_COPY_ROUTE.test(text);
+    return new Set([...names('library-agents', '='), ...(copyRoute ? names('picked-agents', '@') : [])]);
   }
   return new Set();
 }
