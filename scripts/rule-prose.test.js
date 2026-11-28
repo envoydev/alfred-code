@@ -617,11 +617,24 @@ test('A2c: the Recommended option follows the user, a wait is marked and kept, a
         "Check a Recommended option against every rule the user stated this conversation and any unactioned request: an option against one is never marked, and a contradiction marks the safe option.",
         "A push or a publish the user's prompt asked for is the Recommended option, not a hold.",
         'While a wait runs, recommend the next work, never idling.',
-        "An ask that must wait opens 'waits for you: <why>' and keeps its mark - only for a hard stop, a standing rule, other people's data or privacy, money, or an act that cannot be undone.",
+        "An ask that must wait opens 'waits for you: <why>' and keeps its mark - only for a hard stop, a standing rule, privacy, another person's data or access (a client's or a customer's contact fields, a role that sees another user's records), money, deleting data on the user's machine that the user did not name (simulators, app data, caches), or an act that cannot be undone.",
         "A claim that no tool could check this session is labelled '(low confidence - <why>)'.",
     ]) assert.ok(text.includes(squash(clause)), clause.slice(0, 60));
 });
 
 test('T01: a read or a write past the workspace needs the yes first', () => {
     assert.ok(injected('alfred-security').includes("A read or a write past the workspace - another project's files or its database included - needs the user's yes first."));
+});
+
+// Session audit 2 (C9, N07, N08): the two cases that wait are named outright, since an auto-run pick showed a client's
+// contact fields and another auto-run deleted simulators the user had not named.
+test('C9: the waits-for-you kinds name another person\'s data or access and an unnamed delete', () =>
+{
+    const text = injected('alfred-interaction');
+    const from = text.indexOf("An ask that must wait opens 'waits for you: <why>'");
+    assert.ok(from >= 0, 'the wait bullet is found');
+    const line = text.slice(from, text.indexOf(' - The markers hooks read', from));
+    assert.ok(line.includes("another person's data or access (a client's or a customer's contact fields, a role that sees another user's records)"), 'N07: another person\'s data or access');
+    assert.ok(line.includes("deleting data on the user's machine that the user did not name (simulators, app data, caches)"), 'N08: an unnamed delete');
+    assert.ok(line.includes('or an act that cannot be undone.'), 'the old closing kind stays');
 });
