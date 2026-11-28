@@ -676,6 +676,9 @@ test('guard-stop-contract: an ask that sends the user to type into Other, or mar
   assert.match(noDefault.stderr, /'\(Recommended\)' and list it first/, 'the reason names the mark');
   assert.match(noDefault.stderr, /'waits for you: <why>'/, 'and the wait form');
   assert.doesNotMatch(noDefault.stderr, /no option is recommended: <why>/, 'the old form is no longer offered');
+  // C9 (session audit 2, N07, N08): the hook lists the same wait kinds as the interaction rule.
+  assert.match(noDefault.stderr, /a hard stop, a rule every later session follows, privacy, another person's data or access, money, deleting data on the user's machine that the user did not name, an act that cannot be undone - still marks/, 'the wait kinds match the rule');
+  assert.doesNotMatch(noDefault.stderr, /other people's data or privacy/, 'the old wait list is gone');
   assert.equal(askIn(tp, [{ ...bare[0], question: 'waits for you: a hard stop. What should a Manager see?', options: [{ label: 'Hidden entirely (Recommended)', description: 'x' }, { label: 'Read-only', description: 'y' }] }]).status, 0,
     'a waits-for-you ask with one marked pick passes the mark check');
   assert.equal(askIn(tp, [{ ...bare[0], question: 'waits for you: a hard stop. What should a Manager see?' }]).status, 'ask', 'the wait form with no mark is denied');
