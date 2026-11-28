@@ -110,6 +110,8 @@ const INTERPRETER_VALUE_OPTIONS = Object.freeze({
   [INTERPRETER_SHELL_FAMILY]: new Set(['-c', '-o']),
 });
 const SYSTEM_TOOL_ROOTS = Object.freeze(['/usr', '/bin', '/sbin', '/opt', '/etc', '/dev', '/System', '/Library', '/Applications', '/private/etc']);
+// The Windows system folders, named by the environment (L1-16): the compare folds case on win32, where a path's case is free.
+const WINDOWS_SYSTEM_ROOT_ENV = Object.freeze(['ProgramFiles', 'ProgramFiles(x86)', 'ProgramW6432', 'SystemRoot', 'windir']);
 const SQLITE_WRITE_WHAT = 'a sqlite3 database';
 const INTERPRETER_PATH_WHAT = 'call on a path';
 
@@ -1066,7 +1068,13 @@ function interpreterPaths(argv, cwd, valueOptions = new Set(), exists = fs.exist
   const paths = [];
   for (let at = 0; at < argv.length; at++) {
     const word = argv[at];
-    if (word.startsWith('-')) { if (valueOptions.has(word)) at++; continue; }
+    if (word.startsWith('-')) {
+      // L1-15: `--db=<path>` names the path as `--db <path>` does; a value option of the interpreter (`--eval=code`) stays code.
+      const split = word.match(/^(--[^=\s]+)=(.+)$/s);
+      if (split && !valueOptions.has(split[1]) && exists(resolveTarget(nativePath(expandTilde(split[2])), cwd))) paths.push(split[2]);
+      else if (valueOptions.has(word)) at++;
+      continue;
+    }
     if (word && exists(resolveTarget(nativePath(expandTilde(word)), cwd))) paths.push(word);
   }
   return paths;
@@ -1077,6 +1085,7 @@ const interpreterFamily = (name) => Object.keys(INTERPRETER_FAMILY).find((family
 function toolOwnedPath(abs) {
   const t = realish(abs);
   if (process.platform !== 'win32' && SYSTEM_TOOL_ROOTS.some((root) => inside(t, root))) return true;
+  if (WINDOWS_SYSTEM_ROOT_ENV.some((name) => path.isAbsolute(process.env[name] || '') && inside(t, process.env[name]))) return true;
   return Boolean(crossRead && HOME_REAL && inside(t, HOME_REAL) && fold(t) !== fold(HOME_REAL) && !inReadZone(t));
 }
 // The arguments a command word's own words carry, dequoted and expanded the way `judge` expands them.

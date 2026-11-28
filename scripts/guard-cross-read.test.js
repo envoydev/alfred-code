@@ -690,6 +690,31 @@ test('a flag one interpreter reads as a switch does not hide a script past the w
   passes(fx, bash(`perl -e 'print 1' -I lib`), {}, 'perl -e and -I take values');
 }));
 
+test('L1-15: an interpreter option spelled --name=<path> asks as --name <path> does', { skip: WINDOWS && 'POSIX paths' }, withFixture((fx) => {
+  const { db } = outsideDb(fx);
+  asks(fx, bash(`node migrate.js --db ${db}`), {}, 'the two-word spelling');
+  asks(fx, bash(`node migrate.js --db=${db}`), {}, 'the one-word spelling');
+  asks(fx, bash(`python3 migrate.py --db="${db}"`), {}, 'the one-word spelling, quoted');
+  passes(fx, bash('node migrate.js --db=data.db --level=3'), {}, 'a value that names no existing path');
+  passes(fx, bash(`node --eval=${db}`), {}, 'a value option of the interpreter is code, not a path');
+}));
+
+// L1-16 runs on POSIX here with the Windows variables set by the test; the Windows leg itself is NOT RUN on a Windows host.
+test('L1-16: a script under a Windows system folder named by ProgramFiles, ProgramFiles(x86), SystemRoot or windir is exempt', withFixture((fx) => {
+  const folders = { ProgramFiles: 'Program Files', 'ProgramFiles(x86)': 'Program Files (x86)', SystemRoot: 'Windows', windir: 'WinDir' };
+  for (const [name, folder] of Object.entries(folders)) {
+    const dir = path.join(fx.outer, folder);
+    fs.mkdirSync(dir, { recursive: true });
+    const tool = path.join(dir, 'tool.py');
+    fs.writeFileSync(tool, 'x');
+    asks(fx, bash(`python3 "${tool}"`), {}, `${name} unset: the script past the workspace asks`);
+    passes(fx, bash(`python3 "${tool}"`), { [name]: dir }, `${name} set: its folder is a system folder`);
+    if (process.platform === 'win32') passes(fx, bash(`python3 "${tool.toUpperCase()}"`), { [name]: dir.toLowerCase() }, `${name}: case is free on Windows`);
+  }
+  const { db } = outsideDb(fx);
+  asks(fx, bash(`python3 erase.py ${db}`), { ProgramFiles: path.join(fx.outer, 'Program Files') }, 'another folder past the workspace still asks');
+}));
+
 test('an interpreter call on a project path, a missing path, a system path or code with no path passes with no prompt', { skip: WINDOWS && 'POSIX paths' }, withFixture((fx) => {
   const { relative } = outsideDb(fx);
   fx.put('work/proj/scripts/x.py');
